@@ -1,0 +1,39 @@
+# Hardware configuration: SBC, power, IO, heat inserts, battery.
+# All dimensions in millimeters.
+
+sbc:
+  name: Orange Pi Zero 2W
+  width: 65                # PCB 65 x 30 x 1.4 mm (measured)
+  depth: 30
+  height: 6.7              # measured total stack: 3.3 top + 1.4 PCB + 2.0 bottom SMD
+                           # with optional 7 mm radiators on SoC/memory: 12.1 total
+  pcb_thickness: 1.4       # measured
+  mounting_holes: 4
+  mounting_hole_diameter: 3.0   # official manual: all four positioning holes 3.0 mm
+  mounting_hole_inset: 3.5      # hole centers 3.5 mm from board edges (RPi Zero footprint)
+
+power:
+  input: usb_c
+  voltage: 5
+
+storage:
+  microsd: true
+
+io:
+  hdmi: true              # 1x Mini HDMI TX 2.0
+  usb_a: 0                # no USB-A on the SBC; USB-A comes from the expansion board
+  usb_c: 2                # 2x Type-C USB 2.0 (one is power input)
+
+usb_breakout:
+  width: 20                # TODO: measure breakout board
+  depth: 15
+  height: 8
+  holes: 2
+
+heat_inserts:
+  diameter: 4              # M2.5 heat-set insert outside diameter
+  depth: 4
+  clearance: 0.2
+
+battery:
+  present: false           # external-only battery in current revision

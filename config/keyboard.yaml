@@ -1,0 +1,34 @@
+# Keyboard configuration: 40% Cherry-MX compatible, RP2040, QMK/Vial.
+# All dimensions in millimeters.
+
+keyboard:
+  columns: 12
+  rows: 4
+  pitch: 19.05             # standard Cherry-MX switch pitch
+  layout: default
+
+plate:
+  thickness: 1.5           # switch plate thickness
+  material: FR4
+  inset: 3                 # plate margin beyond outer switch centers
+  switch_cutout: mx        # switch hole shape: mx, mx-basic, alps, choc, or custom
+  stabilizer_cutout: mx-basic  # stabilizer slot shape: mx-basic, mx-tight, mx-spec, none, or custom
+
+stabilizers:
+  present: true
+  slot_width: 7            # Cherry MX standard slot width (mm)
+  slot_height: 15          # Cherry MX standard slot height (mm)
+  offset_y: -1.4           # Y offset from switch center (mm, negative = down)
+  keys:
+    # Grid positions that have stabilizers: "{row}_{col}": {width: key_units}
+    # X offset is calculated as (width - 1) * pitch / 2
+    "3_6": {width: 6.25}   # spacebar row → ±50 mm offset
+
+controller:
+  rp2040: true
+  width: 23.5            # Waveshare RP2040-Zero, verified
+  depth: 18.0
+  height: 8.0            # ~8 mm with components
+  hole_diameter: 2.0     # four corner mounting holes
+
+case_bottom_margin: 10     # front face palm-rest depth beyond keyboard

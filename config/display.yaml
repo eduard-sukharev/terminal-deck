@@ -1,0 +1,33 @@
+# Display configuration: 8.8" ultrawide LCD with HDMI driver board.
+# All dimensions in millimeters. Verified against the HannStar HSD088IPW1-A00
+# panel (the standard 8.8" 1920x480 module used with HDMI->MIPI driver boards).
+
+display:
+  width: 231.0             # module outline width, measured
+  height: 64.5             # module outline height, measured
+  thickness: 6.5           # module outline depth, measured
+  diagonal: 8.8            # inches, informational
+  active_width: 218.88     # active area width, informational (datasheet)
+  active_height: 54.72     # active area height, informational (datasheet)
+
+bezel:
+  inset: 3                  # glass recess inset from panel edge
+  thickness: 2              # bezel wall thickness over the glass edge
+
+glass:
+  recess_depth: 1.5         # glass recess depth into lid
+
+driver_board:
+  width: 55                 # measured
+  depth: 45.5               # measured
+  height: 4.6               # PCB 1.3 + tallest socket 3.3, measured
+  pcb_thickness: 1.3        # measured
+  offset_x: 105             # driver center X from display center — provisional,
+                            # mounts the driver back-to-back behind the LCD with its
+                            # west FPC slot toward the folded panel ribbon
+                            # (TODO: confirm final lid layout)
+  offset_y: 5.0             # aligns the driver FPC slot center with the panel FPC center
+
+mounts:
+  holes: 4
+  hole_diameter: 2.2

@@ -1,0 +1,217 @@
+points:
+  zones:
+    matrix:
+      anchor:
+        shift: [0.5 u, 0]
+      key:
+        width: u - 1
+        height: u - 1
+      rows:
+        bottom:
+          adjust:
+            shift: [0.75 u, 0]
+        home:
+          adjust:
+            shift: [0.25 u, 0]
+        top: {}
+      columns:
+        c01:
+          rows:
+            top:
+              label: Esc
+            home:
+              label: Tab
+              width: 1.25 u - 1
+              adjust:
+                shift: [0.125 u, 0]
+            bottom:
+              label: Shift
+              width: 1.75 u - 1
+              adjust:
+                shift: [0.375 u, 0]
+        c02:
+          rows:
+            top: {label: Q}
+            home: {label: A}
+            bottom: {label: Z}
+        c03:
+          rows:
+            top: {label: W}
+            home: {label: S}
+            bottom: {label: X}
+        c04:
+          rows:
+            top: {label: E}
+            home: {label: D}
+            bottom: {label: C}
+        c05:
+          rows:
+            top: {label: R}
+            home: {label: F}
+            bottom: {label: V}
+        c06:
+          rows:
+            top: {label: T}
+            home: {label: G}
+            bottom: {label: B}
+        c07:
+          rows:
+            top: {label: Y}
+            home: {label: H}
+            bottom: {label: N}
+        c08:
+          rows:
+            top: {label: U}
+            home: {label: J}
+            bottom: {label: M}
+        c09:
+          rows:
+            top: {label: I}
+            home: {label: K}
+            bottom: {label: '<\n.'}
+        c10:
+          rows:
+            top: {label: O}
+            home: {label: L}
+            bottom:
+              label: Shift
+              width: 1.25 u - 1
+              adjust:
+                shift: [0.875 u, 0]
+        c11:
+          rows:
+            top: {label: P}
+            home:
+              label: Enter
+              width: 1.75 u - 1
+              adjust:
+                shift: [0.625 u, 0]
+            bottom:
+              label: Fn
+              adjust:
+                shift: [1 u, 0]
+        c12:
+          rows:
+            top: {label: Backspace}
+            home: {skip: true}
+            bottom: {skip: true}
+    thumb:
+      anchor:
+        ref: matrix_c01_top
+        shift: [0, -3 u]
+      columns:
+        space_row:
+          key:
+            padding: 0
+          rows:
+            hyper:
+              label: Hyper
+              width: 1.25 u - 1
+              adjust:
+                shift: [0.125 u, 0]
+            super1:
+              label: Super
+              adjust:
+                shift: [1.25 u, 0]
+            meta1:
+              label: Meta
+              adjust:
+                shift: [2.25 u, 0]
+            space:
+              label: ''
+              width: 6.25 u - 1
+              adjust:
+                shift: [5.875 u, 0]
+            meta2:
+              label: Meta
+              width: 1.25 u - 1
+              adjust:
+                shift: [9.625 u, 0]
+            super2:
+              label: Super
+              width: 1.25 u - 1
+              adjust:
+                shift: [10.875 u, 0]
+outlines:
+  _plate:
+    hull:
+      concavity: 50
+      extend: true
+      points:
+      - matrix_c01_top
+      - matrix_c01_home
+      - matrix_c01_bottom
+      - matrix_c02_top
+      - matrix_c02_home
+      - matrix_c02_bottom
+      - matrix_c03_top
+      - matrix_c03_home
+      - matrix_c03_bottom
+      - matrix_c04_top
+      - matrix_c04_home
+      - matrix_c04_bottom
+      - matrix_c05_top
+      - matrix_c05_home
+      - matrix_c05_bottom
+      - matrix_c06_top
+      - matrix_c06_home
+      - matrix_c06_bottom
+      - matrix_c07_top
+      - matrix_c07_home
+      - matrix_c07_bottom
+      - matrix_c08_top
+      - matrix_c08_home
+      - matrix_c08_bottom
+      - matrix_c09_top
+      - matrix_c09_home
+      - matrix_c09_bottom
+      - matrix_c10_top
+      - matrix_c10_home
+      - matrix_c10_bottom
+      - matrix_c11_top
+      - matrix_c11_home
+      - matrix_c11_bottom
+      - matrix_c12_top
+      - thumb_space_row_hyper
+      - thumb_space_row_super1
+      - thumb_space_row_meta1
+      - thumb_space_row_space
+      - thumb_space_row_meta2
+      - thumb_space_row_super2
+      what: hull
+  _switch:
+    cut:
+      points:
+      - shift: [7, 7]
+      - shift: [-14, 0]
+      - shift: [0, -3.5]
+      - shift: [3.5, 0]
+      - shift: [0, -7]
+      - shift: [-3.5, 0]
+      - shift: [0, -3.5]
+      - shift: [14, 0]
+      - shift: [0, 3.5]
+      - shift: [-3.5, 0]
+      - shift: [0, 7]
+      - shift: [3.5, 0]
+      what: polygon
+      where: true
+  _stab:
+    left:
+      what: rectangle
+      size: [7, 15]
+      where: '/space$/'
+      adjust:
+        shift: [-50, -1.4]
+    right:
+      what: rectangle
+      size: [7, 15]
+      where: '/space$/'
+      adjust:
+        shift: [50, -1.4]
+  plate:
+  - name: _plate
+  - name: _switch
+    operation: subtract
+  - name: _stab
+    operation: subtract

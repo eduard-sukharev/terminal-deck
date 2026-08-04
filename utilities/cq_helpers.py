@@ -1,0 +1,95 @@
+"""CadQuery helpers — the single adapter between this codebase and CadQuery.
+
+CadQuery is imported lazily so that data-layer modules (component specs,
+config loading, validation) remain importable and testable without a
+CadQuery installation. Only modules that actually generate geometry should
+depend on this helper, and they must call :func:`require_cq` before use.
+
+All coordinates in this codebase follow the global convention:
++X right, +Y forward, +Z upward, origin at center of the base.
+"""
+
+from __future__ import annotations
+
+import importlib
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import cadquery as cq
+
+_cq_module: Any | None = None
+_import_error: ImportError | None = None
+
+
+def require_cq() -> Any:
+    """Return the CadQuery module, importing it lazily.
+
+    Raises
+    ------
+    ImportError
+        If CadQuery is not installed.
+    """
+    global _cq_module, _import_error
+    if _cq_module is None:
+        try:
+            _cq_module = importlib.import_module("cadquery")
+        except ImportError as exc:  # pragma: no cover - depends on env
+            _import_error = exc
+            raise
+    return _cq_module
+
+
+def cq_available() -> bool:
+    """True if CadQuery can be imported in this environment."""
+    if _cq_module is None and _import_error is None:
+        try:
+            require_cq()
+        except ImportError:
+            return False
+    return _import_error is None
+
+
+def box_centered(width: float, depth: float, height: float) -> Any:
+    """Return a solid box centered on the local origin.
+
+    Parameters
+    ----------
+    width : float
+        Extent along X (mm).
+    depth : float
+        Extent along Y (mm).
+    height : float
+        Extent along Z (mm).
+    """
+    cq = require_cq()
+    return cq.Workplane("XY").box(width, depth, height)
+
+
+def cylinder_centered(diameter: float, height: float) -> Any:
+    """Return a solid cylinder centered on the local origin, axis along Z.
+
+    Uses keyword arguments because CadQuery's ``Workplane.cylinder`` argument
+    order for ``radius``/``height`` differs across releases.
+    """
+    cq = require_cq()
+    return cq.Workplane("XY").cylinder(radius=diameter / 2.0, height=height)
+
+
+def translate(shape: Any, x: float, y: float, z: float) -> Any:
+    """Translate a shape by an absolute (x, y, z) offset in mm."""
+    return shape.translate((x, y, z))
+
+
+def rotate_z(shape: Any, angle_deg: float) -> Any:
+    """Rotate a shape about the Z axis by ``angle_deg`` degrees."""
+    return shape.rotate((0, 0, 0), (0, 0, 1), angle_deg)
+
+
+def bounding_box_mm(shape: Any) -> tuple[float, float, float]:
+    """Return (width, depth, height) in mm of a CadQuery shape.
+
+    Uses the OCP bounding box for measured truth. Avoid recomputing per
+    component where the measured component value is authoritative.
+    """
+    bbox = shape.val().BoundingBox()
+    return (bbox.xlen, bbox.ylen, bbox.zlen)

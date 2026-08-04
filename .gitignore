@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.codegraph/
+build/
+dist/
+generated/step/*
+generated/stl/*
+generated/svg/*
+!generated/step/.gitkeep
+!generated/stl/.gitkeep
+!generated/svg/.gitkeep
+generated/ergogen/
+generated/renders/

@@ -1,0 +1,39 @@
+# Top-level build configuration for the cyberdeck.
+# All dimensions in millimeters.
+
+wall:
+  thickness: 2.5        # single wall-thickness parameter; everything derives from it
+
+corners:
+  radius: 8             # corner_radius: outer case corner fillet
+  edge_radius: 2        # edge_radius: general edge fillet
+
+clearance:
+  shell: 0.35           # air gap between a component and the shell interior
+  insert: 0.2           # heat-set insert hole clearance (diameter oversize)
+  screw: 0.6            # minimum radial clearance around a screw head / boss
+
+display:
+  width: 231.3            # 8.8" 1920x480 module outline (HannStar HSD088IPW1-A00)
+  height: 64.3
+  thickness: 6.4
+
+keyboard:
+  columns: 12
+  rows: 4
+  pitch: 19.05          # standard Cherry-MX switch pitch
+  layout: default
+
+hinge:
+  diameter: 10          # barrel outer diameter
+  pin: 3                # hinge pin diameter
+  wire_tunnel: 8        # wire tunnel diameter
+
+screws:
+  body: M2              # case body screws (fastener library)
+  standoff: M2.5        # board standoff screws
+
+material:
+  name: PLA
+  layer_height: 0.2
+  minimum_feature: 0.6  # printable minimum wall/feature thickness

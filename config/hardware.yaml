@@ -25,10 +25,10 @@ io:
   usb_c: 2                # 2x Type-C USB 2.0 (one is power input)
 
 usb_breakout:
-  width: 20                # TODO: measure breakout board
-  depth: 15
-  height: 8
-  holes: 2
+  width: 60                # TODO: measure multifunctional hub (USB-A/USB-C/SD
+  depth: 25                # reader not yet decided; 60 x 25 x 10 assumed)
+  height: 10
+  holes: 2                 # mounting holes, 2.0 mm
 
 heat_inserts:
   diameter: 4              # M2.5 heat-set insert outside diameter
@@ -36,4 +36,9 @@ heat_inserts:
   clearance: 0.2
 
 battery:
-  present: false           # external-only battery in current revision
+  present: true            # sealed deck: internal power source (USB hub is the
+                           # only external connectivity)
+  width: 60                # TODO: measure chosen cell (60 x 35 x 8 assumed)
+  depth: 35
+  height: 8
+  clearance: 2.0           # keepout margin around the cell in the compartment

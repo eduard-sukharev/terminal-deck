@@ -53,6 +53,15 @@ class LayoutDefault(Layout):
         # SBC centered on X, behind the keyboard toward the hinge.
         placements.append(Placement(sbc, 0.0, sbc_y, rotation=0.0, z=0.0))
 
+        # Battery beside the SBC at the rear (sealed deck: internal power).
+        battery = self.components.get("battery")
+        if battery is not None:
+            bb = battery.size()
+            battery_x = sb.width / 2 + 6.0 + bb.width / 2
+            placements.append(
+                Placement(battery, battery_x, sbc_y, rotation=0.0, z=0.0)
+            )
+
         # Display: lid side, centered on X at the lid stacking height.
         placements.append(
             Placement(display, 0.0, 0.0, rotation=0.0, z=60.0)

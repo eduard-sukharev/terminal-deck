@@ -47,6 +47,21 @@ class Rp2040Keyboard(Component):
         height = self._plate_raise + box.height + 10.0  # switch + cap allowance
         return BoundingBox(box.width, box.depth, height)
 
+    def occupied_volumes(self) -> list[tuple[float, float, float, BoundingBox]]:
+        """Solid sub-volumes: the raised plate block and the controller block.
+
+        The plate sits on standoffs at ``_plate_raise``; the space beneath it is
+        hollow (occupied only by the controller), so a component buried under
+        the plate does not collide with the keyboard.
+        """
+        plate_box = self._plate.size()
+        plate_height = self.size().height - self._plate_raise
+        controller_box = self.controller.size()
+        return [
+            (0.0, 0.0, self._plate_raise, BoundingBox(plate_box.width, plate_box.depth, plate_height)),
+            (self._controller_x, self._controller_y, 0.0, controller_box),
+        ]
+
     def mounting_holes(self) -> list[Hole]:
         # The plate mounts on four standoff bosses (height = plate raise). The
         # controller rests flat on the base floor beneath the plate and is held

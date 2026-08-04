@@ -19,6 +19,7 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
+from components.battery import Battery
 from components.display_88 import Display88
 from components.hdmi_driver import HdmiDriver
 from components.orange_pi_zero2w import OrangePiZero2W
@@ -75,6 +76,7 @@ class BuildPipeline:
             "driver": HdmiDriver(display_cfg),
             "keyboard": Rp2040Keyboard(keyboard_cfg),
             "sbc": OrangePiZero2W(cfg.hardware),
+            "battery": Battery(cfg.hardware),
             "usb_breakout": UsbBreakout(cfg.hardware),
         }
 

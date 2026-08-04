@@ -86,24 +86,29 @@ def check_collisions(placements: list[Any], report: ValidationReport) -> None:
     """Fail if any two placements overlap in both XY and Z.
 
     The clamshell overlaps the lid (display) over the base (keyboard) in XY;
-    those only conflict when their Z ranges also overlap.
+    those only conflict when their Z ranges also overlap. Comparison uses each
+    component's solid sub-volumes (``occupied_volumes``) so hollow parts (e.g.
+    the raised keyboard plate) only collide where they actually occupy space.
     """
     for i in range(len(placements)):
         for j in range(i + 1, len(placements)):
             pa, pb = placements[i], placements[j]
             a, b = pa.component, pb.component
-            a_top, b_top = pa.z + a.size().height, pb.z + b.size().height
-            z_overlap = not (a_top <= pb.z or b_top <= pa.z)
-            if z_overlap and _overlap_xy(
-                pa.x, pa.y, a.size().width, a.size().depth,
-                pb.x, pb.y, b.size().width, b.size().depth,
-            ):
-                report.add(
-                    "no-collisions",
-                    False,
-                    f"{a.name} overlaps {b.name}",
-                )
-                return
+            for ax, ay, az, abox in a.occupied_volumes():
+                for bx, by, bz, bbox in b.occupied_volumes():
+                    a_z0, a_z1 = pa.z + az, pa.z + az + abox.height
+                    b_z0, b_z1 = pb.z + bz, pb.z + bz + bbox.height
+                    z_overlap = not (a_z1 <= b_z0 or b_z1 <= a_z0)
+                    if z_overlap and _overlap_xy(
+                        pa.x + ax, pa.y + ay, abox.width, abox.depth,
+                        pb.x + bx, pb.y + by, bbox.width, bbox.depth,
+                    ):
+                        report.add(
+                            "no-collisions",
+                            False,
+                            f"{a.name} overlaps {b.name}",
+                        )
+                        return
     report.add("no-collisions", True)
 
 

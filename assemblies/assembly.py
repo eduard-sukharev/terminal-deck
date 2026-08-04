@@ -77,11 +77,13 @@ class Assembly:
             for j in range(i + 1, len(self.placements)):
                 pa, pb = self.placements[i], self.placements[j]
                 a, b = pa.component, pb.component
-                if _overlap_xy(
-                    pa.x, pa.y, a.size().width, a.size().depth,
-                    pb.x, pb.y, b.size().width, b.size().depth,
-                ):
-                    problems.append(f"{a.name} overlaps {b.name}")
+                for ax, ay, az, abox in a.occupied_volumes():
+                    for bx, by, bz, bbox in b.occupied_volumes():
+                        if _overlap_xy(
+                            pa.x + ax, pa.y + ay, abox.width, abox.depth,
+                            pb.x + bx, pb.y + by, bbox.width, bbox.depth,
+                        ):
+                            problems.append(f"{a.name} overlaps {b.name}")
         return problems
 
     def bosses(self, placements: list[Placement] | None = None) -> list[tuple[float, float, BossSpec]]:
@@ -138,29 +140,23 @@ class Assembly:
                     continue
                 cutout = from_connector(connector, clearance)
 
-                # World-space direction after the placement's Z rotation.
+                # World-space direction and origin after the placement's Z
+                # rotation (rotate the connector's local XY by the angle).
                 wx = connector.direction[0] * math.cos(rad) - connector.direction[1] * math.sin(rad)
                 wy = connector.direction[0] * math.sin(rad) + connector.direction[1] * math.cos(rad)
                 direction = (wx, wy, connector.direction[2])
+                cx = connector.x * math.cos(rad) - connector.y * math.sin(rad)
+                cy = connector.x * math.sin(rad) + connector.y * math.cos(rad)
 
                 # Distance from the connector origin to the wall outer face.
-                px, py = placement.x + cutout.x, placement.y + cutout.y
-                if wx > 0.0:
-                    distance = half_w - px
-                elif wx < 0.0:
-                    distance = px + half_w
-                elif wy > 0.0:
-                    distance = half_d - py
-                elif wy < 0.0:
-                    distance = py + half_d
-                else:
-                    distance = 0.0
-
-                # Reach check: the connector must be near the shell boundary.
-                # Half-extent along the connector axis plus the shell gap.
-                if abs(direction[0]) >= abs(direction[1]):
+                # Determine the primary axis from the rotated direction (use
+                # a tolerance for floating-point noise from sin(π)).
+                px, py = placement.x + cx, placement.y + cy
+                if abs(wx) >= abs(wy):
+                    distance = (half_w - px) if wx > 0.0 else (px + half_w)
                     reach = box.width / 2 + clearance + wall
                 else:
+                    distance = (half_d - py) if wy > 0.0 else (py + half_d)
                     reach = box.depth / 2 + clearance + wall
                 if distance > reach:
                     continue
@@ -168,8 +164,8 @@ class Assembly:
                 cutouts.append(
                     {
                         "type": cutout.connector_type,
-                        "x": placement.x + cutout.x,
-                        "y": placement.y + cutout.y,
+                        "x": px,
+                        "y": py,
                         "z": placement.z + cutout.z,
                         "width": cutout.width,
                         "height": cutout.height,

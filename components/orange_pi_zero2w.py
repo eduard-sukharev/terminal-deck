@@ -91,7 +91,9 @@ class OrangePiZero2W(Component):
                 depth=7.6,
                 internal=True,
             ),
-            # USB-C #1 (power, OTG) — east side 6.5 from east edge.
+            # USB-C #1 (power, OTG) — east side 6.5 from east edge. Internal:
+            # the sealed deck exposes no SBC ports; connectivity goes through
+            # the rear USB hub and the internal battery supplies power.
             Connector(
                 type=CONNECTOR_USB_C,
                 x=21.5,
@@ -101,8 +103,10 @@ class OrangePiZero2W(Component):
                 width=9.0,
                 height=3.5,
                 depth=8.0,
+                internal=True,
             ),
-            # USB-C #2 (power) — east side 19.0 from east edge.
+            # USB-C #2 (power) — east side 19.0 from east edge. Internal (battery
+            # power / charge input; no shell cutout).
             Connector(
                 type=CONNECTOR_POWER,
                 x=9.0,
@@ -112,8 +116,10 @@ class OrangePiZero2W(Component):
                 width=9.0,
                 height=3.5,
                 depth=8.0,
+                internal=True,
             ),
             # MicroSD — north side 17.2 from north edge, flush with west edge.
+            # Internal: card is serviceable only with the case open (sealed deck).
             Connector(
                 type=CONNECTOR_MICROSD,
                 x=-26.8,
@@ -123,6 +129,7 @@ class OrangePiZero2W(Component):
                 width=11.4,
                 height=1.4,
                 depth=11.4,
+                internal=True,
             ),
         ]
 

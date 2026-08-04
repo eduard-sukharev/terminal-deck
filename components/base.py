@@ -184,6 +184,16 @@ class Component(ABC):
         box = self.size()
         return Keepout(box.width + 4.0, box.depth + 4.0, box.height + 4.0)
 
+    def occupied_volumes(self) -> list[tuple[float, float, float, BoundingBox]]:
+        """Return the solid sub-volumes of this component (mm).
+
+        Each entry is ``(x, y, z, box)`` — a bounding box of ``box`` centered
+        at the given local offset. Defaults to the full measured size at the
+        origin. Override when the component is hollow (e.g. a raised plate with
+        empty space beneath it) so collision checks only flag real overlaps.
+        """
+        return [(0.0, 0.0, 0.0, self.size())]
+
     def reference_origin(self) -> tuple[float, float, float]:
         """Return the component origin offset in the world frame (mm).
 

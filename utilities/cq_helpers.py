@@ -85,6 +85,34 @@ def rotate_z(shape: Any, angle_deg: float) -> Any:
     return shape.rotate((0, 0, 0), (0, 0, 1), angle_deg)
 
 
+def extrude_polygon(
+    vertices: list[tuple[float, float]],
+    height: float,
+    x: float = 0.0,
+    y: float = 0.0,
+    z: float = 0.0,
+) -> Any:
+    """Extrude a closed polygon into a solid, centered at (x, y, z).
+
+    Parameters
+    ----------
+    vertices : list[tuple[float, float]]
+        Closed polygon vertices in XY, centered on origin.
+    height : float
+        Extrusion height along Z (mm).
+    x, y, z : float
+        Center position in the world frame (mm).
+
+    Returns
+    -------
+    cadquery.Workplane
+        The extruded solid.
+    """
+    cq = require_cq()
+    solid = cq.Workplane("XY").polyline(vertices).close().extrude(height)
+    return translate(solid, x, y, z - height / 2.0)
+
+
 def bounding_box_mm(shape: Any) -> tuple[float, float, float]:
     """Return (width, depth, height) in mm of a CadQuery shape.
 

@@ -88,10 +88,16 @@ class Glass:
 
 @dataclass(frozen=True)
 class Keyboard:
-    columns: int
-    rows: int
-    pitch: float
-    layout: str
+    columns: int = 12
+    rows: int = 4
+    pitch: float = 19.05
+    layout: str = "default"
+    layout_source: str = ""
+    switch_family: str = "mx_alps"
+    stabilizer_family: str = "cherry"
+    plate: dict[str, float] | None = None
+    mounting: dict[str, float] | None = None
+    controller: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -185,10 +191,16 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
         bezel=Bezel(**{k: float(v) for k, v in bezel.items()}),
         glass=Glass(**{k: float(v) for k, v in glass.items()}),
         keyboard=Keyboard(
-            columns=int(keyboard["columns"]),
-            rows=int(keyboard["rows"]),
-            pitch=float(keyboard["pitch"]),
+            columns=int(keyboard.get("columns", 12)),
+            rows=int(keyboard.get("rows", 4)),
+            pitch=float(keyboard.get("pitch", 19.05)),
             layout=str(keyboard.get("layout", "default")),
+            layout_source=str(keyboard.get("layout_source", "")),
+            switch_family=str(keyboard.get("switch", {}).get("family", "mx_alps")),
+            stabilizer_family=str(keyboard.get("stabilizer", {}).get("family", "cherry")),
+            plate=keyboard.get("plate"),
+            mounting=keyboard.get("mounting"),
+            controller=keyboard.get("controller"),
         ),
         hinge=Hinge(**{k: float(v) for k, v in hinge.items()}),
         screws=Screws(body=str(screws["body"]), standoff=str(screws["standoff"])),

@@ -25,6 +25,7 @@ cyberdeck = "main:main"
 packages = [
     "components",
     "geometry",
+    "keyboard",
     "layouts",
     "assemblies",
     "case",

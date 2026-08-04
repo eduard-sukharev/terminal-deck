@@ -23,6 +23,18 @@ keyboard:
   rows: 4
   pitch: 19.05          # standard Cherry-MX switch pitch
   layout: default
+  layout_source: keyboard/layouts/jd40.json
+  switch:
+    family: mx_alps
+  stabilizer:
+    family: cherry
+  plate:
+    thickness: 1.5
+    edge_margin: 8.0
+    corner_radius: 8.0
+  mounting:
+    screw: M2
+    edge_offset: 5.0
 
 hinge:
   diameter: 10          # barrel outer diameter

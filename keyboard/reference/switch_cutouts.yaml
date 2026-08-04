@@ -1,0 +1,133 @@
+# Switch cutout reference data — transcribed from swill/kb_builder
+# (builder.swillkb.com, AGPL-3.0, lib/builder.py:373-417).
+#
+# All vertices at kerf=0, grow_x=0, grow_y=0.  The trailing closure point
+# (first vertex repeated) is preserved verbatim from kb_builder's polyline
+# lists; CadQuery's .close() handles it harmlessly.
+
+types:
+  - code: 0
+    name: square
+    description: Plain 14×14 square — no notches, for lasercut plates.
+    width: 14.0
+    height: 14.0
+    nominal_thickness: 1.6
+    recommended_clearance: 0.05
+    vertices:
+      - [ 7.0, -7.0]
+      - [ 7.0,  7.0]
+      - [-7.0,  7.0]
+      - [-7.0, -7.0]
+      - [ 7.0, -7.0]
+
+  - code: 1
+    name: mx_alps
+    description: MX and ALPS compatible switch, MX can open (side notches).
+    width: 15.6
+    height: 14.0
+    nominal_thickness: 1.6
+    recommended_clearance: 0.05
+    vertices:
+      - [ 7.0, -7.0]
+      - [ 7.0, -6.4]
+      - [ 7.8, -6.4]
+      - [ 7.8,  6.4]
+      - [ 7.0,  6.4]
+      - [ 7.0,  7.0]
+      - [-7.0,  7.0]
+      - [-7.0,  6.4]
+      - [-7.8,  6.4]
+      - [-7.8, -6.4]
+      - [-7.0, -6.4]
+      - [-7.0, -7.0]
+      - [ 7.0, -7.0]
+
+  - code: 2
+    name: mx_wings
+    description: MX switch can open (side wings).
+    width: 15.6
+    height: 14.0
+    nominal_thickness: 1.6
+    recommended_clearance: 0.05
+    vertices:
+      - [ 7.0, -7.0]
+      - [ 7.0, -6.0]
+      - [ 7.8, -6.0]
+      - [ 7.8, -2.9]
+      - [ 7.0, -2.9]
+      - [ 7.0,  2.9]
+      - [ 7.8,  2.9]
+      - [ 7.8,  6.0]
+      - [ 7.0,  6.0]
+      - [ 7.0,  7.0]
+      - [-7.0,  7.0]
+      - [-7.0,  6.0]
+      - [-7.8,  6.0]
+      - [-7.8,  2.9]
+      - [-7.0,  2.9]
+      - [-7.0, -2.9]
+      - [-7.8, -2.9]
+      - [-7.8, -6.0]
+      - [-7.0, -6.0]
+      - [-7.0, -7.0]
+      - [ 7.0, -7.0]
+
+  - code: 3
+    name: mx_rotatable
+    description: Rotatable MX switch — wings on all four sides.
+    width: 15.6
+    height: 15.6
+    nominal_thickness: 1.6
+    recommended_clearance: 0.05
+    vertices:
+      - [ 7.0, -7.0]
+      - [ 7.0, -6.0]
+      - [ 7.8, -6.0]
+      - [ 7.8, -2.9]
+      - [ 7.0, -2.9]
+      - [ 7.0,  2.9]
+      - [ 7.8,  2.9]
+      - [ 7.8,  6.0]
+      - [ 7.0,  6.0]
+      - [ 7.0,  7.0]
+      - [ 6.0,  7.0]
+      - [ 6.0,  7.8]
+      - [ 2.9,  7.8]
+      - [ 2.9,  7.0]
+      - [-2.9,  7.0]
+      - [-2.9,  7.8]
+      - [-6.0,  7.8]
+      - [-6.0,  7.0]
+      - [-7.0,  7.0]
+      - [-7.0,  6.0]
+      - [-7.8,  6.0]
+      - [-7.8,  2.9]
+      - [-7.0,  2.9]
+      - [-7.0, -2.9]
+      - [-7.8, -2.9]
+      - [-7.8, -6.0]
+      - [-7.0, -6.0]
+      - [-7.0, -7.0]
+      - [-6.0, -7.0]
+      - [-6.0, -7.8]
+      - [-2.9, -7.8]
+      - [-2.9, -7.0]
+      - [ 2.9, -7.0]
+      - [ 2.9, -7.8]
+      - [ 6.0, -7.8]
+      - [ 6.0, -7.0]
+      - [ 7.0, -7.0]
+
+  - code: 4
+    name: alps_only
+    description: Alps compatible switch, not MX compatible.
+    width: 15.5
+    height: 12.8
+    nominal_thickness: 1.6
+    recommended_clearance: 0.05
+    vertices:
+      - [ 7.75, -6.4]
+      - [ 7.75,  6.4]
+      - [-7.75,  6.4]
+      - [-7.75, -6.4]
+      - [ 7.75, -6.4]

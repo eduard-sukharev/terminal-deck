@@ -1,8 +1,9 @@
 """40% keyboard assembly: switch plate + RP2040 controller.
 
 The physical keyboard is the Cherry-MX-compatible switch plate with a
-Waveshare RP2040-Zero controller running QMK/Vial. Plate size is *calculated
-geometry*: ``columns * pitch + plate inset``. See ``config/keyboard.yaml``.
+Waveshare RP2040-Zero controller running QMK/Vial. Plate geometry comes
+from the :mod:`keyboard` package (KLE layout → geometry model); this
+component is the cyberdeck adapter that produces the CadQuery solid.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from components.base import BoundingBox, Component, Connector, Hole
+from components.keyboard_plate import KeyboardPlate
 from components.rp2040_zero import Rp2040Zero
 from utilities.constants import CONNECTOR_USB_C, DIR_POS_X
 
@@ -21,45 +23,31 @@ class Rp2040Keyboard(Component):
 
     def __init__(self, keyboard: dict[str, Any] | None = None) -> None:
         data = keyboard or {}
-        self.columns = int(data.get("columns", 12))
-        self.rows = int(data.get("rows", 4))
-        self.pitch = float(data.get("pitch", 19.05))
-        plate = data.get("plate", {})
-        self.plate_thickness = float(plate.get("thickness", 1.5))
-        self.plate_inset = float(plate.get("inset", 3.0))
-        self._switch_cutout_type = str(plate.get("switch_cutout", "mx"))
-        self._stab_cutout_type = str(plate.get("stabilizer_cutout", "mx-basic"))
-        stabilizers = data.get("stabilizers", {})
-        self._stab_present = bool(stabilizers.get("present", True))
-        self._stab_offset_y = float(stabilizers.get("offset_y", -1.4))
-        self._stab_keys: dict[str, dict] = stabilizers.get("keys", {})
-        # The keyboard controller (RP2040-Zero) mounted under the plate.
+        self._plate = KeyboardPlate(data)
+        self._switch_family = str(data.get("switch_family", "mx_alps"))
+        self._stab_family = str(data.get("stabilizer_family", "cherry"))
+        plate_cfg = data.get("plate", {}) or {}
+        self._plate_thickness = float(plate_cfg.get("thickness", 1.5))
+        self._plate_inset = float(plate_cfg.get("edge_margin", 6.0))
+        self._pitch = float(data.get("pitch", 19.05))
         self.controller = Rp2040Zero(data.get("controller", {}))
 
     def size(self) -> BoundingBox:
-        # Calculated geometry, never estimated.
-        width = self.columns * self.pitch + 2 * self.plate_inset
-        depth = self.rows * self.pitch + 2 * self.plate_inset
-        height = self.plate_thickness + 10.0  # switch + cap allowance
-        return BoundingBox(width, depth, height)
+        box = self._plate.size()
+        height = box.height + 10.0  # switch + cap allowance
+        return BoundingBox(box.width, box.depth, height)
 
     def mounting_holes(self) -> list[Hole]:
-        # TODO: place real plate mounting holes at switch-adjacent positions.
-        inset = self.plate_inset + 2.0
-        return [
-            Hole(-self.size().width / 2 + inset, -self.size().depth / 2 + inset, 2.0),
-            Hole(self.size().width / 2 - inset, -self.size().depth / 2 + inset, 2.0),
-            Hole(self.size().width / 2 - inset, self.size().depth / 2 - inset, 2.0),
-            Hole(-self.size().width / 2 + inset, self.size().depth / 2 - inset, 2.0),
-        ]
+        return self._plate.mounting_holes()
 
     def connectors(self) -> list[Connector]:
+        box = self._plate.size()
         return [
             Connector(
                 type=CONNECTOR_USB_C,
-                x=self.size().width / 2,
+                x=box.width / 2,
                 y=0.0,
-                z=self.plate_thickness + 2.0,
+                z=self._plate_thickness + 2.0,
                 direction=DIR_POS_X,
                 width=8.5,
                 height=2.6,
@@ -69,20 +57,7 @@ class Rp2040Keyboard(Component):
 
     @property
     def switch_grid(self) -> list[tuple[float, float]]:
-        """Center coordinates of every switch on the plate (mm, plate frame)."""
-        half_width = (self.columns - 1) * self.pitch / 2
-        half_depth = (self.rows - 1) * self.pitch / 2
-        return [
-            (x, y)
-            for row in range(self.rows)
-            for col in range(self.columns)
-            for x, y in [
-                (
-                    -half_width + col * self.pitch,
-                    -half_depth + row * self.pitch,
-                )
-            ]
-        ]
+        return self._plate.switch_positions
 
     def build(self):
         """Generate the keyboard solid: switch plate plus switch housings.
@@ -91,57 +66,24 @@ class Rp2040Keyboard(Component):
         plate is part of the pending staggered-40% keyboard rework (TODO). The
         build stays within the nominal :meth:`size` footprint.
         """
-        from geometry.stabilizer_cutout import build_stabilizer_cutout
-        from geometry.switch_cutout import build_cutout
+        from keyboard.registry import get_switch
         from utilities import cq_helpers
 
         cq_helpers.require_cq()
-        box = self.size()
-        plate = cq_helpers.box_centered(box.width, box.depth, self.plate_thickness)
-        plate = cq_helpers.translate(plate, 0.0, 0.0, self.plate_thickness / 2.0)
 
-        # Switch housings — dispatches to registry by type.
+        plate = self._plate.build()
         body = plate
-        switch_depth = 3.0  # housing depth above the plate (switch + cap allowance)
-        for x, y in self.switch_grid:
-            housing = build_cutout(
-                switch_depth, x, y, self.plate_thickness + switch_depth / 2.0,
-                cutout_type=self._switch_cutout_type,
-            )
-            if housing is not None:
-                body = body.union(housing)
 
-        # Stabilizer cutouts — same dispatch.
-        stab_positions = self._stabilizer_placements()
-        if stab_positions:
-            for x, y in stab_positions:
-                cut = build_stabilizer_cutout(
-                    self.plate_thickness + 1.0, x, y,
-                    cutout_type=self._stab_cutout_type,
-                )
-                if cut is not None:
-                    body = body.cut(cut)
+        # Switch housings rise above the plate at each switch grid position.
+        switch_cls = get_switch(self._switch_family)
+        switch = switch_cls()
+        verts = list(switch.cutout_vertices())
+        switch_depth = 3.0
+        for x, y in self.switch_grid:
+            housing = cq_helpers.extrude_polygon(
+                verts, switch_depth, x, y,
+                self._plate_thickness + switch_depth / 2.0,
+            )
+            body = body.union(housing)
 
         return body
-
-    def _stabilizer_placements(self) -> list[tuple[float, float]]:
-        """Compute stabilizer slot positions from config (delegates to KeyboardPlate)."""
-        from components.keyboard_plate import KeyboardPlate
-
-        kp = KeyboardPlate({
-            "columns": self.columns,
-            "rows": self.rows,
-            "pitch": self.pitch,
-            "plate": {
-                "thickness": self.plate_thickness,
-                "inset": self.plate_inset,
-                "switch_cutout": self._switch_cutout_type,
-                "stabilizer_cutout": self._stab_cutout_type,
-            },
-            "stabilizers": {
-                "present": self._stab_present,
-                "offset_y": self._stab_offset_y,
-                "keys": self._stab_keys,
-            },
-        })
-        return kp.stabilizer_positions

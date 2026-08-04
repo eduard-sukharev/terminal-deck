@@ -81,14 +81,11 @@ keyboard/
 
     switches/
 
-        mx.py
-        alps.py
-        choc.py
+        kb_builder.py
 
     stabilizers/
 
-        cherry.py
-        costar.py
+        kb_builder.py
 
     geometry/
 
@@ -99,10 +96,8 @@ keyboard/
 
     reference/
 
-        cherry_mx.yaml
-        cherry_stabilizers.yaml
-        alps.yaml
-        choc.yaml
+        switch_cutouts.yaml
+        stabilizer_cutouts.yaml
 
     export/
 
@@ -241,26 +236,24 @@ Stabilizers follow the same design philosophy.
 ```
 stabilizers/
 
-    cherry.py
-
-    costar.py
+    kb_builder.py
 ```
 
-Each stabilizer exports geometry for all supported key widths.
+Three families are registered from kb_builder's cutout geometry:
 
-Example:
+| Code | Name | Description |
+|------|------|-------------|
+| 0 | ``costar_compat`` | Modified MX cherry spec (costar-compatible) |
+| 1 | ``cherry`` | Cherry spec plate-mount stabilizer |
+| 2 | ``costar`` | Costar twin-slot stabilizer |
 
-```
-2U
+Combined types (cherry, costar_compat) produce a **single polygon per key**
+that already includes the switch opening — the stabilizer slot is connected
+to the switch cutout through a ±2.3 mm notch.  Costar produces two separate
+slot polygons.  All polygons are centred on the switch centre (no Y offset).
 
-2.25U
-
-2.75U
-
-6.25U
-
-7U
-```
+Per-key ``_s`` codes 0-1 are accepted; code 2 and unknown values fall back
+to the config default (mirroring kb_builder's ``range(2)`` check).
 
 The plate generator requests geometry from the stabilizer rather than computing it.
 
@@ -279,13 +272,9 @@ reference/
 Example:
 
 ```
-cherry_mx.yaml
+switch_cutouts.yaml
 
-cherry_stabilizers.yaml
-
-choc.yaml
-
-alps.yaml
+stabilizer_cutouts.yaml
 ```
 
 Example:
@@ -485,7 +474,7 @@ keyboard:
 
   switch:
 
-    family: cherry_mx
+    family: mx_alps
 
   stabilizer:
 

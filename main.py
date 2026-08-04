@@ -61,8 +61,12 @@ class BuildPipeline:
             "columns": cfg.keyboard.columns,
             "rows": cfg.keyboard.rows,
             "pitch": cfg.keyboard.pitch,
-            "plate": cfg.hardware.get("plate", {}),
-            "stabilizers": cfg.hardware.get("stabilizers", {}),
+            "layout_source": cfg.keyboard.layout_source,
+            "switch_family": cfg.keyboard.switch_family,
+            "stabilizer_family": cfg.keyboard.stabilizer_family,
+            "plate": cfg.keyboard.plate or {},
+            "mounting": cfg.keyboard.mounting or {},
+            "controller": cfg.keyboard.controller or {},
         }
         return {
             "display": Display88(display_cfg),

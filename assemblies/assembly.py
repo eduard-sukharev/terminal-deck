@@ -93,18 +93,18 @@ class Assembly:
         lid-side components only).
         """
         wall = self.config.wall_thickness
-        screw_size = self.config.screws.standoff
-        insert = getattr(self.config.screws, "standoff", screw_size)
+        default_screw = self.config.screws.standoff
 
         selected = placements if placements is not None else self.placements
         result: list[tuple[float, float, BossSpec]] = []
         for placement in selected:
             component: Component = placement.component
+            screw_size = component.mounting_screw() or default_screw
             for hole in component.mounting_holes():
                 spec = boss_spec(
                     wall_thickness=wall,
                     screw_size=screw_size,
-                    insert_type=insert,
+                    insert_type=screw_size,
                     hole_diameter=hole.diameter,
                     height=hole.height,
                 )

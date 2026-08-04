@@ -57,6 +57,10 @@ class Rp2040Keyboard(Component):
             for h in self._plate.mounting_holes()
         ]
 
+    def mounting_screw(self) -> str:
+        """The plate's standoff screw size (from keyboard.mounting.screw)."""
+        return self._plate.mounting_screw()
+
     def connectors(self) -> list[Connector]:
         # The controller's USB-C is internal — it cables to the SBC inside the
         # case, so no shell cutout is generated for it.

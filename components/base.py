@@ -159,6 +159,15 @@ class Component(ABC):
         """
         return []
 
+    def mounting_screw(self) -> str | None:
+        """Return the screw library key used to mount this component.
+
+        ``None`` (default) means the build's configured standoff screw
+        (``config.screws.standoff``) is used. Override when a component mounts
+        with a specific screw size.
+        """
+        return None
+
     def connectors(self) -> list[Connector]:
         """Return connectors exposed by this component.
 

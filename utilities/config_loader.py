@@ -96,7 +96,7 @@ class Keyboard:
     switch_family: str = "mx_alps"
     stabilizer_family: str = "cherry"
     plate: dict[str, float] | None = None
-    mounting: dict[str, float] | None = None
+    mounting: dict[str, Any] | None = None
     controller: dict[str, object] | None = None
 
 

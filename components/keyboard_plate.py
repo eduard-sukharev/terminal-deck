@@ -16,6 +16,7 @@ from typing import Any
 
 from components.base import BoundingBox, Component, Hole
 from keyboard import generate, parse_layout
+from utilities import fasteners
 
 
 class KeyboardPlate(Component):
@@ -37,7 +38,8 @@ class KeyboardPlate(Component):
         self._edge_margin = float(plate.get("edge_margin", 6.0))
         self._corner_radius = float(plate.get("corner_radius", 8.0))
         mounting = data.get("mounting", {}) or {}
-        self._screw_diameter = 2.0
+        self._screw_size = str(mounting.get("screw", "M2"))
+        self._screw_diameter = fasteners.screw(self._screw_size).clearance
         self._screw_edge_offset = float(mounting.get("edge_offset", 5.0))
         self._pitch = float(data.get("pitch", 19.05))
 
@@ -100,6 +102,10 @@ class KeyboardPlate(Component):
     def switch_positions(self) -> list[tuple[float, float]]:
         self._ensure_model()
         return list(self._model.metadata.switch_centers)
+
+    def mounting_screw(self) -> str:
+        """Screw library key for the plate mounting holes (from config)."""
+        return self._screw_size
 
     def build(self):
         """Build the plate solid from the geometry model."""

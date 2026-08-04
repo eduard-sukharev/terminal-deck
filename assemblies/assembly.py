@@ -106,6 +106,7 @@ class Assembly:
                     screw_size=screw_size,
                     insert_type=insert,
                     hole_diameter=hole.diameter,
+                    height=hole.height,
                 )
                 result.append((placement.x + hole.x, placement.y + hole.y, spec))
         return result

@@ -60,3 +60,23 @@ class Rp2040Zero(Component):
                 depth=4.0,
             )
         ]
+
+    def build(self):
+        """Build a bounding solid: board volume plus the USB-C connector block.
+
+        The board sits with its bottom on the mounting plane (z=0); the
+        connector protrudes from the +X edge.
+        """
+        from utilities import cq_helpers
+
+        cq_helpers.require_cq()
+
+        board = cq_helpers.box_centered(self.width, self.depth, self.height)
+        board = cq_helpers.translate(board, 0.0, 0.0, self.height / 2.0)
+
+        conn = self.connectors()[0]
+        block = cq_helpers.box_centered(conn.depth, conn.width, conn.height)
+        block = cq_helpers.translate(
+            block, self.width / 2 + conn.depth / 2, 0.0, conn.z
+        )
+        return board.union(block)

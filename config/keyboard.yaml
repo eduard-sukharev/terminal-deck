@@ -20,5 +20,8 @@ keyboard:
     depth: 18.0
     height: 8.0
     hole_diameter: 2.0
+    x: 0.0            # controller center X offset under the plate (mm)
+    y: 0.0            # controller center Y offset under the plate (mm)
+    z_clearance: 2.0  # gap between controller top and plate underside (mm)
 
 case_bottom_margin: 10

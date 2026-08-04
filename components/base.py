@@ -64,15 +64,22 @@ class Hole:
         Y position relative to component origin (mm).
     diameter : float
         Hole diameter (mm).
+    height : float or None
+        Height of the supporting boss above the shell floor (mm); ``None``
+        means the default (``2 * wall_thickness``). Used when a component is
+        mounted on standoffs (e.g. a raised switch plate).
     """
 
     x: float
     y: float
     diameter: float
+    height: float | None = None
 
     def __post_init__(self) -> None:
         if self.diameter <= 0:
             raise ValueError(f"Hole diameter must be positive: {self}")
+        if self.height is not None and self.height <= 0:
+            raise ValueError(f"Hole boss height must be positive: {self}")
 
 
 @dataclass(frozen=True)

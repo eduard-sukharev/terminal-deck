@@ -4,6 +4,10 @@ The physical keyboard is the Cherry-MX-compatible switch plate with a
 Waveshare RP2040-Zero controller running QMK/Vial. Plate geometry comes
 from the :mod:`keyboard` package (KLE layout → geometry model); this
 component is the cyberdeck adapter that produces the CadQuery solid.
+
+The plate is raised on standoffs so the controller fits beneath it; the
+controller's USB-C is internal and connects to the SBC with a cable inside
+the housing — no external keyboard connector.
 """
 
 from __future__ import annotations
@@ -30,28 +34,44 @@ class Rp2040Keyboard(Component):
         self._plate_thickness = float(plate_cfg.get("thickness", 1.5))
         self._plate_inset = float(plate_cfg.get("edge_margin", 6.0))
         self._pitch = float(data.get("pitch", 19.05))
-        self.controller = Rp2040Zero(data.get("controller", {}))
+
+        controller_cfg = data.get("controller", {}) or {}
+        self.controller = Rp2040Zero(controller_cfg)
+        self._controller_x = float(controller_cfg.get("x", 0.0))
+        self._controller_y = float(controller_cfg.get("y", 0.0))
+        z_clearance = float(controller_cfg.get("z_clearance", 2.0))
+        self._plate_raise = self.controller.height + z_clearance
 
     def size(self) -> BoundingBox:
         box = self._plate.size()
-        height = box.height + 10.0  # switch + cap allowance
+        height = self._plate_raise + box.height + 10.0  # switch + cap allowance
         return BoundingBox(box.width, box.depth, height)
 
     def mounting_holes(self) -> list[Hole]:
-        return self._plate.mounting_holes()
+        # The plate mounts on four standoff bosses (height = plate raise). The
+        # controller rests flat on the base floor beneath the plate and is held
+        # by the plate assembly — its own corner holes stay on the Rp2040Zero
+        # component for serviceability but generate no case bosses.
+        return [
+            Hole(h.x, h.y, h.diameter, height=self._plate_raise)
+            for h in self._plate.mounting_holes()
+        ]
 
     def connectors(self) -> list[Connector]:
-        box = self._plate.size()
+        # The controller's USB-C is internal — it cables to the SBC inside the
+        # case, so no shell cutout is generated for it.
+        conn = self.controller.connectors()[0]
         return [
             Connector(
                 type=CONNECTOR_USB_C,
-                x=box.width / 2,
-                y=0.0,
-                z=self._plate_thickness + 2.0,
+                x=self._controller_x + conn.x,
+                y=self._controller_y + conn.y,
+                z=conn.z,
                 direction=DIR_POS_X,
-                width=8.5,
-                height=2.6,
-                depth=4.0,
+                width=conn.width,
+                height=conn.height,
+                depth=conn.depth,
+                internal=True,
             )
         ]
 
@@ -64,11 +84,10 @@ class Rp2040Keyboard(Component):
         return self._plate.validate()
 
     def build(self):
-        """Generate the keyboard solid: switch plate plus switch housings.
+        """Generate the keyboard solid: raised plate, switch housings, controller.
 
-        The RP2040-Zero controller solid is omitted — its mounting under the
-        plate is part of the pending staggered-40% keyboard rework (TODO). The
-        build stays within the nominal :meth:`size` footprint.
+        The plate and switch housings sit on standoffs at ``_plate_raise``;
+        the RP2040-Zero controller rests on the mounting plane beneath them.
         """
         from keyboard.registry import get_switch
         from utilities import cq_helpers
@@ -90,4 +109,12 @@ class Rp2040Keyboard(Component):
             )
             body = body.union(housing)
 
-        return body
+        # Raise the plate assembly onto its standoffs.
+        body = cq_helpers.translate(body, 0.0, 0.0, self._plate_raise)
+
+        # Controller beneath the plate, on the mounting plane.
+        controller = self.controller.build()
+        controller = cq_helpers.translate(
+            controller, self._controller_x, self._controller_y, 0.0
+        )
+        return body.union(controller)

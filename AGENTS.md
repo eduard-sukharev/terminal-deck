@@ -19,7 +19,7 @@ shells, hinge, STEP/STL/SVG export).
 source $HOME/miniforge/bin/activate
 python main.py --config config/default.yaml --layout default --steps data   # data layer only
 python main.py --steps all                                                  # full CAD + exports
-python -m py_compile main.py components/*.py geometry/*.py layouts/*.py assemblies/*.py case/*.py routing/*.py exports/*.py utilities/*.py
+python -m py_compile main.py components/*.py geometry/*.py layouts/*.py assemblies/*.py case/*.py routing/*.py exports/*.py utilities/*.py keyboard/*.py keyboard/*/*.py
 ```
 
 `--steps data` runs config → components → layout → validation (8 checks) and
@@ -32,7 +32,12 @@ to `generated/`. Full run takes ~1 min (boolean-heavy base shell).
 - **Data layer (implemented, no CadQuery needed):** `components/base.py`
   (`BoundingBox`/`Hole`/`Connector`/`Keepout` + `Component` ABC),
   `utilities/config_loader.py`, `utilities/fasteners.py`, `utilities/validation.py`,
-  `layouts/*`, `assemblies/assembly.py`, `routing/cable_routing.py`.
+  `layouts/*`, `assemblies/assembly.py`, `routing/cable_routing.py`, and the
+  `keyboard/*` package (KLE → layout → switch/stabilizer libraries → plate
+  geometry model + its own validation; see `docs/keyboard_architecture.md`).
+  The `keyboard/` package is pure data — it must stay importable without
+  CadQuery (the cyberdeck adapters `components/keyboard_plate.py` and
+  `components/rp2040_keyboard.py` extrude its model during the CAD pass).
 - **CAD generation (implemented, requires CadQuery):** `Assembly.build()`
   unions component solids at their placements; `case.Base.build()` shells the
   open-top tray (bosses/ribs/vents/cutouts); `case.Lid.build()` shells the

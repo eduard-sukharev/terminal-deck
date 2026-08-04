@@ -34,3 +34,6 @@ packages = [
     "utilities",
 ]
 py-modules = ["main"]
+
+[tool.setuptools.package-data]
+keyboard = ["reference/*.yaml", "layouts/*.json"]

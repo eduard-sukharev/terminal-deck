@@ -27,7 +27,7 @@ There is no test suite or CI; verification is `py_compile` plus the CLI.
 ```bash
 python main.py --config config/default.yaml --layout default --steps data
 python main.py --steps all
-python -m py_compile main.py components/*.py geometry/*.py layouts/*.py assemblies/*.py case/*.py routing/*.py exports/*.py utilities/*.py
+python -m py_compile main.py components/*.py geometry/*.py layouts/*.py assemblies/*.py case/*.py routing/*.py exports/*.py utilities/*.py keyboard/*.py keyboard/*/*.py
 ```
 
 * `--steps data` — config → components → layout → validation (8 checks), prints

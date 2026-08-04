@@ -14,8 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from components.base import BoundingBox, Component, Hole
-from keyboard import generate_from_file, parse_layout
-from keyboard.layout.kle_parser import load_kle
+from keyboard import generate_from_file
 
 
 class KeyboardPlate(Component):
@@ -60,20 +59,9 @@ class KeyboardPlate(Component):
                 pitch=self._pitch,
             )
         else:
-            rows = load_kle(Path(__file__).resolve().parent.parent / "keyboard" / "layouts" / "jd40.json")
-            keys = [key for row in rows for key in row]
-            from keyboard import KeyboardLayout
-            layout = KeyboardLayout(keys=keys, pitch=self._pitch)
-            from keyboard import generate
-            self._model = generate(
-                layout,
-                switch_family=self._switch_family,
-                stabilizer_family=self._stab_family,
-                plate_thickness=self._plate_thickness,
-                edge_margin=self._edge_margin,
-                corner_radius=self._corner_radius,
-                screw_diameter=self._screw_diameter,
-                screw_edge_offset=self._screw_edge_offset,
+            raise ValueError(
+                f"Keyboard layout file not found: {self._layout_source!r} — "
+                "set keyboard.layout_source in the config to a KLE JSON file"
             )
 
     def size(self) -> BoundingBox:

@@ -3,7 +3,7 @@ title: "Data Layer"
 type: "feature"
 status: "active"
 language: "default"
-source_paths: ["components/", "utilities/", "layouts/", "assemblies/assembly.py", "routing/cable_routing.py"]
+source_paths: ["components/", "utilities/", "layouts/", "assemblies/assembly.py", "routing/cable_routing.py", "keyboard/"]
 updated_at: "2026-08-04"
 ---
 
@@ -28,6 +28,10 @@ Python data — it imports cleanly and is what `--steps data` exercises.
 * **Fasteners** (`utilities/fasteners.py`) — screw/insert/nut-trap library.
 * **Validation** (`utilities/validation.py`) — the 8-check suite. See
   [[validation-suite]].
+* **Keyboard subsystem** (`keyboard/`) — pure data: KLE layout parsing, switch
+  and stabilizer libraries, plate geometry model, and its own validation. No
+  CadQuery; the cyberdeck adapter (`components/keyboard_plate.py`) extrudes the
+  model into a solid only during the CAD pass. See [[keyboard-subsystem]].
 * **Constants** (`utilities/constants.py`) — connector type identifiers and
   other shared values.
 

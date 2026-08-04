@@ -3,7 +3,7 @@ title: "Cyberdeck Wiki"
 type: "index"
 status: "active"
 language: "default"
-last_commit: "e52b40da73c8b49ccb31e0bf23955152059b5bec"
+last_commit: "c0bb71cfaf593007df3d79d63b677a44b1d7bb4e"
 updated_at: "2026-08-04"
 ---
 
@@ -88,10 +88,11 @@ export STEP/STL/SVG → run validation.
   [[config-dataclasses]].
 * The **component model** — the interface every hardware part implements. See
   [[component-model]].
-* The **keyboard subsystem** (design-phase) — a proposed `keyboard/` package
-  converting KLE JSON layouts into CadQuery plate geometry via switch/stabilizer
-  libraries. Not yet implemented; the current plate comes from grid config. See
-  [[keyboard-subsystem]].
+* The **keyboard subsystem** — a `keyboard/` package converting a KLE JSON
+  layout into plate geometry (switch/stabilizer cutouts, mounting holes,
+  outline) via switch/stabilizer libraries backed by kb_builder reference data.
+  Pure data — no CadQuery. The cyberdeck adapter `components/keyboard_plate.py`
+  extrudes the result into a solid. See [[keyboard-subsystem]].
 
 ## What should I avoid breaking?
 

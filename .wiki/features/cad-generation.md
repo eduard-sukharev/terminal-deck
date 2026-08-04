@@ -24,7 +24,10 @@ miniforge env (`cq_helpers.require_cq()`).
 * **Hinge** (`components/hinge.py`) — barrels, pin, and wire tunnel, built from
   `config.hinge` and translated to the rear gap between base cavity and lid.
 * **Geometry primitives** (`geometry/`) — boss, fillet, shell, ribs, vents,
-  cutouts, switch/stabilizer cutouts. These must go through `utilities/cq_helpers.py`.
+  cutouts. These must go through `utilities/cq_helpers.py`. Switch/stabilizer
+  cutouts live in the `keyboard/` package (`keyboard/geometry/`), not here; the
+  plate is extruded by the `components/keyboard_plate.py` adapter from the
+  keyboard geometry model.
 * **Exports** (`exports/`) — real STEP/STL/SVG exporters (`EXPORTERS` registry),
   writing `cyberdeck_{assembly,base,lid,hinge}.step/.stl/.svg` to `generated/`.
 

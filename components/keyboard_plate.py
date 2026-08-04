@@ -68,13 +68,14 @@ class KeyboardPlate(Component):
             screw_edge_offset=self._screw_edge_offset,
         )
 
-    def validate(self) -> list[str]:
+    def validate(self) -> tuple[int, list[str]]:
         """Run the keyboard geometry validation checks.
 
         Returns
         -------
-        list[str]
-            Error messages; an empty list means the plate model is valid.
+        tuple[int, list[str]]
+            ``(checks_run, errors)`` — number of checks executed and any error
+            messages. An empty ``errors`` list means the plate model is valid.
         """
         from keyboard import validate as validate_keyboard
 

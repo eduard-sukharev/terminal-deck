@@ -20,6 +20,7 @@ source $HOME/miniforge/bin/activate
 python main.py --config config/default.yaml --layout default --steps data   # data layer only
 python main.py --steps all                                                  # full CAD + exports
 python -m py_compile main.py components/*.py geometry/*.py layouts/*.py assemblies/*.py case/*.py routing/*.py exports/*.py utilities/*.py keyboard/*.py keyboard/*/*.py
+python -m pytest
 ```
 
 `--steps data` runs config → components → layout → validation (8 checks) and

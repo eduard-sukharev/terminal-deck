@@ -98,8 +98,15 @@ class Rp2040Keyboard(Component):
     def switch_grid(self) -> list[tuple[float, float]]:
         return self._plate.switch_positions
 
-    def validate(self) -> list[str]:
-        """Run the keyboard plate geometry validation checks."""
+    def validate(self) -> tuple[int, list[str]]:
+        """Run the keyboard plate geometry validation checks.
+
+        Returns
+        -------
+        tuple[int, list[str]]
+            ``(checks_run, errors)`` — number of checks executed and any error
+            messages. An empty ``errors`` list means the plate model is valid.
+        """
         return self._plate.validate()
 
     def build(self):

@@ -32,7 +32,7 @@ def validate(
     model: KeyboardGeometryModel,
     switch_family: str,
     stabilizer_family: str,
-) -> list[str]:
+) -> tuple[int, list[str]]:
     """Validate the keyboard geometry model.
 
     Parameters
@@ -48,18 +48,23 @@ def validate(
 
     Returns
     -------
-    list[str]
-        List of error messages. Empty list means valid.
+    tuple[int, list[str]]
+        ``(checks_run, errors)`` — number of checks executed and any error
+        messages. An empty ``errors`` list means the model is valid.
     """
     errors: list[str] = []
+    checks = 0
 
     # Supported families
+    checks += 1
     if switch_family not in registered_switches():
         errors.append(f"Unsupported switch family: {switch_family!r}")
+    checks += 1
     if stabilizer_family not in registered_stabilizers():
         errors.append(f"Unsupported stabilizer family: {stabilizer_family!r}")
 
     # No duplicate keys
+    checks += 1
     seen: set[tuple[float, float]] = set()
     for k in layout.keys:
         pos = (round(k.x, 4), round(k.y, 4))
@@ -68,6 +73,7 @@ def validate(
         seen.add(pos)
 
     # Switch cutouts inside outline
+    checks += 1
     if model.plate_outline:
         xs = [p[0] for p in model.plate_outline]
         ys = [p[1] for p in model.plate_outline]
@@ -85,6 +91,7 @@ def validate(
                     break
 
     # Mounting holes inside plate
+    checks += 1
     if model.plate_outline:
         xs = [p[0] for p in model.plate_outline]
         ys = [p[1] for p in model.plate_outline]
@@ -97,7 +104,8 @@ def validate(
                 )
 
     # Valid plate thickness
+    checks += 1
     if model.metadata and model.metadata.plate_thickness <= 0:
         errors.append(f"Invalid plate thickness: {model.metadata.plate_thickness}")
 
-    return errors
+    return checks, errors

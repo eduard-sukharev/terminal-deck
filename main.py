@@ -145,10 +145,10 @@ class BuildPipeline:
 
         keyboard_component = components.get("keyboard")
         if keyboard_component is not None and hasattr(keyboard_component, "validate"):
-            kb_errors = keyboard_component.validate()
+            kb_checks, kb_errors = keyboard_component.validate()
             print(
                 f"[pipeline] keyboard validation: "
-                f"{len(kb_errors)} check(s): "
+                f"{kb_checks} check(s): "
                 f"{'PASS' if not kb_errors else 'FAIL'}"
             )
             for error in kb_errors:

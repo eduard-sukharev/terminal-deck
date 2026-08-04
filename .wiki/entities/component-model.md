@@ -42,7 +42,7 @@ All constructors reject non-positive dimensions via `__post_init__`.
 
 `components/` holds one module per part: `orange_pi_zero2w.py`, `display_88.py`,
 `hdmi_driver.py`, `rp2040_keyboard.py`, `keyboard_plate.py`, `usb_breakout.py`,
-`heatset_insert.py`, `hinge.py`, `speaker.py`, `rp2040_zero.py`.
+`heatset_insert.py`, `hinge.py`, `rp2040_zero.py`.
 
 Connector type identifiers are the string constants in `utilities/constants.py`
 (e.g. `CONNECTOR_HDMI`), re-exported from `components/base.py`.

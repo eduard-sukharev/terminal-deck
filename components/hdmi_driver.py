@@ -46,6 +46,7 @@ class HdmiDriver(Component):
         self.depth = float(data.get("depth", 45.5))
         self.height = float(data.get("height", 4.6))
         self.pcb_thickness = float(data.get("pcb_thickness", 1.3))
+        self._fpc_slot_height = float(data.get("fpc_slot_height", 1.0))
         self.offset_x = float(data.get("offset_x", 100.0))
         self.offset_y = float(data.get("offset_y", 5.0))
 
@@ -105,7 +106,7 @@ class HdmiDriver(Component):
                 z=pcb + 1.0 / 2,
                 direction=DIR_NEG_X,
                 width=29.5,
-                height=1.0,  # TODO: measure FPC slot opening height (1.0 assumed)
+                height=self._fpc_slot_height,
                 depth=6.0,
                 internal=True,
             ),
@@ -126,9 +127,9 @@ class HdmiDriver(Component):
 
         # Socket blocks sit on top of the PCB at the connector positions.
         sockets = [
-            (24.5, -11.3, 8.0, 11.3, 3.3),   # mini-HDMI (east)
-            (24.75, 9.75, 7.5, 9.0, 3.3),    # USB-C power (east)
-            (-24.5, -5.0, 6.0, 29.5, 1.0),   # FPC slot (west, flush on PCB)
+            (24.5, -11.3, 8.0, 11.3, 3.3),                # mini-HDMI (east)
+            (24.75, 9.75, 7.5, 9.0, 3.3),                 # USB-C power (east)
+            (-24.5, -5.0, 6.0, 29.5, self._fpc_slot_height),  # FPC slot (west)
         ]
         body = pcb
         for x, y, w, d, h in sockets:

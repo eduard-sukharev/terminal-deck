@@ -38,7 +38,6 @@ _HARDWARE_SECTIONS: frozenset[str] = frozenset({
     "storage",
     "io",
     "usb_breakout",
-    "speaker",
     "heat_inserts",
     "battery",
     "driver_board",
@@ -73,6 +72,14 @@ class Display:
     diagonal: float = 0.0  # inches, informational
     active_width: float = 0.0  # active area, informational
     active_height: float = 0.0  # active area, informational
+    flex: "Flex | None" = None  # panel FPC ribbon
+
+
+@dataclass(frozen=True)
+class Flex:
+    width: float  # ribbon width, measured
+    thickness: float  # ribbon thickness (TODO: measure)
+    fold: float  # folded-ribbon allowance behind panel (TODO: measure)
 
 
 @dataclass(frozen=True)
@@ -183,11 +190,15 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
         if key in _HARDWARE_SECTIONS and isinstance(value, dict)
     }
 
+    flex = display.pop("flex", None)
     config = Config(
         wall=Wall(**{k: float(v) for k, v in wall.items()}),
         corners=Corners(**{k: float(v) for k, v in corners.items()}),
         clearance=Clearance(**{k: float(v) for k, v in clearance.items()}),
-        display=Display(**{k: float(v) for k, v in display.items()}),
+        display=Display(
+            **{k: float(v) for k, v in display.items()},
+            flex=Flex(**{k: float(v) for k, v in flex.items()}) if isinstance(flex, dict) else None,
+        ),
         bezel=Bezel(**{k: float(v) for k, v in bezel.items()}),
         glass=Glass(**{k: float(v) for k, v in glass.items()}),
         keyboard=Keyboard(

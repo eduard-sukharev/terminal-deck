@@ -61,8 +61,8 @@ to `generated/`. Full run takes ~1 min (boolean-heavy base shell).
   `routing/cable_routing.py`, fasteners in `utilities/fasteners.py` — never
   recreated inline.
 - Component sizes/holes are verified against real datasheets (see
-  `docs/component_spec.md`); connector edge positions on the SBC are still
-  TODO placeholders.
+  `docs/component_spec.md`); SBC connector edge positions are user-calibrated
+  measurements recorded in `components/orange_pi_zero2w.py`.
 
 ## Config
 

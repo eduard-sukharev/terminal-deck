@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from dataclasses import asdict
 from pathlib import Path
 
 from components.display_88 import Display88
@@ -55,6 +56,7 @@ class BuildPipeline:
             "width": cfg.display.width,
             "height": cfg.display.height,
             "thickness": cfg.display.thickness,
+            "flex": asdict(cfg.display.flex) if cfg.display.flex else {},
             "driver_board": cfg.hardware.get("driver_board", {}),
         }
         keyboard_cfg = {

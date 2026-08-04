@@ -160,7 +160,6 @@ cyberdeck/
         usb_breakout.py
         heatset_insert.py
         hinge.py
-        speaker.py
 
     geometry/
 

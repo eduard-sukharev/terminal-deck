@@ -39,6 +39,10 @@ class Display88(Component):
         self.thickness = float(data.get("thickness", 6.5))
         self.active_width = float(data.get("active_width", 218.88))
         self.active_height = float(data.get("active_height", 54.72))
+        flex = data.get("flex", {})
+        self._flex_width = float(flex.get("width", 38.5))
+        self._flex_thickness = float(flex.get("thickness", 1.0))
+        self._flex_fold = float(flex.get("fold", 6.0))
 
     def size(self) -> BoundingBox:
         return BoundingBox(self.width, self.height, self.thickness)
@@ -58,9 +62,9 @@ class Display88(Component):
                 y=0.0,
                 z=self.thickness / 2,
                 direction=DIR_POS_X,
-                width=38.5,  # measured ribbon width
-                height=1.0,  # TODO: measure flex thickness (1.0 assumed)
-                depth=6.0,  # TODO: measure flex fold allowance (6.0 assumed)
+                width=self._flex_width,
+                height=self._flex_thickness,
+                depth=self._flex_fold,
                 internal=True,
             )
         ]

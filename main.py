@@ -139,6 +139,17 @@ class BuildPipeline:
         print("[pipeline] placement validation:")
         print(summary)
 
+        keyboard_component = components.get("keyboard")
+        if keyboard_component is not None and hasattr(keyboard_component, "validate"):
+            kb_errors = keyboard_component.validate()
+            print(
+                f"[pipeline] keyboard validation: "
+                f"{len(kb_errors)} check(s): "
+                f"{'PASS' if not kb_errors else 'FAIL'}"
+            )
+            for error in kb_errors:
+                print(f"  [x ] {error}")
+
         if steps == "data":
             return
 

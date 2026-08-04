@@ -10,11 +10,12 @@ alone.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
 from components.base import BoundingBox, Component, Hole
-from keyboard import generate_from_file
+from keyboard import generate, parse_layout
 
 
 class KeyboardPlate(Component):
@@ -46,23 +47,42 @@ class KeyboardPlate(Component):
     def _ensure_model(self):
         if self._model is not None:
             return
-        if self._layout_source and Path(self._layout_source).is_file():
-            self._model = generate_from_file(
-                self._layout_source,
-                switch_family=self._switch_family,
-                stabilizer_family=self._stab_family,
-                plate_thickness=self._plate_thickness,
-                edge_margin=self._edge_margin,
-                corner_radius=self._corner_radius,
-                screw_diameter=self._screw_diameter,
-                screw_edge_offset=self._screw_edge_offset,
-                pitch=self._pitch,
-            )
-        else:
+        if not (self._layout_source and Path(self._layout_source).is_file()):
             raise ValueError(
                 f"Keyboard layout file not found: {self._layout_source!r} — "
                 "set keyboard.layout_source in the config to a KLE JSON file"
             )
+        with open(self._layout_source, "r", encoding="utf-8") as handle:
+            raw = json.load(handle)
+        self._layout = parse_layout(raw, self._pitch)
+        self._model = generate(
+            self._layout,
+            switch_family=self._switch_family,
+            stabilizer_family=self._stab_family,
+            plate_thickness=self._plate_thickness,
+            edge_margin=self._edge_margin,
+            corner_radius=self._corner_radius,
+            screw_diameter=self._screw_diameter,
+            screw_edge_offset=self._screw_edge_offset,
+        )
+
+    def validate(self) -> list[str]:
+        """Run the keyboard geometry validation checks.
+
+        Returns
+        -------
+        list[str]
+            Error messages; an empty list means the plate model is valid.
+        """
+        from keyboard import validate as validate_keyboard
+
+        self._ensure_model()
+        return validate_keyboard(
+            self._layout,
+            self._model,
+            self._switch_family,
+            self._stab_family,
+        )
 
     def size(self) -> BoundingBox:
         self._ensure_model()

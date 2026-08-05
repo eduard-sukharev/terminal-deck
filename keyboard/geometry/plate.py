@@ -70,6 +70,7 @@ def generate(
     holes = generate_mounting_holes(
         outline, edge_offset=screw_edge_offset, screw_diameter=screw_diameter,
         switch_cutouts=sw_cuts, stabilizer_cutouts=stab_cuts,
+        keys=layout.keys, pitch=pitch, centroid=centroid,
     )
 
     xs = [p[0] for p in outline]

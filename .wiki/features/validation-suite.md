@@ -4,7 +4,7 @@ type: "feature"
 status: "active"
 language: "default"
 source_paths: ["utilities/validation.py", "main.py"]
-updated_at: "2026-08-04"
+updated_at: "2026-08-06"
 ---
 
 # Validation Suite
@@ -27,6 +27,23 @@ config) — no CadQuery needed. That is what `--steps data` prints as the report
    opening (`shell_opening` list).
 7. **lid-closes** — lid interior clears the tallest placed component.
 8. **hinge-clears** — hinge Z span does not intersect the component volume.
+
+## Constraint resolution report
+
+When using a constraint-based layout ([[constraint-system]]), the pipeline also
+prints a constraint resolution report after the validation report. This shows
+every constraint in the recipe and whether it was satisfied:
+
+```
+[pipeline] constraint resolution:
+12 constraints: PASS
+  [ok  ] fixed_position: keyboard @ (0.0, 35.0, 0.0)
+  [ok  ] centered_on: keyboard centered on x
+  [ok  ] keyboard_mounting_holes: keyboard mounting holes: (-89.2, -14.8); ...
+```
+
+The constraint report runs alongside the existing validation — both are printed
+for constraint-based layouts. Imperative layouts only show the validation report.
 
 ## Shape
 

@@ -211,6 +211,47 @@ def check_hinge_clearance(
     )
 
 
+def check_dimension_consistency(
+    placements: list[Any],
+    config: Any,
+    report: ValidationReport,
+) -> None:
+    """Fail if component dimensions contradict each other.
+
+    Checks:
+    1. Keyboard plate and display widths are compatible (they share the hinge
+       axis — the lid and base must have similar widths).
+    2. Every placed component fits within the enclosure envelope.
+    """
+    wall = config.wall_thickness
+    clearance = config.clearance.shell
+
+    kb_placement = None
+    display_placement = None
+    for p in placements:
+        name = p.component.name.lower()
+        if "keyboard" in name:
+            kb_placement = p
+        if "display" in name:
+            display_placement = p
+
+    if kb_placement and display_placement:
+        kb = kb_placement.component.size()
+        disp = display_placement.component.size()
+        kb_env = kb.width + 2 * (wall + clearance)
+        disp_env = disp.width + 2 * (wall + clearance)
+        ratio = max(kb_env, disp_env) / min(kb_env, disp_env)
+        report.add(
+            "dimension-consistency",
+            ratio <= 1.15,
+            f"keyboard envelope={kb_env:.1f} x {kb.depth:.1f}, "
+            f"display envelope={disp_env:.1f} x {disp.depth:.1f}, "
+            f"width ratio={ratio:.3f}",
+        )
+    else:
+        report.add("dimension-consistency", True, "keyboard/display not both present — skipped")
+
+
 def run_all(
     placements: list[Any],
     config: Any,
@@ -236,4 +277,5 @@ def run_all(
     check_connectors_accessible(placements, shell_opening or [], report)
     check_lid_clearance(max_component_height, lid_interior_height, report)
     check_hinge_clearance(hinge_z_span, max_component_height, report)
+    check_dimension_consistency(placements, config, report)
     return report

@@ -3,8 +3,8 @@ title: "Cyberdeck Wiki"
 type: "index"
 status: "active"
 language: "default"
-last_commit: "b1cc12174024e0e551a6b9e345e08262f45e19d1"
-updated_at: "2026-08-05"
+last_commit: "121a9ca687b329b09bd4d1550c54a4590afa86ef"
+updated_at: "2026-08-06"
 ---
 
 # Cyberdeck Wiki
@@ -33,9 +33,10 @@ make all                                    # full CAD + exports (~1 min)
 make test                                   # pytest suite (55 tests)
 ```
 
-Expected output of `make data`: a placement validation report with 8 checks
-(`8 checks: PASS`). The full run writes `cyberdeck_{assembly,base,lid,hinge}.step/.stl/.svg`
-into `generated/`.
+Expected output of `make data`: a placement validation report with 9 checks
+(`9 checks: PASS`). Constraint-based layouts (e.g. `--layout default_v2`) also
+print a constraint resolution report. The full run writes
+`cyberdeck_{assembly,base,lid,hinge}.step/.stl/.svg` into `generated/`.
 
 First files to read:
 
@@ -81,10 +82,14 @@ export STEP/STL/SVG → run validation.
 
 * The **data layer** (no CadQuery): components, config loading, layouts, assembly
   sizing, cable routing, validation. See [[data-layer]].
+* The **constraint system** — 13 constraint types with procedural resolvers that
+  replace imperative layout math with composable, declarative rules. Layouts can
+  be defined in Python or YAML. See [[constraint-system]].
 * The **CAD generation** pass: assembly union, base/lid shells, hinge, exporters,
   all routed through the single CadQuery adapter `utilities/cq_helpers.py`. See
   [[cad-generation]].
-* The **validation suite** — 8 checks that run on pure data. See [[validation-suite]].
+* The **validation suite** — 8 checks that run on pure data, plus a constraint
+  resolution report for constraint-based layouts. See [[validation-suite]].
 * The **config model** — frozen dataclasses that every dimension flows from. See
   [[config-dataclasses]].
 * The **component model** — the interface every hardware part implements. See
@@ -106,6 +111,7 @@ export STEP/STL/SVG → run validation.
   geometry modules must go through it.
 * No magic numbers — unmeasured dimensions carry `# TODO: measure`.
 * Layouts contain placements only, never CAD. See [[cad-conventions]].
+* Constraint resolvers are pure data — no CadQuery imports. See [[constraint-system]].
 
 ## Where do I look first?
 

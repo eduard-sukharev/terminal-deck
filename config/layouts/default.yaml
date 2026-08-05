@@ -1,0 +1,64 @@
+# Default clamshell layout recipe.
+#
+# Replicates the original LayoutDefault placement using declarative
+# constraints. Values are pre-computed from component sizes.
+#
+# Component size references like {keyboard.depth} are supported.
+
+constraints:
+  # Keyboard: initial Y from SBC depth + palm rest, centered on X.
+  - kind: fixed_position
+    subject: keyboard
+    y: 35.0
+  - kind: centered_on
+    subject: keyboard
+    axes: ["x"]
+
+  # SBC: absolute Y behind keyboard, centered on X.
+  - kind: fixed_position
+    subject: sbc
+    y: -44.875
+  - kind: centered_on
+    subject: sbc
+    axes: ["x"]
+
+  # Rebalance: center the keyboard+SBC pair on Y.
+  - kind: centered_group
+    subjects: ["keyboard", "sbc"]
+    axes: ["y"]
+
+  # Battery beside the SBC.
+  - kind: relative_placement
+    subject: battery
+    target: sbc
+    offset_x: 68.5
+
+  # Base-floor Z stack.
+  - kind: z_stack
+    layers: [["keyboard", "sbc", "battery", "usb_breakout"]]
+
+  # Display centered in the lid at stacking height.
+  - kind: fixed_position
+    subject: display
+    z: 60.0
+  - kind: centered_on
+    subject: display
+    axes: ["x", "y"]
+
+  # Driver board behind the display.
+  - kind: relative_placement
+    subject: driver
+    target: display
+    offset_x: 105.0
+    offset_y: 5.0
+    offset_z: -4.6
+
+  # HDMI cable path: SBC → hinge wire tunnel → driver board.
+  - kind: cable_path
+    from_component: sbc
+    from_connector_type: HDMI
+    to_component: driver
+    to_connector_type: HDMI
+    via_point: [0.0, -70.0, 30.0]
+    clearance_diameter: 8.0
+    max_bend_radius: 30.0

@@ -16,6 +16,7 @@ from typing import Any
 
 from components.base import BoundingBox, Component, Hole
 from keyboard import generate, parse_layout
+from keyboard.metadata import MountingHole
 from utilities import fasteners
 
 
@@ -24,6 +25,10 @@ class KeyboardPlate(Component):
 
     Reads a KLE layout file and plate configuration, generates the geometry
     model, and builds the CadQuery solid via cq_helpers.
+
+    Mounting hole positions can be overridden by the constraint system via
+    :meth:`set_mounting_holes`. When set, the override takes precedence over
+    the model's default positions.
     """
 
     name = "Keyboard Plate"
@@ -45,6 +50,7 @@ class KeyboardPlate(Component):
 
         self._model = None
         self._layout = None
+        self._mounting_hole_override: list[tuple[float, float, float]] | None = None
 
     def _ensure_model(self):
         if self._model is not None:
@@ -92,11 +98,27 @@ class KeyboardPlate(Component):
         m = self._model.metadata
         return BoundingBox(m.width, m.height, m.plate_thickness)
 
-    def mounting_holes(self) -> list[Hole]:
+    def set_mounting_holes(self, holes: list[tuple[float, float, float]]) -> None:
+        """Override mounting hole positions from the constraint system.
+
+        Parameters
+        ----------
+        holes : list[tuple[float, float, float]]
+            List of ``(x, y, diameter)`` tuples in mm (plate-local frame).
+        """
+        self._mounting_hole_override = list(holes)
+
+    def _get_mounting_holes(self) -> list[tuple[float, float, float]]:
+        """Return ``(x, y, diameter)`` tuples, using override if set."""
         self._ensure_model()
+        if self._mounting_hole_override is not None:
+            return self._mounting_hole_override
+        return [(h.x, h.y, h.diameter) for h in self._model.mounting_holes]
+
+    def mounting_holes(self) -> list[Hole]:
         return [
-            Hole(h.x, h.y, h.diameter)
-            for h in self._model.mounting_holes
+            Hole(x, y, d, height=self._plate_thickness)
+            for x, y, d in self._get_mounting_holes()
         ]
 
     @property
@@ -135,9 +157,9 @@ class KeyboardPlate(Component):
             )
             plate = plate.cut(solid)
 
-        for hole in self._model.mounting_holes:
-            bore = cq_helpers.cylinder_centered(hole.diameter, self._plate_thickness + 1.0)
-            bore = cq_helpers.translate(bore, hole.x, hole.y, 0.0)
+        for x, y, d in self._get_mounting_holes():
+            bore = cq_helpers.cylinder_centered(d, self._plate_thickness + 1.0)
+            bore = cq_helpers.translate(bore, x, y, self._plate_thickness / 2.0)
             plate = plate.cut(bore)
 
         return plate

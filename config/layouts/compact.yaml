@@ -1,0 +1,51 @@
+# Compact clamshell layout recipe (sealed deck).
+#
+# Replicates the original LayoutCompact placement using declarative
+# constraints. The keyboard plate covers the whole base floor; everything
+# else lives under the raised plate.
+
+constraints:
+  # Keyboard centered at the base origin.
+  - kind: fixed_position
+    subject: keyboard
+    x: 0.0
+    y: 0.0
+
+  # SBC buried under the raised plate, offset beside the controller.
+  - kind: fixed_position
+    subject: sbc
+    x: 50.25
+    y: 0.0
+
+  # USB hub behind the SBC, facing rear.
+  - kind: fixed_position
+    subject: usb_breakout
+    x: 50.25
+    y: -28.5
+    rotation: 180.0
+
+  # Battery on the opposite side of the controller.
+  - kind: fixed_position
+    subject: battery
+    x: -47.75
+    y: 0.0
+
+  # Base-floor Z stack.
+  - kind: z_stack
+    layers: [["keyboard", "sbc", "battery", "usb_breakout"]]
+
+  # Display centered in the lid at stacking height.
+  - kind: fixed_position
+    subject: display
+    z: 60.0
+  - kind: centered_on
+    subject: display
+    axes: ["x", "y"]
+
+  # Driver board behind the display.
+  - kind: relative_placement
+    subject: driver
+    target: display
+    offset_x: 105.0
+    offset_y: 5.0
+    offset_z: -4.6

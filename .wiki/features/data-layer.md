@@ -4,7 +4,7 @@ type: "feature"
 status: "active"
 language: "default"
 source_paths: ["components/", "utilities/", "layouts/", "assemblies/assembly.py", "routing/cable_routing.py", "keyboard/"]
-updated_at: "2026-08-04"
+updated_at: "2026-08-06"
 ---
 
 # Data Layer
@@ -19,8 +19,18 @@ Python data — it imports cleanly and is what `--steps data` exercises.
 * **Config loading** (`utilities/config_loader.py`) — YAML → frozen `Config`.
   See [[config-dataclasses]].
 * **Layouts** (`layouts/`) — placement-only definitions. `layouts/base.py`
-  provides the placement frame; `layout_default.py` and `layout_compact.py`
-  are the concrete layouts. `make_layout(name, components)` is the factory.
+  provides the placement frame. Two kinds of layouts:
+  * **Imperative** (`layout_default.py`, `layout_compact.py`) — direct
+    `Placement()` calls with hardcoded arithmetic.
+  * **Constraint-based** (`layout_constrained.py`, `layout_default_v2.py`,
+    `layout_compact_v2.py`, `layout_recipe.py`) — declarative `Constraint`
+    objects resolved by `LayoutComposer`. See [[constraint-system]].
+  * **YAML recipes** (`config/layouts/`) — layouts defined entirely in YAML,
+    loaded by `RecipeLayout`. See [[constraint-system]].
+  `make_layout(name, components, config)` is the factory.
+* **Constraint system** (`layouts/constraints.py`, `layouts/composer.py`,
+  `layouts/resolvers/`) — 13 constraint types with corresponding resolvers.
+  Pure data, no CadQuery. See [[constraint-system]].
 * **Assembly sizing** (`assemblies/assembly.py`) — computes enclosure size,
   mounting bosses, and connector cutouts from placements without building solids.
 * **Cable routing** (`routing/cable_routing.py`) — tracks HDMI/USB/power, outputs

@@ -26,6 +26,7 @@ from components.orange_pi_zero2w import OrangePiZero2W
 from components.rp2040_keyboard import Rp2040Keyboard
 from components.usb_breakout import UsbBreakout
 from layouts import make_layout
+from layouts.layout_constrained import ConstraintLayout
 from utilities.config_loader import Config, load_config
 from utilities.validation import run_all
 
@@ -80,8 +81,24 @@ class BuildPipeline:
             "usb_breakout": UsbBreakout(cfg.hardware),
         }
 
+    def __init__(
+        self,
+        config_path: str | Path = "config/default.yaml",
+        layout_name: str = "default",
+        topics: tuple[str, ...] = ("display", "keyboard", "hardware"),
+        recipe_path: str | Path | None = None,
+    ) -> None:
+        self.config_path = Path(config_path)
+        self.layout_name = layout_name
+        self.topics = topics
+        self.recipe_path = Path(recipe_path) if recipe_path else None
+        self.config: Config | None = None
+
     def place_layout(self, components: dict):
-        layout = make_layout(self.layout_name, components)
+        layout = make_layout(
+            self.layout_name, components,
+            config=self.config, recipe_path=self.recipe_path,
+        )
         return layout
 
     def validate(self, placements, shell_depths=None, openings=None) -> str:
@@ -142,6 +159,12 @@ class BuildPipeline:
         summary = self.validate(placements, shell_depths, openings)
         print("[pipeline] placement validation:")
         print(summary)
+
+        if isinstance(layout, ConstraintLayout):
+            creport = layout.constraint_report()
+            if creport is not None:
+                print("[pipeline] constraint resolution:")
+                print(creport.summary())
 
         keyboard_component = components.get("keyboard")
         if keyboard_component is not None and hasattr(keyboard_component, "validate"):
@@ -254,8 +277,18 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--layout",
         default="default",
-        choices=["default", "compact"],
+        choices=[
+            "default", "default_v2",
+            "compact", "compact_v2",
+            "constrained",
+            "recipe_default", "recipe_compact",
+        ],
         help="layout definition to place components",
+    )
+    parser.add_argument(
+        "--layout-recipe",
+        default=None,
+        help="path to a YAML recipe file (overrides built-in recipe for recipe_* layouts)",
     )
     parser.add_argument(
         "--steps",
@@ -271,6 +304,7 @@ def main(argv: list[str] | None = None) -> int:
     pipeline = BuildPipeline(
         config_path=args.config,
         layout_name=args.layout,
+        recipe_path=args.layout_recipe,
     )
     try:
         pipeline.run(steps=args.steps)

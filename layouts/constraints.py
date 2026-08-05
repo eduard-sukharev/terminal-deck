@@ -98,14 +98,16 @@ class FixedPosition(Constraint):
     """Set a component's position directly.
 
     Only the specified axes are set; ``None`` leaves the current value
-    unchanged (or defaults to 0 if no prior placement exists).
+    unchanged (or defaults to 0 if no prior placement exists). ``rotation``
+    follows the same rule, so pinning one axis later in a recipe does not
+    silently un-rotate a part.
     """
     kind: str = field(default="fixed_position", init=False)
     subject: str
     x: float | None = None
     y: float | None = None
     z: float | None = None
-    rotation: float = 0.0
+    rotation: float | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -218,9 +220,12 @@ class CablePath(Constraint):
         Intermediate point the cable must pass through (e.g. hinge tunnel
         center). ``None`` = direct line.
     clearance_diameter : float
-        Minimum tunnel/opening diameter for the cable bundle (mm).
-    max_bend_radius : float
-        Maximum allowed bend radius (mm). Larger = gentler bend.
+        Diameter of the tunnel/opening provided for the bundle (mm). Checked
+        against the bundle diameter the cable actually needs.
+    bend_radius : float
+        Radius the routed cable is bent to (mm). Checked against the cable
+        type's documented minimum in ``routing.cable_routing`` — a cable bent
+        tighter than its minimum is the failure, so smaller is worse.
     """
     kind: str = field(default="cable_path", init=False)
     from_component: str
@@ -229,7 +234,7 @@ class CablePath(Constraint):
     to_connector_type: str
     via_point: tuple[float, float, float] | None = None
     clearance_diameter: float = 8.0
-    max_bend_radius: float = 30.0
+    bend_radius: float = 30.0
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -255,8 +260,15 @@ class RelativePlacement(Constraint):
         Y offset from *target* origin (mm).
     offset_z : float
         Z offset from *target* origin (mm).
-    rotation : float
-        Rotation about Z (degrees).
+    rotation : float or None
+        Rotation about Z (degrees). ``None`` keeps the subject's current
+        rotation.
+    use_reference_origin : bool
+        Take the offsets from ``subject.reference_origin()`` instead of the
+        explicit ``offset_*`` fields. The reference origin is the component's
+        own declaration of where it mounts relative to its partner (the HDMI
+        driver behind the display, for instance), so deriving from it keeps
+        the recipe from drifting out of sync with the component config.
     """
     kind: str = field(default="relative_placement", init=False)
     subject: str
@@ -264,7 +276,39 @@ class RelativePlacement(Constraint):
     offset_x: float = 0.0
     offset_y: float = 0.0
     offset_z: float = 0.0
-    rotation: float = 0.0
+    rotation: float | None = None
+    use_reference_origin: bool = False
+
+
+@dataclass(frozen=True, kw_only=True)
+class PortAccess(Constraint):
+    """An external connector must reach the enclosure wall it faces.
+
+    A connector only gets a shell cutout if it ends up close enough to the
+    wall its opening points at (see
+    :meth:`assemblies.assembly.Assembly.connector_cutouts`, which applies the
+    same reach test). A port that is too far inside is silently dropped there,
+    producing a sealed case with no hole for it — this constraint turns that
+    into a build failure at layout time.
+
+    Parameters
+    ----------
+    subject : str
+        Component name.
+    connector_type : str
+        Connector type identifier (see ``utilities.constants``).
+    wall : str or None
+        Expected wall: ``"front"``, ``"rear"``, ``"left"``, ``"right"``.
+        ``None`` accepts whichever wall the connector faces.
+    max_inset : float or None
+        Largest allowed gap between the connector and the wall's outer face
+        (mm). ``None`` uses the same reach budget the cutout pass uses.
+    """
+    kind: str = field(default="port_access", init=False)
+    subject: str
+    connector_type: str
+    wall: str | None = None
+    max_inset: float | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -295,6 +339,7 @@ __all__ = [
     "RegionConstraint",
     "CablePath",
     "FootprintMatch",
+    "PortAccess",
     "RelativePlacement",
     "TargetEnvelope",
 ]

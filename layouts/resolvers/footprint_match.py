@@ -25,6 +25,7 @@ class FootprintMatchResolver:
         components: dict[str, Any],
         current: dict[str, Placement],
         config: Any,
+        context: dict[str, Any],
     ) -> ResolverResult:
         w, d, _ = estimate_enclosure(current, components, config)
         return ResolverResult(

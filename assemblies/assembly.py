@@ -43,6 +43,13 @@ class Assembly:
 
         Calculated from the placement footprint plus the shell clearance and
         wall thickness — never guessed.
+
+        The XY envelope is sized symmetrically about the origin. Both shells
+        are built with :func:`cq_helpers.box_centered` at the world origin,
+        which is the center of the base by definition
+        (``docs/coordinate_system.md``), so a raw min-to-max span would let an
+        off-center layout report a case that does not actually contain it —
+        the widest component would sit outside the wall on one side.
         """
         wall = self.config.wall_thickness
         clearance = self.config.clearance.shell
@@ -63,13 +70,19 @@ class Assembly:
             ys.extend([placement.y - half_d, placement.y + half_d])
             zs.extend([placement.z, placement.z + box.height])
 
-        width = max(xs) - min(xs) + 2 * (clearance + wall)
-        depth = max(ys) - min(ys) + 2 * (clearance + wall)
+        width = 2 * max(abs(min(xs)), abs(max(xs))) + 2 * (clearance + wall)
+        depth = 2 * max(abs(min(ys)), abs(max(ys))) + 2 * (clearance + wall)
         height = max(zs) - min(zs) + 2 * (clearance + wall)
         return EnclosureSize(width=width, depth=depth, height=height)
 
     def collisions(self) -> list[str]:
-        """Return a list of overlapping placement descriptions (empty = clean)."""
+        """Return a list of overlapping placement descriptions (empty = clean).
+
+        Two sub-volumes conflict only when they overlap in Z as well as XY:
+        the lid stacks over the base, and parts sit in the hollow under the
+        raised keyboard plate, so an XY-only test would report both as
+        collisions.
+        """
         from utilities.validation import _overlap_xy
 
         problems: list[str] = []
@@ -79,6 +92,10 @@ class Assembly:
                 a, b = pa.component, pb.component
                 for ax, ay, az, abox in a.occupied_volumes():
                     for bx, by, bz, bbox in b.occupied_volumes():
+                        a_z0, a_z1 = pa.z + az, pa.z + az + abox.height
+                        b_z0, b_z1 = pb.z + bz, pb.z + bz + bbox.height
+                        if a_z1 <= b_z0 or b_z1 <= a_z0:
+                            continue
                         if _overlap_xy(
                             pa.x + ax, pa.y + ay, abox.width, abox.depth,
                             pb.x + bx, pb.y + by, bbox.width, bbox.depth,

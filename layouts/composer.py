@@ -29,6 +29,15 @@ class ConstraintResolver(Protocol):
     Each resolver declares its ``kind`` (matching ``Constraint.kind``) and
     implements ``resolve()`` which reads the current partial placements and
     returns new/changed placements.
+
+    ``context`` is a scratch dict shared by every resolver in one composition.
+    It carries facts that are declared by one constraint and consumed by
+    others — most importantly ``envelope``, the target enclosure size written
+    by ``target_envelope`` and read by every resolver that needs to know where
+    the walls are. Resolving against a declared envelope is what makes a
+    recipe deterministic: without it, "the enclosure" is estimated from
+    whatever happens to be placed already, so the answer depends on
+    constraint order.
     """
 
     kind: str
@@ -39,6 +48,7 @@ class ConstraintResolver(Protocol):
         components: dict[str, Any],
         current: dict[str, Placement],
         config: Any,
+        context: dict[str, Any],
     ) -> ResolverResult:
         ...
 
@@ -126,6 +136,7 @@ class LayoutComposer:
         """
         current: dict[str, Placement] = {}
         results: list[ConstraintResult] = []
+        context: dict[str, Any] = {}
 
         # Phase 1: resolve each constraint in recipe order.
         for constraint in constraints:
@@ -140,7 +151,7 @@ class LayoutComposer:
                 )
                 continue
 
-            result = resolver.resolve(constraint, components, current, config)
+            result = resolver.resolve(constraint, components, current, config, context)
             if result.success:
                 current.update(result.placements)
             results.append(

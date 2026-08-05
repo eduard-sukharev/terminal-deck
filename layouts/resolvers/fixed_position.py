@@ -20,6 +20,7 @@ class FixedPositionResolver:
         components: dict[str, Any],
         current: dict[str, Placement],
         config: Any,
+        context: dict[str, Any],
     ) -> ResolverResult:
         subj = components.get(constraint.subject)
         if subj is None:
@@ -32,11 +33,16 @@ class FixedPositionResolver:
         x = constraint.x if constraint.x is not None else (existing.x if existing is not None else 0.0)
         y = constraint.y if constraint.y is not None else (existing.y if existing is not None else 0.0)
         z = constraint.z if constraint.z is not None else (existing.z if existing is not None else 0.0)
+        rotation = (
+            constraint.rotation
+            if constraint.rotation is not None
+            else (existing.rotation if existing is not None else 0.0)
+        )
 
         return ResolverResult(
             True,
-            {constraint.subject: Placement(subj, x, y, constraint.rotation, z)},
-            f"{constraint.subject} @ ({x:.1f}, {y:.1f}, {z:.1f})",
+            {constraint.subject: Placement(subj, x, y, rotation, z)},
+            f"{constraint.subject} @ ({x:.1f}, {y:.1f}, {z:.1f}) rot={rotation:g}°",
         )
 
 

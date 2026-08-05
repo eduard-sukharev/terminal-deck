@@ -21,6 +21,7 @@ class CenteredOnResolver:
         components: dict[str, Any],
         current: dict[str, Placement],
         config: Any,
+        context: dict[str, Any],
     ) -> ResolverResult:
         subj = components.get(constraint.subject)
         if subj is None:
@@ -36,9 +37,10 @@ class CenteredOnResolver:
         subj_rot = existing.rotation if existing is not None else 0.0
 
         if constraint.relative_to is None or constraint.relative_to == "enclosure":
-            w, d, _ = estimate_enclosure(current, components, config)
+            w, d, _ = estimate_enclosure(current, components, config, context=context)
             wall = getattr(config, "wall_thickness", 2.0)
-            left, right, rear, front = interior_bounds(w, d, wall)
+            clearance = getattr(getattr(config, "clearance", None), "shell", 0.35)
+            left, right, rear, front = interior_bounds(w, d, wall, clearance)
             center_x = (left + right) / 2.0
             center_y = (rear + front) / 2.0
         else:

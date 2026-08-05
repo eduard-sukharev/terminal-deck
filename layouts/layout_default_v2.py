@@ -25,6 +25,7 @@ from layouts.constraints import (
     CenteredOn,
     FixedPosition,
     KeyboardMountingHoles,
+    PortAccess,
     RelativePlacement,
     ZStack,
 )
@@ -51,12 +52,14 @@ class LayoutDefaultV2(ConstraintLayout):
         kb = components["keyboard"].size()
         sb = components["sbc"].size()
         bb = components["battery"].size()
+        hb = components["usb_breakout"].size()
         disp = components["display"].size()
         driver = components["driver"]
 
         front_margin = 20.0
         sbc_gap = 6.0
         battery_gap = 6.0
+        hub_gap = 6.0
         lid_z = 60.0
 
         return [
@@ -73,10 +76,18 @@ class LayoutDefaultV2(ConstraintLayout):
                 subject="battery", target="sbc",
                 offset_x=sb.width / 2 + battery_gap + bb.width / 2,
             ),
+            # USB hub beside the battery, turned 180° so its USB-A (locally
+            # +Y) faces the rear wall instead of into the case interior.
+            RelativePlacement(
+                subject="usb_breakout", target="battery",
+                offset_x=bb.width / 2 + hub_gap + hb.width / 2,
+                rotation=180.0,
+            ),
             # Keyboard mounting holes: between rows, near wide keys.
             KeyboardMountingHoles(subject="keyboard"),
             # Base-floor Z stack.
             ZStack(layers=[["keyboard", "sbc", "battery", "usb_breakout"]]),
+            PortAccess(subject="usb_breakout", connector_type="USB-A", wall="rear"),
             # Display centered in the lid at stacking height.
             FixedPosition(subject="display", z=lid_z),
             CenteredOn(subject="display", axes=("x", "y")),
@@ -97,7 +108,7 @@ class LayoutDefaultV2(ConstraintLayout):
                 to_connector_type=CONNECTOR_HDMI,
                 via_point=(0.0, -70.0, 30.0),
                 clearance_diameter=8.0,
-                max_bend_radius=30.0,
+                bend_radius=30.0,
             ),
         ]
 

@@ -24,24 +24,41 @@ class ZStackResolver:
         components: dict[str, Any],
         current: dict[str, Placement],
         config: Any,
+        context: dict[str, Any],
     ) -> ResolverResult:
         placements: dict[str, Placement] = {}
         current_z = 0.0
+        missing: list[str] = []
+        unplaced: list[str] = []
 
-        for layer_idx, layer_names in enumerate(constraint.layers):
+        for layer_names in constraint.layers:
             max_height = 0.0
             for name in layer_names:
                 comp = components.get(name)
                 if comp is None:
+                    missing.append(name)
                     continue
-                box = comp.size()
                 existing = current.get(name)
-                x = existing.x if existing is not None else 0.0
-                y = existing.y if existing is not None else 0.0
-                rotation = existing.rotation if existing is not None else 0.0
-                placements[name] = Placement(comp, x, y, rotation, current_z)
-                max_height = max(max_height, box.height)
+                if existing is None:
+                    # Assigning (0, 0) here would silently invent a placement
+                    # at the case center — the XY owner must run first.
+                    unplaced.append(name)
+                    continue
+                placements[name] = Placement(
+                    comp, existing.x, existing.y, existing.rotation, current_z
+                )
+                max_height = max(max_height, comp.size().height)
             current_z += max_height + constraint.gap
+
+        if missing or unplaced:
+            problems = []
+            if missing:
+                problems.append(f"unknown component(s): {', '.join(missing)}")
+            if unplaced:
+                problems.append(
+                    f"no XY placement yet for: {', '.join(unplaced)}"
+                )
+            return ResolverResult(False, placements, "; ".join(problems))
 
         return ResolverResult(
             True,

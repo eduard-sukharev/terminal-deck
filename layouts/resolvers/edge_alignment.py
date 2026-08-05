@@ -21,6 +21,7 @@ class EdgeAlignmentResolver:
         components: dict[str, Any],
         current: dict[str, Placement],
         config: Any,
+        context: dict[str, Any],
     ) -> ResolverResult:
         subj = components.get(constraint.subject)
         if subj is None:
@@ -32,9 +33,10 @@ class EdgeAlignmentResolver:
         subj_size = subj.size()
 
         if constraint.target == "enclosure":
-            w, d, _ = estimate_enclosure(current, components, config)
+            w, d, _ = estimate_enclosure(current, components, config, context=context)
             wall = getattr(config, "wall_thickness", 2.0)
-            left, right, rear, front = interior_bounds(w, d, wall)
+            clearance = getattr(getattr(config, "clearance", None), "shell", 0.35)
+            left, right, rear, front = interior_bounds(w, d, wall, clearance)
             target_edges = {
                 "front": (0.0, front),
                 "rear": (0.0, rear),
@@ -72,10 +74,22 @@ class EdgeAlignmentResolver:
             constraint.offset,
         )
 
+        # Aligning one edge constrains one axis only. Keep whatever the other
+        # axis (and z/rotation) already resolved to, so ordering an alignment
+        # after a positioning constraint refines it instead of erasing it.
+        existing = current.get(constraint.subject)
+        if constraint.subject_edge in ("front", "rear"):
+            x = existing.x if existing is not None else x
+        else:
+            y = existing.y if existing is not None else y
+        z = existing.z if existing is not None else 0.0
+        rotation = existing.rotation if existing is not None else 0.0
+
         return ResolverResult(
             True,
-            {constraint.subject: Placement(subj, x, y, 0.0, 0.0)},
-            f"{constraint.subject} {constraint.subject_edge} → {constraint.target} {constraint.target_edge}",
+            {constraint.subject: Placement(subj, x, y, rotation, z)},
+            f"{constraint.subject} {constraint.subject_edge} → {constraint.target} "
+            f"{constraint.target_edge} @ ({x:.1f}, {y:.1f})",
         )
 
 

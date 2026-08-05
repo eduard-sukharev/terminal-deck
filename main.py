@@ -165,6 +165,15 @@ class BuildPipeline:
             if creport is not None:
                 print("[pipeline] constraint resolution:")
                 print(creport.summary())
+                if not creport.passed:
+                    # HARD is defined as "violation stops the build"; carrying
+                    # on would export geometry the layout already knows is
+                    # wrong.
+                    raise SystemExit(
+                        "[pipeline] aborted: "
+                        f"{len(creport.hard_violations)} hard constraint "
+                        "violation(s) above"
+                    )
 
         keyboard_component = components.get("keyboard")
         if keyboard_component is not None and hasattr(keyboard_component, "validate"):

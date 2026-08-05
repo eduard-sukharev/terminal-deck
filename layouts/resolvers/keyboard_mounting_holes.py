@@ -24,6 +24,7 @@ class KeyboardMountingHolesResolver:
         components: dict[str, Any],
         current: dict[str, Any],
         config: Any,
+        context: dict[str, Any],
     ) -> ResolverResult:
         subj = components.get(constraint.subject)
         if subj is None:

@@ -44,12 +44,20 @@ class KeyboardLayout:
         return ((key.x - cx) * self.pitch, (key.y - cy) * self.pitch)
 
     def _centroid(self) -> tuple[float, float]:
-        """Centroid of all key centers in units."""
+        """Geometric center of the key field in units.
+
+        This is the midpoint of the occupied extents, not the mean of the key
+        positions. The mean is pulled off-center by uneven key counts per row
+        — a 40% layout with a sparse bottom row shifts it several millimetres
+        — which would leave the plate outline, and therefore the component's
+        bounding box, no longer centered on the component origin that every
+        placement is measured from.
+        """
         if not self.keys:
             return (0.0, 0.0)
-        cx = sum(k.x for k in self.keys) / len(self.keys)
-        cy = sum(k.y for k in self.keys) / len(self.keys)
-        return (cx, cy)
+        xs = [k.x for k in self.keys]
+        ys = [k.y for k in self.keys]
+        return ((min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0)
 
     @property
     def width_units(self) -> float:

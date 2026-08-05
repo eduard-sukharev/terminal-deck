@@ -20,6 +20,7 @@ class SharePlaneResolver:
         components: dict[str, Any],
         current: dict[str, Placement],
         config: Any,
+        context: dict[str, Any],
     ) -> ResolverResult:
         placements: dict[str, Placement] = {}
         for name in constraint.subjects:

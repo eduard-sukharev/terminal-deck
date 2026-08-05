@@ -7,18 +7,15 @@ from typing import Any
 from layouts.base import Placement
 from layouts.composer import ConstraintResolver, ResolverResult
 from layouts.constraints import CablePath
+from routing.cable_routing import CableRouter
 
 
 class CablePathResolver:
     """Validate a cable route between two connectors.
 
-    Checks:
-    1. Both connectors exist on their respective components.
-    2. The straight-line path (optionally via a point) is clear.
-    3. The bend radius is within limits.
-
-    This is a documentary/validation constraint — it does not adjust
-    placement.
+    Checks that both connectors exist, that the routed bend radius meets the
+    cable type's documented minimum, and that the declared tunnel is wide
+    enough for the bundle. Produces no placements.
     """
 
     kind = "cable_path"
@@ -29,6 +26,7 @@ class CablePathResolver:
         components: dict[str, Any],
         current: dict[str, Placement],
         config: Any,
+        context: dict[str, Any],
     ) -> ResolverResult:
         from_comp = components.get(constraint.from_component)
         to_comp = components.get(constraint.to_component)
@@ -36,14 +34,19 @@ class CablePathResolver:
         to_placement = current.get(constraint.to_component)
 
         if from_comp is None or to_comp is None:
-            return ResolverResult(
-                True, {},
-                f"component not found — skipping",
+            missing = (
+                constraint.from_component if from_comp is None
+                else constraint.to_component
             )
+            return ResolverResult(False, {}, f"component {missing!r} not found")
         if from_placement is None or to_placement is None:
+            unplaced = (
+                constraint.from_component if from_placement is None
+                else constraint.to_component
+            )
             return ResolverResult(
-                True, {},
-                f"one or both not placed yet — skipping",
+                False, {},
+                f"{unplaced!r} not placed before this cable check",
             )
 
         # Find the connectors.
@@ -60,12 +63,12 @@ class CablePathResolver:
 
         if from_conn is None:
             return ResolverResult(
-                True, {},
+                False, {},
                 f"{constraint.from_component} has no {constraint.from_connector_type}",
             )
         if to_conn is None:
             return ResolverResult(
-                True, {},
+                False, {},
                 f"{constraint.to_component} has no {constraint.to_connector_type}",
             )
 
@@ -77,17 +80,43 @@ class CablePathResolver:
         ty = to_placement.y + to_conn.y
         tz = to_placement.z + to_conn.z
 
+        # Route the cable through the real routing engine so the bend and
+        # bundle-diameter rules come from one place rather than being
+        # re-stated here.
+        clearance = getattr(getattr(config, "clearance", None), "shell", 0.35)
+        router = CableRouter(clearance=clearance)
+        cable = constraint.from_connector_type
         if constraint.via_point is not None:
-            vx, vy, vz = constraint.via_point
-            seg1 = ((vx - fx) ** 2 + (vy - fy) ** 2 + (vz - fz) ** 2) ** 0.5
-            seg2 = ((tx - vx) ** 2 + (ty - vy) ** 2 + (tz - vz) ** 2) ** 0.5
-            total = seg1 + seg2
+            via = tuple(constraint.via_point)
+            router.track(cable, (fx, fy, fz), via, constraint.bend_radius)
+            router.track(cable, via, (tx, ty, tz), constraint.bend_radius)
         else:
-            total = ((tx - fx) ** 2 + (ty - fy) ** 2 + (tz - fz) ** 2) ** 0.5
+            router.track(cable, (fx, fy, fz), (tx, ty, tz), constraint.bend_radius)
 
+        total = sum(route.length for route in router.routes)
+        needed_diameter = router.tunnel_diameter()
+
+        problems: list[str] = []
+        if router.failing_routes():
+            problems.append(
+                f"bend radius {constraint.bend_radius:.1f} mm is tighter than "
+                f"{cable} allows"
+            )
+        if constraint.clearance_diameter < needed_diameter:
+            problems.append(
+                f"tunnel {constraint.clearance_diameter:.1f} mm is narrower than "
+                f"the {needed_diameter:.1f} mm the bundle needs"
+            )
+
+        if problems:
+            return ResolverResult(
+                False, {},
+                f"{cable} path {total:.1f} mm — " + "; ".join(problems),
+            )
         return ResolverResult(
             True, {},
-            f"{constraint.from_connector_type} path: {total:.1f} mm",
+            f"{cable} path: {total:.1f} mm, bend {constraint.bend_radius:.1f} mm, "
+            f"tunnel >= {needed_diameter:.1f} mm",
         )
 
 

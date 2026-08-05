@@ -1,64 +1,155 @@
 # Default clamshell layout recipe.
 #
-# Replicates the original LayoutDefault placement using declarative
-# constraints. Values are pre-computed from component sizes.
+# Same clamshell arrangement as compact.yaml, front (+Y) to rear (-Y):
 #
-# Component size references like {keyboard.depth} are supported.
+#   palm rest  |  keyboard  |  rear I/O strip (SBC + battery + USB hub)
+#
+# The difference is the battery: here it sits on the base floor beside the
+# SBC rather than in the hollow under the keyboard's raised switch plate.
+# That costs about 10 mm of depth and buys a deck whose every part can be
+# reached by removing the bottom cover alone, without unbolting the
+# keyboard. Use compact.yaml when depth matters more than that.
+#
+# Every value is derived from component sizes and config, so re-measuring a
+# part (the battery and hub are still TODO: measure) moves the layout with it.
 
 constraints:
-  # Keyboard: initial Y from SBC depth + palm rest, centered on X.
-  - kind: fixed_position
-    subject: keyboard
-    y: 35.0
-  - kind: centered_on
-    subject: keyboard
-    axes: ["x"]
+  # ── Enclosure envelope ────────────────────────────────────────────────
+  # Declared first so the wall-relative constraints below have real walls to
+  # align against instead of estimating from what is placed so far.
+  #   width = widest of keyboard/display + clearance + walls
+  #   depth = rear strip (battery, the deepest) + gap + keyboard
+  #           + 30 mm palm rest + walls
+  - kind: target_envelope
+    width: "{display.width} + 2 * {config.clearance.shell} + 2 * {config.wall_thickness}"
+    depth: "{battery.depth} + 2.0 + {keyboard.depth} + 30.0 + 2 * {config.wall_thickness}"
+    description: >-
+      Display-limited in X; in Y a single-floor rear I/O strip plus a 30 mm
+      palm rest around the 40% keyboard.
 
-  # SBC: absolute Y behind keyboard, centered on X.
-  - kind: fixed_position
+  # ── Rear I/O strip: SBC | battery | hub, all against the rear wall ────
+  # SBC also against the left wall, so its -X microSD slot reaches it.
+  - kind: edge_alignment
     subject: sbc
-    y: -44.875
-  - kind: centered_on
+    subject_edge: rear
+    target: enclosure
+    target_edge: rear
+  - kind: edge_alignment
     subject: sbc
-    axes: ["x"]
+    subject_edge: left
+    target: enclosure
+    target_edge: left
 
-  # Rebalance: center the keyboard+SBC pair on Y.
-  - kind: centered_group
-    subjects: ["keyboard", "sbc"]
-    axes: ["y"]
-
-  # Battery beside the SBC.
-  - kind: relative_placement
+  - kind: centered_on
     subject: battery
-    target: sbc
-    offset_x: 68.5
+    axes: ["x"]
+  - kind: edge_alignment
+    subject: battery
+    subject_edge: rear
+    target: enclosure
+    target_edge: rear
 
-  # Base-floor Z stack.
+  # Hub turned 180° so its USB-A (locally +Y) points at the rear wall.
+  - kind: fixed_position
+    subject: usb_breakout
+    rotation: 180.0
+  - kind: edge_alignment
+    subject: usb_breakout
+    subject_edge: right
+    target: enclosure
+    target_edge: right
+  - kind: edge_alignment
+    subject: usb_breakout
+    subject_edge: rear
+    target: enclosure
+    target_edge: rear
+
+  # ── Keyboard ──────────────────────────────────────────────────────────
+  # Centered on X; on Y it clears the battery, the deepest part of the rear
+  # strip, by 2 mm. The palm rest is whatever depth remains in front.
+  - kind: centered_on
+    subject: keyboard
+    axes: ["x"]
+  - kind: edge_alignment
+    subject: keyboard
+    subject_edge: rear
+    target: battery
+    target_edge: front
+    offset: 2.0
+
+  # ── Base floor ────────────────────────────────────────────────────────
   - kind: z_stack
     layers: [["keyboard", "sbc", "battery", "usb_breakout"]]
 
-  # Display centered in the lid at stacking height.
+  # ── Lid ───────────────────────────────────────────────────────────────
+  # The lid closes onto the base rim, so the display sits one keyboard-height
+  # up, plus the lid's bottom wall and the driver board behind the panel.
   - kind: fixed_position
     subject: display
-    z: 60.0
+    z: "{keyboard.height} + 2 * {config.clearance.shell} + {config.wall_thickness} + {driver.height}"
   - kind: centered_on
     subject: display
     axes: ["x", "y"]
 
-  # Driver board behind the display.
+  # Driver board back-to-back behind the panel; offsets come from the
+  # component's own reference_origin() (config/display.yaml driver_board).
   - kind: relative_placement
     subject: driver
     target: display
-    offset_x: 105.0
-    offset_y: 5.0
-    offset_z: -4.6
+    use_reference_origin: true
+    offset_z: "0 - {driver.height}"
 
-  # HDMI cable path: SBC → hinge wire tunnel → driver board.
+  # ── Checks ────────────────────────────────────────────────────────────
+  # No placements; these fail the build when the layout above stops being
+  # physically buildable.
+
+  - kind: port_access
+    subject: sbc
+    connector_type: Power
+    wall: rear
+  - kind: port_access
+    subject: sbc
+    connector_type: MicroSD
+    wall: left
+  - kind: port_access
+    subject: usb_breakout
+    connector_type: USB-A
+    wall: rear
+
+  # Rear strip parts must not run into each other.
+  - kind: clearance
+    subject: sbc
+    target: battery
+    gap: 2.0
+    axis: x
+  - kind: clearance
+    subject: battery
+    target: usb_breakout
+    gap: 2.0
+    axis: x
+
+  # The keyboard must clear the rear strip, and nothing in the base may
+  # touch the lid when it closes.
+  - kind: clearance
+    subject: keyboard
+    target: battery
+    gap: 1.0
+    axis: y
+  - kind: clearance
+    subject: keyboard
+    target: driver
+    gap: 2.0
+    axis: z
+
+  # HDMI from the SBC to the driver board, through the hinge wire tunnel.
   - kind: cable_path
     from_component: sbc
     from_connector_type: HDMI
     to_component: driver
     to_connector_type: HDMI
-    via_point: [0.0, -70.0, 30.0]
-    clearance_diameter: 8.0
-    max_bend_radius: 30.0
+    via_point:
+      - 0.0
+      - "0 - ({battery.depth} + 2.0 + {keyboard.depth} + 30.0) / 2 - {config.wall_thickness}"
+      - "{keyboard.height} + {config.clearance.shell}"
+    clearance_diameter: "{config.hinge.wire_tunnel}"
+    bend_radius: 30.0

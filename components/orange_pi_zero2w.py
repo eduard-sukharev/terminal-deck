@@ -91,9 +91,9 @@ class OrangePiZero2W(Component):
                 depth=7.6,
                 internal=True,
             ),
-            # USB-C #1 (power, OTG) — east side 6.5 from east edge. Internal:
-            # the sealed deck exposes no SBC ports; connectivity goes through
-            # the rear USB hub and the internal battery supplies power.
+            # USB-C #1 (OTG) — east side 6.5 from east edge. Internal: host-side
+            # connectivity goes through the rear USB hub, so this one stays
+            # inside rather than spending a second rear-wall opening.
             Connector(
                 type=CONNECTOR_USB_C,
                 x=21.5,
@@ -105,8 +105,9 @@ class OrangePiZero2W(Component):
                 depth=8.0,
                 internal=True,
             ),
-            # USB-C #2 (power) — east side 19.0 from east edge. Internal (battery
-            # power / charge input; no shell cutout).
+            # USB-C #2 (power) — east side 19.0 from east edge. External: this
+            # is the deck's only charge/supply inlet, so a sealed case with no
+            # cutout here could never be recharged.
             Connector(
                 type=CONNECTOR_POWER,
                 x=9.0,
@@ -116,10 +117,11 @@ class OrangePiZero2W(Component):
                 width=9.0,
                 height=3.5,
                 depth=8.0,
-                internal=True,
+                internal=False,
             ),
             # MicroSD — north side 17.2 from north edge, flush with west edge.
-            # Internal: card is serviceable only with the case open (sealed deck).
+            # External: the card carries the OS, and reflashing it is the most
+            # common field service task on this deck.
             Connector(
                 type=CONNECTOR_MICROSD,
                 x=-26.8,
@@ -129,7 +131,7 @@ class OrangePiZero2W(Component):
                 width=11.4,
                 height=1.4,
                 depth=11.4,
-                internal=True,
+                internal=False,
             ),
         ]
 

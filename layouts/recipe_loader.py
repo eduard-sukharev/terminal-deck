@@ -17,6 +17,7 @@ Example ``config/layouts/default.yaml``::
 
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,8 @@ from layouts.constraints import (
     EdgeAlignment,
     FixedPosition,
     FootprintMatch,
+    KeyboardMountingHoles,
+    PortAccess,
     RegionConstraint,
     RelativePlacement,
     SharePlane,
@@ -49,6 +52,8 @@ _CONSTRAINT_KINDS: dict[str, type[Constraint]] = {
     "edge_alignment": EdgeAlignment,
     "fixed_position": FixedPosition,
     "footprint_match": FootprintMatch,
+    "keyboard_mounting_holes": KeyboardMountingHoles,
+    "port_access": PortAccess,
     "region": RegionConstraint,
     "relative_placement": RelativePlacement,
     "share_plane": SharePlane,
@@ -69,6 +74,41 @@ _PRIORITY_FIELDS: frozenset[str] = frozenset({"priority"})
 _REF_PATTERN = re.compile(r"\{([^}]+)\}")
 
 
+_ALLOWED_AST_NODES = (
+    ast.Expression, ast.BinOp, ast.UnaryOp,
+    ast.Add, ast.Sub, ast.Mult, ast.Div, ast.USub, ast.UAdd,
+    ast.Constant, ast.Tuple, ast.List, ast.Load,
+)
+
+
+def _eval_arithmetic(text: str) -> Any:
+    """Evaluate a numeric expression, or return *text* if it is not one.
+
+    Recipes derive positions from component sizes (``{keyboard.depth} / 2 +
+    {config.wall_thickness}``), so once references are substituted the result
+    still has to be reduced to a number. Only literals and + - * / are
+    permitted — names, calls and attribute access are rejected.
+    """
+    try:
+        tree = ast.parse(text, mode="eval")
+    except SyntaxError:
+        return text
+    for node in ast.walk(tree):
+        if not isinstance(node, _ALLOWED_AST_NODES):
+            return text
+    try:
+        return eval(compile(tree, "<recipe>", "eval"), {"__builtins__": {}}, {})
+    except (ArithmeticError, TypeError, ValueError):
+        return text
+
+
+def _lookup(obj: Any, attr: str) -> Any:
+    """Read *attr* from an object or a mapping."""
+    if isinstance(obj, dict):
+        return obj.get(attr)
+    return getattr(obj, attr, None)
+
+
 def _resolve_refs(value: Any, components: dict[str, Any], config: Any) -> Any:
     """Resolve ``{component.field}`` and ``{config.path}`` references in a value.
 
@@ -77,7 +117,15 @@ def _resolve_refs(value: Any, components: dict[str, Any], config: Any) -> Any:
     * ``{sbc.width}`` → ``components["sbc"].size().width``
     * ``{config.wall_thickness}`` → ``config.wall_thickness``
     * ``{config.clearance.shell}`` → ``config.clearance.shell``
+    * ``{config.hardware.driver_board.height}`` → nested dict lookups
+
+    The substituted string is then evaluated as arithmetic, so a value may be
+    an expression over those references.
     """
+    if isinstance(value, (list, tuple)):
+        # Sequence values (via_point, layers) may hold references per element.
+        resolved_items = [_resolve_refs(item, components, config) for item in value]
+        return type(value)(resolved_items) if isinstance(value, tuple) else resolved_items
     if not isinstance(value, str):
         return value
 
@@ -87,7 +135,7 @@ def _resolve_refs(value: Any, components: dict[str, Any], config: Any) -> Any:
         if parts[0] == "config":
             obj: Any = config
             for attr in parts[1:]:
-                obj = getattr(obj, attr, None)
+                obj = _lookup(obj, attr)
                 if obj is None:
                     raise ValueError(f"Unknown config path: {path}")
             return str(obj)
@@ -102,14 +150,14 @@ def _resolve_refs(value: Any, components: dict[str, Any], config: Any) -> Any:
             raise ValueError(f"Unknown component reference: {path}")
 
     resolved = _REF_PATTERN.sub(_resolve_one, value)
-    # Coerce numeric strings back to float/int.
+    # Coerce numeric strings back to float/int, evaluating any arithmetic.
     try:
         return int(resolved)
     except ValueError:
         try:
             return float(resolved)
         except ValueError:
-            return resolved
+            return _eval_arithmetic(resolved)
 
 
 def _coerce_value(value: Any, field_name: str) -> Any:

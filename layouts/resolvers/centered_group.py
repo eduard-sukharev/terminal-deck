@@ -26,6 +26,7 @@ class CenteredGroupResolver:
         components: dict[str, Any],
         current: dict[str, Placement],
         config: Any,
+        context: dict[str, Any],
     ) -> ResolverResult:
         if not constraint.subjects:
             return ResolverResult(True, {}, "empty group — nothing to center")
@@ -49,9 +50,10 @@ class CenteredGroupResolver:
         group_cy = (min(ys) + max(ys)) / 2.0
 
         if constraint.relative_to is None or constraint.relative_to == "enclosure":
-            w, d, _ = estimate_enclosure(current, components, config)
+            w, d, _ = estimate_enclosure(current, components, config, context=context)
             wall = getattr(config, "wall_thickness", 2.0)
-            left, right, rear, front = interior_bounds(w, d, wall)
+            clearance = getattr(getattr(config, "clearance", None), "shell", 0.35)
+            left, right, rear, front = interior_bounds(w, d, wall, clearance)
             target_cx = (left + right) / 2.0
             target_cy = (rear + front) / 2.0
         else:

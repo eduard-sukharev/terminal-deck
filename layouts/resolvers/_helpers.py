@@ -7,6 +7,21 @@ from typing import Any
 from layouts.base import Placement
 
 
+def enclosure_from_context(
+    context: dict[str, Any] | None,
+) -> tuple[float, float, float] | None:
+    """Return the envelope declared by ``target_envelope``, if any."""
+    if not context:
+        return None
+    envelope = context.get("envelope")
+    if not envelope:
+        return None
+    width, depth, height = envelope
+    if width is None or depth is None:
+        return None
+    return (width, depth, height if height is not None else 60.0)
+
+
 def estimate_enclosure(
     current: dict[str, Placement],
     components: dict[str, Any],
@@ -14,17 +29,25 @@ def estimate_enclosure(
     hint_width: float | None = None,
     hint_depth: float | None = None,
     hint_height: float | None = None,
+    context: dict[str, Any] | None = None,
 ) -> tuple[float, float, float]:
-    """Estimate enclosure outer dimensions from current placements + config.
+    """Enclosure outer dimensions: declared envelope, else estimated.
 
     Returns ``(width, depth, height)`` in mm (outer envelope including walls).
-    Falls back to a reasonable default when no placements exist.
+    A ``target_envelope`` published in *context* always wins — estimating from
+    partial placements is order-dependent and self-referential (the subject
+    being placed is inside its own estimate), so it is only a fallback for
+    recipes that never declare one.
     """
     wall = getattr(config, "wall_thickness", 2.0)
     clearance = getattr(getattr(config, "clearance", None), "shell", 0.35)
 
     if hint_width is not None and hint_depth is not None:
         return (hint_width, hint_depth, hint_height or 60.0)
+
+    declared = enclosure_from_context(context)
+    if declared is not None:
+        return declared
 
     if not current:
         return (240.0, 140.0, 40.0)
@@ -48,11 +71,19 @@ def estimate_enclosure(
 
 
 def interior_bounds(
-    enclosure_w: float, enclosure_d: float, wall: float
+    enclosure_w: float, enclosure_d: float, wall: float, clearance: float = 0.0
 ) -> tuple[float, float, float, float]:
-    """Return ``(left, right, rear, front)`` of the enclosure interior."""
-    iw = enclosure_w - 2 * wall
-    id_ = enclosure_d - 2 * wall
+    """Return ``(left, right, rear, front)`` of the usable interior.
+
+    *clearance* is the shell air gap. Excluding it as well as the wall makes
+    these bounds the envelope a component may actually occupy, which is the
+    same envelope :meth:`assemblies.assembly.Assembly.enclosure_size` assumes
+    when it grows the case around the placements — so a part aligned to a
+    wall here resolves to exactly the declared enclosure rather than pushing
+    it outward by the clearance.
+    """
+    iw = enclosure_w - 2 * (wall + clearance)
+    id_ = enclosure_d - 2 * (wall + clearance)
     return (-iw / 2, iw / 2, -id_ / 2, id_ / 2)
 
 
@@ -116,6 +147,7 @@ def align_edges(
 
 
 __all__ = [
+    "enclosure_from_context",
     "estimate_enclosure",
     "interior_bounds",
     "edge_position",

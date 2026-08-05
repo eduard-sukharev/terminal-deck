@@ -9,7 +9,7 @@ keyboard:
     family: cherry
   plate:
     thickness: 1.5
-    edge_margin: 4.5
+    edge_margin: 2.5
     corner_radius: 2.0
   mounting:
     screw: M2

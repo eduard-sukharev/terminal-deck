@@ -1,51 +1,148 @@
-# Compact clamshell layout recipe (sealed deck).
+# Compact clamshell layout recipe.
 #
-# Replicates the original LayoutCompact placement using declarative
-# constraints. The keyboard plate covers the whole base floor; everything
-# else lives under the raised plate.
+# Laptop arrangement, front (+Y, toward the user) to rear (-Y, the hinge):
+#
+#   palm rest  |  keyboard  |  rear I/O strip (SBC + USB hub)
+#
+# The keyboard's switch plate stands on 10 mm standoffs, and the battery
+# lives in that hollow. The SBC does not: its power inlet and microSD are
+# the two things that must be reachable without opening the case, so it sits
+# in the rear strip against the wall instead. The hub sits beside it, turned
+# to face its USB-A at the same rear wall.
+#
+# Every value is derived from component sizes and config, so re-measuring a
+# part (the battery and hub are still TODO: measure) moves the layout with it.
 
 constraints:
-  # Keyboard centered at the base origin.
-  - kind: fixed_position
-    subject: keyboard
-    x: 0.0
-    y: 0.0
+  # ── Enclosure envelope ────────────────────────────────────────────────
+  # Declared first: the wall-relative constraints below align against this
+  # rather than guessing from whatever is placed so far.
+  #   width = widest of keyboard/display + clearance + walls
+  #   depth = rear strip (SBC) + gap + keyboard + palm rest + walls
+  - kind: target_envelope
+    width: "{display.width} + 2 * {config.clearance.shell} + 2 * {config.wall_thickness}"
+    depth: "{sbc.depth} + 2.0 + {keyboard.depth} + 25.0 + 2 * {config.wall_thickness}"
+    description: >-
+      Display-limited in X; in Y the rear I/O strip plus a 25 mm palm rest
+      around the 40% keyboard.
 
-  # SBC buried under the raised plate, offset beside the controller.
-  - kind: fixed_position
+  # ── Rear I/O strip ────────────────────────────────────────────────────
+  # SBC hard against the rear wall so its -Y power inlet reaches it, and
+  # against the left wall so the -X microSD slot reaches that one.
+  - kind: edge_alignment
     subject: sbc
-    x: 50.25
-    y: 0.0
+    subject_edge: rear
+    target: enclosure
+    target_edge: rear
+  - kind: edge_alignment
+    subject: sbc
+    subject_edge: left
+    target: enclosure
+    target_edge: left
 
-  # USB hub behind the SBC, facing rear.
+  # Hub turned 180° so its USB-A (locally +Y) points at the rear wall.
   - kind: fixed_position
     subject: usb_breakout
-    x: 50.25
-    y: -28.5
+    x: 60.0
     rotation: 180.0
+  - kind: edge_alignment
+    subject: usb_breakout
+    subject_edge: rear
+    target: enclosure
+    target_edge: rear
 
-  # Battery on the opposite side of the controller.
-  - kind: fixed_position
+  # ── Keyboard ──────────────────────────────────────────────────────────
+  # Centered on X; on Y it clears the rear strip by 2 mm, which leaves the
+  # palm rest as the remainder of the envelope.
+  - kind: centered_on
+    subject: keyboard
+    axes: ["x"]
+  - kind: edge_alignment
+    subject: keyboard
+    subject_edge: rear
+    target: sbc
+    target_edge: front
+    offset: 2.0
+
+  # ── Battery, in the hollow under the switch plate ─────────────────────
+  # Left of the RP2040 controller, which occupies the middle of that space.
+  - kind: relative_placement
     subject: battery
-    x: -47.75
-    y: 0.0
+    target: keyboard
+    offset_x: -50.0
 
-  # Base-floor Z stack.
+  # ── Base floor ────────────────────────────────────────────────────────
   - kind: z_stack
     layers: [["keyboard", "sbc", "battery", "usb_breakout"]]
 
-  # Display centered in the lid at stacking height.
+  # ── Lid ───────────────────────────────────────────────────────────────
+  # The lid closes onto the base rim, so the display sits one keyboard-height
+  # up, plus the lid's bottom wall and the driver board behind the panel:
+  #   keyboard + clearance + wall + clearance + driver
   - kind: fixed_position
     subject: display
-    z: 60.0
+    z: "{keyboard.height} + 2 * {config.clearance.shell} + {config.wall_thickness} + {driver.height}"
   - kind: centered_on
     subject: display
     axes: ["x", "y"]
 
-  # Driver board behind the display.
+  # Driver board back-to-back behind the panel. Offsets come from the
+  # component's own reference_origin() (config/display.yaml driver_board),
+  # so the recipe cannot drift away from the component definition.
   - kind: relative_placement
     subject: driver
     target: display
-    offset_x: 105.0
-    offset_y: 5.0
-    offset_z: -4.6
+    use_reference_origin: true
+    offset_z: "0 - {driver.height}"
+
+  # ── Checks ────────────────────────────────────────────────────────────
+  # These produce no placements; they fail the build when the arrangement
+  # above stops being physically buildable.
+
+  # The three ports that must survive to the shell as real openings.
+  - kind: port_access
+    subject: sbc
+    connector_type: Power
+    wall: rear
+  - kind: port_access
+    subject: sbc
+    connector_type: MicroSD
+    wall: left
+  - kind: port_access
+    subject: usb_breakout
+    connector_type: USB-A
+    wall: rear
+
+  # The battery has to fit the hollow under the plate without fouling the
+  # plate above it or the controller beside it.
+  - kind: clearance
+    subject: battery
+    target: keyboard
+    gap: 1.0
+
+  # Rear strip parts must not run into each other.
+  - kind: clearance
+    subject: sbc
+    target: usb_breakout
+    gap: 2.0
+    axis: x
+
+  # Nothing in the base may touch the lid when it closes.
+  - kind: clearance
+    subject: keyboard
+    target: driver
+    gap: 2.0
+    axis: z
+
+  # HDMI from the SBC to the driver board, through the hinge wire tunnel.
+  - kind: cable_path
+    from_component: sbc
+    from_connector_type: HDMI
+    to_component: driver
+    to_connector_type: HDMI
+    via_point:
+      - 0.0
+      - "0 - ({sbc.depth} + 2.0 + {keyboard.depth} + 25.0) / 2 - {config.wall_thickness}"
+      - "{keyboard.height} + {config.clearance.shell}"
+    clearance_diameter: "{config.hinge.wire_tunnel}"
+    bend_radius: 30.0

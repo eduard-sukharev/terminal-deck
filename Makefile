@@ -23,7 +23,7 @@ all:
 test:
 	$(PYTHON) -m pytest
 
-check:
+check: data
 	$(PYTHON) -m py_compile main.py components/*.py geometry/*.py layouts/*.py \
 		assemblies/*.py case/*.py routing/*.py exports/*.py utilities/*.py \
 		keyboard/*.py keyboard/*/*.py

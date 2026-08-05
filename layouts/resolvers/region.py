@@ -28,18 +28,24 @@ class RegionResolver:
         components: dict[str, Any],
         current: dict[str, Placement],
         config: Any,
+        context: dict[str, Any],
     ) -> ResolverResult:
         subj = components.get(constraint.subject)
         placement = current.get(constraint.subject)
-        if subj is None or placement is None:
+        if subj is None:
             return ResolverResult(
-                True, {},
-                f"{constraint.subject!r} not placed yet — skipping",
+                False, {}, f"component {constraint.subject!r} not found",
+            )
+        if placement is None:
+            return ResolverResult(
+                False, {},
+                f"{constraint.subject!r} not placed before this region check",
             )
 
-        w, d, _ = estimate_enclosure(current, components, config)
+        w, d, _ = estimate_enclosure(current, components, config, context=context)
         wall = getattr(config, "wall_thickness", 2.0)
-        left, right, rear, front = interior_bounds(w, d, wall)
+        clearance = getattr(getattr(config, "clearance", None), "shell", 0.35)
+        left, right, rear, front = interior_bounds(w, d, wall, clearance)
         box = subj.size()
 
         comp_left = placement.x - box.width / 2
@@ -70,13 +76,13 @@ class RegionResolver:
             inside = comp_left >= mid_x
         else:
             return ResolverResult(
-                True, {},
+                False, {},
                 f"unknown region {region!r}",
             )
 
         return ResolverResult(
-            True, {},
-            f"{constraint.subject} in {region}: {inside}",
+            inside, {},
+            f"{constraint.subject} {'in' if inside else 'NOT in'} {region}",
         )
 
 

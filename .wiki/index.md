@@ -3,7 +3,7 @@ title: "Cyberdeck Wiki"
 type: "index"
 status: "active"
 language: "default"
-last_commit: "6adf54a28d436979f0c3d1dc7f573c0e9ecd9c9d"
+last_commit: "b1cc12174024e0e551a6b9e345e08262f45e19d1"
 updated_at: "2026-08-05"
 ---
 

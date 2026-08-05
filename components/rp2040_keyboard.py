@@ -21,7 +21,12 @@ from utilities.constants import CONNECTOR_USB_C, DIR_POS_X
 
 
 class Rp2040Keyboard(Component):
-    """40% keyboard: switch plate + RP2040-Zero controller."""
+    """40% keyboard: switch plate + XDA keycaps + RP2040-Zero controller.
+
+    Switch housings are not rendered — only the plate cutouts and keycaps
+    are visible.  Keycaps are lofted from an 18.5 mm square base to a
+    15.0 mm stadium (rounded-rectangle) top, 9.0 mm tall (XDA profile).
+    """
 
     name = "40% Keyboard (RP2040)"
 
@@ -42,9 +47,17 @@ class Rp2040Keyboard(Component):
         z_clearance = float(controller_cfg.get("z_clearance", 2.0))
         self._plate_raise = self.controller.height + z_clearance
 
+        keycap_cfg = data.get("keycap", {}) or {}
+        self._keycap_profile = str(keycap_cfg.get("profile", "xda"))
+        self._keycap_enabled = bool(keycap_cfg.get("enabled", True))
+
     def size(self) -> BoundingBox:
         box = self._plate.size()
-        height = self._plate_raise + box.height + 10.0  # switch + cap allowance
+        from components.keycap_set import CAP_PLATE_GAP
+        from keyboard.registry import get_keycap
+        profile = get_keycap(self._keycap_profile)()
+        cap_height = profile.height()
+        height = self._plate_raise + self._plate_thickness + CAP_PLATE_GAP + cap_height
         return BoundingBox(box.width, box.depth, height)
 
     def occupied_volumes(self) -> list[tuple[float, float, float, BoundingBox]]:
@@ -110,33 +123,56 @@ class Rp2040Keyboard(Component):
         return self._plate.validate()
 
     def build(self):
-        """Generate the keyboard solid: raised plate, switch housings, controller.
+        """Generate the keyboard solid: raised plate, switch bodies, keycaps, controller.
 
-        The plate and switch housings sit on standoffs at ``_plate_raise``;
-        the RP2040-Zero controller rests on the mounting plane beneath them.
+        The plate sits on standoffs at ``_plate_raise`` with simplified switch
+        bodies protruding through the cutouts and keycaps lofted above them.
+        The RP2040-Zero controller rests on the mounting plane beneath the plate.
         """
-        from keyboard.registry import get_switch
+        from components.keycap_set import KeycapSet
         from utilities import cq_helpers
 
         cq_helpers.require_cq()
 
         plate = self._plate.build()
-        body = plate
 
-        # Switch housings rise above the plate at each switch grid position.
-        switch_cls = get_switch(self._switch_family)
-        switch = switch_cls()
-        verts = list(switch.cutout_vertices())
-        switch_depth = 3.0
+        # Simplified switch body at each grid position (local coords).
+        # Cube (13 mm) has its **bottom** 5 mm below the plate top surface,
+        # so it passes up through the plate cutout and pokes into the keycap.
+        # A 4 mm diameter cylinder pokes 3.5 mm below the cube bottom.
+        switch_body_size = 13.0
+        switch_pin_diameter = 4.0
+        switch_pin_height = 3.5
+        cube_bottom_offset = 5.0  # cube bottom below plate top surface
+        cube_center_z = self._plate_thickness - cube_bottom_offset + switch_body_size / 2.0
+        pin_center_z = self._plate_thickness - cube_bottom_offset - switch_pin_height / 2.0
+        switch_shapes: list[Any] = []
         for x, y in self.switch_grid:
-            housing = cq_helpers.extrude_polygon(
-                verts, switch_depth, x, y,
-                self._plate_thickness + switch_depth / 2.0,
-            )
-            body = body.union(housing)
+            cube = cq_helpers.box_centered(switch_body_size, switch_body_size, switch_body_size)
+            cube = cq_helpers.translate(cube, x, y, cube_center_z)
+            switch_shapes.append(cube)
+            pin = cq_helpers.cylinder_centered(switch_pin_diameter, switch_pin_height)
+            pin = cq_helpers.translate(pin, x, y, pin_center_z)
+            switch_shapes.append(pin)
+        body = plate.union(cq_helpers.make_compound(switch_shapes))
 
         # Raise the plate assembly onto its standoffs.
         body = cq_helpers.translate(body, 0.0, 0.0, self._plate_raise)
+
+        # Keycaps lofted above the plate (compound, fused in one op).
+        self._plate._ensure_model()
+        keys = list(self._plate._layout.keys)
+        centroid = self._plate._layout._centroid()
+        caps = KeycapSet(
+            self.switch_grid, keys,
+            profile_name=self._keycap_profile,
+            plate_raise=self._plate_raise,
+            plate_thickness=self._plate_thickness,
+            pitch=self._pitch,
+            layout_centroid=centroid,
+            enabled=self._keycap_enabled,
+        )
+        body = body.union(caps.build())
 
         # Controller beneath the plate, on the mounting plane.
         controller = self.controller.build()

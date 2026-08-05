@@ -113,6 +113,45 @@ def extrude_polygon(
     return translate(solid, x, y, z - height / 2.0)
 
 
+def loft_between(
+    bottom_verts: list[tuple[float, float]],
+    top_verts: list[tuple[float, float]],
+    height: float,
+    x: float = 0.0,
+    y: float = 0.0,
+    z: float = 0.0,
+) -> Any:
+    """Loft a solid between two closed polygon wires, centred at (x, y, z).
+
+    The bottom wire lies on the XY plane; the top wire is offset by *height*
+    along Z.  Both wires must have the **same number of vertices** in the
+    **same angular order** (CCW from +X) to produce an untwisted ruled loft.
+
+    The resulting solid is translated so its **bottom** face sits at *z*.
+    """
+    cq = require_cq()
+    solid = (
+        cq.Workplane("XY")
+        .polyline(bottom_verts).close()
+        .workplane(offset=height)
+        .polyline(top_verts).close()
+        .loft()
+    )
+    return translate(solid, x, y, z)
+
+
+def make_compound(shapes: list[Any]) -> Any:
+    """Return a single Workplane containing *shapes* as one unfused compound.
+
+    Use this to batch many solids before a single ``.union()`` — far faster
+    than N sequential unions because OCP processes the whole compound in one
+    boolean operation.
+    """
+    cq = require_cq()
+    compound = cq.Compound.makeCompound([s.val() for s in shapes])
+    return cq.Workplane("XY").newObject([compound])
+
+
 def bounding_box_mm(shape: Any) -> tuple[float, float, float]:
     """Return (width, depth, height) in mm of a CadQuery shape.
 

@@ -227,6 +227,19 @@ class BuildPipeline:
                 exporter.export(solid, path)
                 print(f"[pipeline] exported {name} -> {path}")
 
+        # Export individual component STLs for debug/visualisation.
+        stl_cls = EXPORTERS.get("stl")
+        if stl_cls is not None:
+            stl_exporter = stl_cls()
+            for comp_name, comp in components.items():
+                try:
+                    comp_solid = comp.build()
+                except NotImplementedError:
+                    continue
+                path = stl_exporter.output_path(f"component_{comp_name}")
+                stl_exporter.export(comp_solid, path)
+                print(f"[pipeline] exported component {comp_name} -> {path}")
+
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(

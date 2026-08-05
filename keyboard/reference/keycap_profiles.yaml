@@ -1,0 +1,9 @@
+# Keycap profile reference data.
+# All dimensions in millimeters.
+
+profiles:
+  xda:
+    base_size: 18.5       # bottom square side for a 1u key
+    top_diameter: 15.0    # top circle diameter for a 1u key (corner_radius = top_diameter / 2)
+    height: 9.0           # cap height from base to top
+    segments: 32          # loft sample count per wire

@@ -2,10 +2,10 @@
 # All dimensions in millimeters.
 
 wall:
-  thickness: 2.5        # single wall-thickness parameter; everything derives from it
+  thickness: 2.0        # single wall-thickness parameter; everything derives from it
 
 corners:
-  radius: 8             # corner_radius: outer case corner fillet
+  radius: 4             # corner_radius: outer case corner fillet
   edge_radius: 2        # edge_radius: general edge fillet
 
 clearance:

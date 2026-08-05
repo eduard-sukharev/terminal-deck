@@ -3,8 +3,8 @@ title: "Getting Started"
 type: "overview"
 status: "active"
 language: "default"
-source_paths: ["README.md", "AGENTS.md", "main.py"]
-updated_at: "2026-08-04"
+source_paths: ["README.md", "AGENTS.md", "main.py", "Makefile", "tests/"]
+updated_at: "2026-08-05"
 ---
 
 # Getting Started
@@ -20,13 +20,23 @@ CadQuery 2.8 lives in the miniforge env, and the base conda env is Python 3.7
 source $HOME/miniforge/bin/activate
 ```
 
-There is no test suite or CI; verification is `py_compile` plus the CLI.
+There is no CI; verification is `py_compile`, the pytest suite, and the CLI.
+A `Makefile` wraps the common commands (run after activating miniforge):
+
+```bash
+make data    # data layer only (config → components → layout → validation)
+make all     # full CAD + exports (STEP/STL/SVG)
+make test    # pytest suite
+make check   # py_compile all modules
+make clean   # remove generated files
+```
 
 ## Run it
 
 ```bash
 python main.py --config config/default.yaml --layout default --steps data
 python main.py --steps all
+python -m pytest
 python -m py_compile main.py components/*.py geometry/*.py layouts/*.py assemblies/*.py case/*.py routing/*.py exports/*.py utilities/*.py keyboard/*.py keyboard/*/*.py
 ```
 
@@ -41,7 +51,7 @@ python -m py_compile main.py components/*.py geometry/*.py layouts/*.py assembli
 
 ```
 [pipeline] placement validation:
-5 checks: PASS
+8 checks: PASS
   [ok  ] no-collisions: ...
   ...
 ```

@@ -4,7 +4,7 @@ type: "concept"
 status: "active"
 language: "default"
 source_paths: ["docs/keyboard_architecture.md", "keyboard/"]
-updated_at: "2026-08-04"
+updated_at: "2026-08-05"
 ---
 
 # Keyboard Subsystem
@@ -31,17 +31,22 @@ keyboard/
     layout/      kle_parser.py, layout.py, key.py
     switches/    kb_builder.py
     stabilizers/ kb_builder.py
-    geometry/    plate.py, outline.py, mounting.py, cutouts.py
-    reference/   switch_cutouts.yaml, stabilizer_cutouts.yaml
+    keycaps/     xda.py
+    geometry/    plate.py, outline.py, mounting.py, cutouts.py, keycaps.py
+    reference/   switch_cutouts.yaml, stabilizer_cutouts.yaml, keycap_profiles.yaml
     export/      dxf.py, svg.py
     metadata.py, registry.py, validation.py, __init__.py
 ```
 
 The module has no dependency on cyberdeck geometry or on CadQuery — it imports
 cleanly without it (verified by blocking `cadquery` at import). The cyberdeck
-adapters (`components/keyboard_plate.py`, `components/rp2040_keyboard.py`)
-consume its `KeyboardGeometryModel` and extrude polygons through
-`utilities/cq_helpers.py`.
+adapters (`components/keyboard_plate.py`, `components/rp2040_keyboard.py`,
+`components/keycap_set.py`) consume its `KeyboardGeometryModel` and extrude
+polygons through `utilities/cq_helpers.py`.
+
+Keycap profiles (`keycaps/xda.py`, `reference/keycap_profiles.yaml`) follow the
+same registry pattern as switches/stabilizers; the cyberdeck adapter lofts them
+into caps above the plate. See [[keycaps]].
 
 ## Data flow
 

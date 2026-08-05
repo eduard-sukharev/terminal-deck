@@ -20,11 +20,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from keyboard.registry import registered_stabilizers, registered_switches
+from keyboard.registry import get_switch, registered_stabilizers, registered_switches
 
 if TYPE_CHECKING:
     from keyboard.layout.layout import KeyboardLayout
-    from keyboard.metadata import KeyboardGeometryModel
+    from keyboard.metadata import Cutout, KeyboardGeometryModel
 
 
 def validate(
@@ -103,9 +103,61 @@ def validate(
                     f"Mounting hole at ({hole.x}, {hole.y}) is outside plate"
                 )
 
+    # Minimum edge margin — material between cutout edge and plate edge
+    checks += 1
+    if model.plate_outline:
+        oxs = [p[0] for p in model.plate_outline]
+        oys = [p[1] for p in model.plate_outline]
+        ox0, ox1 = min(oxs), max(oxs)
+        oy0, oy1 = min(oys), max(oys)
+        min_margin = 0.5
+        for cut in model.switch_cutouts:
+            for vx, vy in cut.vertices:
+                wx = cut.x + vx
+                wy = cut.y + vy
+                margin = min(wx - ox0, ox1 - wx, wy - oy0, oy1 - wy)
+                if margin < min_margin:
+                    errors.append(
+                        f"Switch cutout at ({cut.x:.1f}, {cut.y:.1f}) has only "
+                        f"{margin:.2f}mm edge margin (minimum {min_margin}mm)"
+                    )
+                    break
+
+    # Mounting holes not overlapping switch/stabilizer cutouts
+    checks += 1
+    all_cuts: list[Cutout] = list(model.switch_cutouts) + list(model.stabilizer_cutouts)
+    for hole in model.mounting_holes:
+        for cut in all_cuts:
+            rx = hole.x - cut.x
+            ry = hole.y - cut.y
+            if _point_in_polygon(rx, ry, cut.vertices):
+                errors.append(
+                    f"Mounting hole at ({hole.x:.1f}, {hole.y:.1f}) overlaps "
+                    f"cutout at ({cut.x:.1f}, {cut.y:.1f})"
+                )
+                break
+
     # Valid plate thickness
     checks += 1
     if model.metadata and model.metadata.plate_thickness <= 0:
         errors.append(f"Invalid plate thickness: {model.metadata.plate_thickness}")
 
     return checks, errors
+
+
+def _point_in_polygon(
+    px: float, py: float, verts: list[tuple[float, float]]
+) -> bool:
+    """Ray-casting point-in-polygon test."""
+    inside = False
+    n = len(verts)
+    j = n - 1
+    for i in range(n):
+        xi, yi = verts[i]
+        xj, yj = verts[j]
+        if ((yi > py) != (yj > py)) and (
+            px < (xj - xi) * (py - yi) / (yj - yi) + xi
+        ):
+            inside = not inside
+        j = i
+    return inside

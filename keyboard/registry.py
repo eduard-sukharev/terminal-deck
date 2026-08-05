@@ -37,6 +37,25 @@ class SwitchProtocol(Protocol):
         """Arbitrary metadata dict."""
 
 
+class KeycapProtocol(Protocol):
+    """A keycap profile providing dimensions and metadata."""
+
+    def base_size(self) -> float:
+        """Bottom square side for a 1u key (mm)."""
+
+    def top_diameter(self) -> float:
+        """Top circle diameter for a 1u key (mm); corner_radius = top_diameter / 2."""
+
+    def height(self) -> float:
+        """Cap height from base to top (mm)."""
+
+    def segments(self) -> int:
+        """Number of sample points per wire for lofting."""
+
+    def metadata(self) -> dict[str, Any]:
+        """Arbitrary metadata dict."""
+
+
 class StabilizerProtocol(Protocol):
     """A stabilizer family providing cutout polygon(s) for a key width."""
 
@@ -58,6 +77,7 @@ class StabilizerProtocol(Protocol):
 
 _SWITCH: dict[str, type] = {}
 _STABILIZER: dict[str, type] = {}
+_KEYCAP: dict[str, type] = {}
 
 
 def register_switch(name: str):
@@ -109,3 +129,30 @@ def registered_switches() -> frozenset[str]:
 
 def registered_stabilizers() -> frozenset[str]:
     return frozenset(_STABILIZER)
+
+
+def register_keycap(name: str):
+    """Decorator: register a keycap profile class under *name*."""
+    def decorator(cls):
+        _KEYCAP[name] = cls
+        cls._registry_name = name
+        return cls
+    return decorator
+
+
+def get_keycap(name: str) -> type:
+    """Return the keycap profile class for *name*.
+
+    Raises ``ValueError`` with registered profiles if not found.
+    """
+    try:
+        return _KEYCAP[name]
+    except KeyError:
+        registered = ", ".join(sorted(_KEYCAP))
+        raise ValueError(
+            f"Unknown keycap profile {name!r}. Registered: {registered}"
+        ) from None
+
+
+def registered_keycaps() -> frozenset[str]:
+    return frozenset(_KEYCAP)

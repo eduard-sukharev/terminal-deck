@@ -104,6 +104,7 @@ class Keyboard:
     stabilizer_family: str = "cherry"
     plate: dict[str, float] | None = None
     mounting: dict[str, Any] | None = None
+    keycap: dict[str, Any] | None = None
     controller: dict[str, object] | None = None
 
 
@@ -211,6 +212,7 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
             stabilizer_family=str(keyboard.get("stabilizer", {}).get("family", "cherry")),
             plate=keyboard.get("plate"),
             mounting=keyboard.get("mounting"),
+            keycap=keyboard.get("keycap"),
             controller=keyboard.get("controller"),
         ),
         hinge=Hinge(**{k: float(v) for k, v in hinge.items()}),

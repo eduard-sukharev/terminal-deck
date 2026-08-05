@@ -21,18 +21,22 @@ from keyboard.layout.kle_parser import load_kle, parse_kle
 from keyboard.layout.layout import KeyboardLayout
 from keyboard.metadata import KeyboardGeometryModel, KeyboardMetadata
 from keyboard.registry import (
+    get_keycap,
     get_stabilizer,
     get_switch,
+    register_keycap,
     register_stabilizer,
     register_switch,
+    registered_keycaps,
     registered_stabilizers,
     registered_switches,
 )
 from keyboard.validation import validate as _validate
 
-# Import built-in switch/stabilizer modules so their registrations populate.
+# Import built-in switch/stabilizer/keycap modules so their registrations populate.
 import keyboard.switches.kb_builder  # noqa: F401
 import keyboard.stabilizers.kb_builder  # noqa: F401
+import keyboard.keycaps.xda  # noqa: F401
 
 
 def parse_layout(data: list[list[Any]], pitch: float = 19.05) -> KeyboardLayout:
@@ -154,8 +158,11 @@ __all__ = [
     "KeyboardMetadata",
     "register_switch",
     "register_stabilizer",
+    "register_keycap",
     "get_switch",
     "get_stabilizer",
+    "get_keycap",
     "registered_switches",
     "registered_stabilizers",
+    "registered_keycaps",
 ]

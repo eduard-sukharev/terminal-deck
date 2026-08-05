@@ -64,16 +64,23 @@ def _rounded_rect(
     radius: float,
     segments: int,
 ) -> list[tuple[float, float]]:
-    """Rounded rectangle polygon, clockwise from bottom-left."""
+    """Rounded rectangle polygon, counter-clockwise from the bottom edge.
+
+    Each corner arc is centred at the inset point and swept across the
+    quadrant that *replaces* the sharp corner: the bottom-right arc runs from
+    the bottom edge (270°) to the right edge (0°), the top-right arc from the
+    right edge (0°) to the top edge (90°), and so on. Sweeping any other
+    quadrant would bulge the corner outward past the plate edges.
+    """
     if radius <= 0:
         return [(left, bottom), (right, bottom), (right, top), (left, top)]
 
     verts: list[tuple[float, float]] = []
     corners = [
-        (right - radius, bottom + radius, 0.0, 90.0),   # bottom-right
-        (right - radius, top - radius, 90.0, 180.0),     # top-right
-        (left + radius, top - radius, 180.0, 270.0),     # top-left
-        (left + radius, bottom + radius, 270.0, 360.0),  # bottom-left
+        (right - radius, bottom + radius, 270.0, 360.0),  # bottom-right
+        (right - radius, top - radius, 0.0, 90.0),        # top-right
+        (left + radius, top - radius, 90.0, 180.0),       # top-left
+        (left + radius, bottom + radius, 180.0, 270.0),   # bottom-left
     ]
     for cx, cy, start_deg, end_deg in corners:
         for i in range(segments):

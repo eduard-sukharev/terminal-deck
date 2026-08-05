@@ -4,7 +4,7 @@ type: "entity"
 status: "active"
 language: "default"
 source_paths: ["docs/keyboard_architecture.md", "keyboard/layout/", "keyboard/geometry/", "keyboard/reference/", "keyboard/registry.py", "keyboard/metadata.py", "keyboard/validation.py"]
-updated_at: "2026-08-04"
+updated_at: "2026-08-05"
 ---
 
 # Keyboard Layout Model and Libraries
@@ -53,6 +53,14 @@ produce a single polygon per key that includes the switch opening; costar
 produces two separate slot polygons. A key needs stabilizers when its effective
 width ≥ 2.0 units.  The plate generator requests geometry from the stabilizer
 rather than computing it.
+
+## Keycap profile library
+
+Keycaps follow the same registry pattern (`keycaps/xda.py` + the
+`KeycapProtocol` / `register_keycap` / `get_keycap` functions in
+`keyboard/registry.py`). One profile is registered: ``xda`` (18.5 mm base,
+15.0 mm top, 9.0 mm tall). The cyberdeck adapter `components/keycap_set.py`
+lofts one cap per switch centre. See [[keycaps]].
 
 ## Reference library (single source of truth)
 

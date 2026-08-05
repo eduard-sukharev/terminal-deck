@@ -44,7 +44,7 @@ def test_jd40_validation_passes():
     layout = _jd40_layout()
     model = _jd40_model()
     checks, errors = validate(layout, model, "mx_alps", "cherry")
-    assert checks == 6
+    assert checks == 8
     assert errors == [], f"Validation errors: {errors}"
 
 
@@ -52,7 +52,7 @@ def test_invalid_switch_family():
     layout = _jd40_layout()
     model = _jd40_model()
     checks, errors = validate(layout, model, "nonexistent", "cherry")
-    assert checks == 6
+    assert checks == 8
     assert any("switch" in e.lower() for e in errors)
 
 
@@ -60,5 +60,5 @@ def test_invalid_stabilizer_family():
     layout = _jd40_layout()
     model = _jd40_model()
     checks, errors = validate(layout, model, "mx_alps", "nonexistent")
-    assert checks == 6
+    assert checks == 8
     assert any("stabilizer" in e.lower() for e in errors)

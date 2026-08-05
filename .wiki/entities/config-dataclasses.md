@@ -4,7 +4,7 @@ type: "entity"
 status: "active"
 language: "default"
 source_paths: ["utilities/config_loader.py", "config/default.yaml"]
-updated_at: "2026-08-04"
+updated_at: "2026-08-05"
 ---
 
 # Config Dataclasses
@@ -29,7 +29,8 @@ Frozen dataclasses nested under `Config`:
 * `Display(width, height, thickness, diagonal, active_width, active_height)` —
   the 8.8" panel.
 * `Bezel(inset, thickness)` and `Glass(recess_depth)` — lid front.
-* `Keyboard(columns, rows, pitch, layout)` — the 40% board.
+* `Keyboard(columns, rows, pitch, layout, keycap)` — the 40% board; `keycap`
+  holds `{profile: xda, enabled: true}`.
 * `Hinge(diameter, pin, wire_tunnel)` — hinge subsystem geometry.
 * `Screws(body, standoff)` — screw library references.
 * `Material(name, layer_height, minimum_feature)` — printer limits used by

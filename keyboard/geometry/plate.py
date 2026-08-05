@@ -12,6 +12,7 @@ from keyboard.geometry.mounting import generate_mounting_holes
 from keyboard.geometry.outline import generate_outline
 from keyboard.layout.layout import KeyboardLayout
 from keyboard.metadata import KeyboardGeometryModel, KeyboardMetadata
+from keyboard.registry import get_switch
 
 
 def generate(
@@ -55,13 +56,20 @@ def generate(
     centroid = layout._centroid()
     centers = layout.switch_centers
 
-    outline = generate_outline(centers, margin=edge_margin, corner_radius=corner_radius)
+    sw = get_switch(switch_family)()
+    verts = sw.cutout_vertices()
+    cutout_half_x = max(abs(v[0]) for v in verts)
+    cutout_half_y = max(abs(v[1]) for v in verts)
+    effective_margin = edge_margin + max(cutout_half_x, cutout_half_y)
+
+    outline = generate_outline(centers, margin=effective_margin, corner_radius=corner_radius)
 
     sw_cuts = switch_cutouts(layout.keys, switch_family, pitch, centroid)
     stab_cuts = stabilizer_cutouts(layout.keys, stabilizer_family, pitch, centroid)
 
     holes = generate_mounting_holes(
         outline, edge_offset=screw_edge_offset, screw_diameter=screw_diameter,
+        switch_cutouts=sw_cuts, stabilizer_cutouts=stab_cuts,
     )
 
     xs = [p[0] for p in outline]

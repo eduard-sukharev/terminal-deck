@@ -35,7 +35,7 @@ class KeyboardPlate(Component):
         self._stab_family = str(data.get("stabilizer_family", "cherry"))
         plate = data.get("plate", {}) or {}
         self._plate_thickness = float(plate.get("thickness", 1.5))
-        self._edge_margin = float(plate.get("edge_margin", 6.0))
+        self._edge_margin = float(plate.get("edge_margin", 2.0))
         self._corner_radius = float(plate.get("corner_radius", 8.0))
         mounting = data.get("mounting", {}) or {}
         self._screw_size = str(mounting.get("screw", "M2"))
@@ -124,12 +124,14 @@ class KeyboardPlate(Component):
         for cut in self._model.switch_cutouts:
             solid = cq_helpers.extrude_polygon(
                 cut.vertices, self._plate_thickness + 1.0, cut.x, cut.y,
+                z=self._plate_thickness / 2.0,
             )
             plate = plate.cut(solid)
 
         for cut in self._model.stabilizer_cutouts:
             solid = cq_helpers.extrude_polygon(
                 cut.vertices, self._plate_thickness + 1.0, cut.x, cut.y,
+                z=self._plate_thickness / 2.0,
             )
             plate = plate.cut(solid)
 

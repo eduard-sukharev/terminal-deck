@@ -47,31 +47,17 @@ def _parse_row(row_data: list[Any], row_y: float = 0.0) -> list[Key]:
     keys: list[Key] = []
     x: float = 0.0
     y: float = row_y
-    default_w: float = 1.0
-    default_h: float = 1.0
-    default_rotation: float = 0.0
-    default_rot_x: float = 0.0
-    default_rot_y: float = 0.0
     pending: dict[str, Any] = {}
 
     for item in row_data:
         if isinstance(item, dict):
-            # Metadata dict — applies to the next key(s)
+            # Metadata dict — applies to the next key only (KLE one-shot
+            # semantics), then reverts to the defaults below.
             pending.update(item)
             if "x" in item:
                 x += float(item["x"])
             if "y" in item:
                 y += float(item["y"])
-            if "w" in item:
-                default_w = float(item["w"])
-            if "h" in item:
-                default_h = float(item["h"])
-            if "r" in item:
-                default_rotation = float(item["r"])
-            if "rx" in item:
-                default_rot_x = float(item["rx"])
-            if "ry" in item:
-                default_rot_y = float(item["ry"])
             if "a" in item:
                 pass  # alignment — not stored per-key
             continue
@@ -83,11 +69,11 @@ def _parse_row(row_data: list[Any], row_y: float = 0.0) -> list[Key]:
 
         if isinstance(item, str):
             # Key legend
-            w = float(pending.pop("w", default_w))
-            h = float(pending.pop("h", default_h))
-            rx = float(pending.pop("rx", default_rot_x))
-            ry = float(pending.pop("ry", default_rot_y))
-            r = float(pending.pop("r", default_rotation))
+            w = float(pending.pop("w", 1.0))
+            h = float(pending.pop("h", 1.0))
+            rx = float(pending.pop("rx", 0.0))
+            ry = float(pending.pop("ry", 0.0))
+            r = float(pending.pop("r", 0.0))
             _t = pending.pop("_t", None)
             _s = pending.pop("_s", None)
             _r = pending.pop("_r", None)

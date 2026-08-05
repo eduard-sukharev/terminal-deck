@@ -9,11 +9,14 @@ keyboard:
     family: cherry
   plate:
     thickness: 1.5
-    edge_margin: 8.0
-    corner_radius: 8.0
+    edge_margin: 4.5
+    corner_radius: 2.0
   mounting:
     screw: M2
     edge_offset: 5.0
+  keycap:
+    profile: xda
+    enabled: true
   controller:
     rp2040: true
     width: 23.5

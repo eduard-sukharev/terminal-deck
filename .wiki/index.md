@@ -3,8 +3,8 @@ title: "Cyberdeck Wiki"
 type: "index"
 status: "active"
 language: "default"
-last_commit: "c0bb71cfaf593007df3d79d63b677a44b1d7bb4e"
-updated_at: "2026-08-04"
+last_commit: "6adf54a28d436979f0c3d1dc7f573c0e9ecd9c9d"
+updated_at: "2026-08-05"
 ---
 
 # Cyberdeck Wiki
@@ -28,12 +28,13 @@ The data layer needs no CadQuery; the CAD pass needs the miniforge env.
 
 ```bash
 source $HOME/miniforge/bin/activate        # CadQuery 2.8 lives here
-python main.py --config config/default.yaml --layout default --steps data
-python main.py --steps all                  # full CAD + exports (~1 min)
+make data                                   # data layer only
+make all                                    # full CAD + exports (~1 min)
+make test                                   # pytest suite (55 tests)
 ```
 
-Expected output of `--steps data`: a placement validation report with 8 checks
-(`5 checks: PASS`). The full run writes `cyberdeck_{assembly,base,lid,hinge}.step/.stl/.svg`
+Expected output of `make data`: a placement validation report with 8 checks
+(`8 checks: PASS`). The full run writes `cyberdeck_{assembly,base,lid,hinge}.step/.stl/.svg`
 into `generated/`.
 
 First files to read:
@@ -93,6 +94,8 @@ export STEP/STL/SVG → run validation.
   outline) via switch/stabilizer libraries backed by kb_builder reference data.
   Pure data — no CadQuery. The cyberdeck adapter `components/keyboard_plate.py`
   extrudes the result into a solid. See [[keyboard-subsystem]].
+* The **keycap and switch rendering** — XDA keycaps lofted above the plate
+  and simplified switch bodies passing through it. See [[keycaps]].
 
 ## What should I avoid breaking?
 

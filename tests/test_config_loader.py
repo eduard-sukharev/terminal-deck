@@ -6,7 +6,7 @@ from utilities.config_loader import load_config, build_config, Config, Display, 
 def test_load_default():
     cfg = load_config("config/default.yaml")
     assert isinstance(cfg, Config)
-    assert cfg.wall_thickness == 2.5
+    assert cfg.wall_thickness == 2.0
 
 
 def test_display_flex():

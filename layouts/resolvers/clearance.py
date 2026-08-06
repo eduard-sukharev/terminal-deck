@@ -60,19 +60,22 @@ class ClearanceResolver:
         worst: float | None = None
         for ax, ay, az, abox in subj.occupied_volumes():
             for bx, by, bz, bbox in target.occupied_volumes():
+                # World-frame volume centers (rotation + flip aware).
+                sx, sy, sz = subj_placement.world_offset(ax, ay, az)
+                tx, ty, tz = target_placement.world_offset(bx, by, bz)
+                # Flipped components hang below their origin.
+                if subj_placement.flip_x:
+                    sz -= abox.height / 2.0
+                else:
+                    sz += abox.height / 2.0
+                if target_placement.flip_x:
+                    tz -= bbox.height / 2.0
+                else:
+                    tz += bbox.height / 2.0
                 seps = (
-                    _separation(
-                        subj_placement.x + ax, abox.width,
-                        target_placement.x + bx, bbox.width,
-                    ),
-                    _separation(
-                        subj_placement.y + ay, abox.depth,
-                        target_placement.y + by, bbox.depth,
-                    ),
-                    _separation(
-                        subj_placement.z + az + abox.height / 2.0, abox.height,
-                        target_placement.z + bz + bbox.height / 2.0, bbox.height,
-                    ),
+                    _separation(sx, abox.width, tx, bbox.width),
+                    _separation(sy, abox.depth, ty, bbox.depth),
+                    _separation(sz, abox.height, tz, bbox.height),
                 )
                 pair_gap = seps[axis_index] if axis_index is not None else max(seps)
                 worst = pair_gap if worst is None else min(worst, pair_gap)

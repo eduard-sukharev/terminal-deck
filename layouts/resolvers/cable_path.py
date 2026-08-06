@@ -72,13 +72,12 @@ class CablePathResolver:
                 f"{constraint.to_component} has no {constraint.to_connector_type}",
             )
 
-        # World-frame connector positions.
-        fx = from_placement.x + from_conn.x
-        fy = from_placement.y + from_conn.y
-        fz = from_placement.z + from_conn.z
-        tx = to_placement.x + to_conn.x
-        ty = to_placement.y + to_conn.y
-        tz = to_placement.z + to_conn.z
+        # World-frame connector positions (honors the placement's rotation
+        # and flip so a 180°-turned/flipped driver reports real coordinates).
+        fx, fy, fz = from_placement.world_offset(
+            from_conn.x, from_conn.y, from_conn.z
+        )
+        tx, ty, tz = to_placement.world_offset(to_conn.x, to_conn.y, to_conn.z)
 
         # Route the cable through the real routing engine so the bend and
         # bundle-diameter rules come from one place rather than being

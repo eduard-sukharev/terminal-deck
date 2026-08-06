@@ -19,24 +19,25 @@ Python data — it imports cleanly and is what `--steps data` exercises.
 * **Config loading** (`utilities/config_loader.py`) — YAML → frozen `Config`.
   See [[config-dataclasses]].
 * **Layouts** (`layouts/`) — placement-only definitions. `layouts/base.py`
-  provides the placement frame. Two kinds of layouts:
+  provides the placement frame. Three kinds of layouts:
   * **Imperative** (`layout_default.py`, `layout_compact.py`) — direct
     `Placement()` calls with hardcoded arithmetic.
-  * **Constraint-based** (`layout_constrained.py`, `layout_default_v2.py`,
-    `layout_compact_v2.py`, `layout_recipe.py`) — declarative `Constraint`
-    objects resolved by `LayoutComposer`. See [[constraint-system]].
-  * **YAML recipes** (`config/layouts/`) — layouts defined entirely in YAML,
-    loaded by `RecipeLayout`. See [[constraint-system]].
-  `make_layout(name, components, config)` is the factory.
+  * **Constraint-based Python** (`layout_constrained.py`, `layout_default_v2.py`,
+    `layout_compact_v2.py`) — declarative `Constraint` objects resolved by
+    `LayoutComposer`. See [[constraint-system]].
+  * **YAML recipes** (`config/layouts/default.yaml`, `config/layouts/compact.yaml`)
+    — layouts defined entirely in YAML, loaded by `RecipeLayout`. Support
+    `{component.field}` and `{config.path}` references. See [[constraint-system]].
+  `make_layout(name, components, config, recipe_path)` is the factory.
 * **Constraint system** (`layouts/constraints.py`, `layouts/composer.py`,
-  `layouts/resolvers/`) — 13 constraint types with corresponding resolvers.
+  `layouts/resolvers/`) — 13 constraint types with 13 real resolvers (no stubs).
   Pure data, no CadQuery. See [[constraint-system]].
 * **Assembly sizing** (`assemblies/assembly.py`) — computes enclosure size,
   mounting bosses, and connector cutouts from placements without building solids.
 * **Cable routing** (`routing/cable_routing.py`) — tracks HDMI/USB/power, outputs
   minimum bend radius and clearance tunnels.
 * **Fasteners** (`utilities/fasteners.py`) — screw/insert/nut-trap library.
-* **Validation** (`utilities/validation.py`) — the 8-check suite. See
+* **Validation** (`utilities/validation.py`) — the 9-check suite. See
   [[validation-suite]].
 * **Keyboard subsystem** (`keyboard/`) — pure data: KLE layout parsing, switch
   and stabilizer libraries, plate geometry model, and its own validation. No

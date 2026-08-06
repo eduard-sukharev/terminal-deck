@@ -27,7 +27,7 @@ A `Makefile` wraps the common commands (run after activating miniforge):
 make data    # data layer only (config → components → layout → validation)
 make all     # full CAD + exports (STEP/STL/SVG)
 make test    # pytest suite
-make check   # py_compile all modules
+make check   # py_compile all modules (runs `make data` first)
 make clean   # remove generated files
 ```
 
@@ -36,14 +36,20 @@ make clean   # remove generated files
 ```bash
 python main.py --config config/default.yaml --layout default --steps data
 python main.py --steps all
+python main.py --layout recipe_default --steps data   # YAML recipe layout
+python main.py --layout recipe_default --layout-recipe my_layout.yaml  # custom recipe
 python -m pytest
 python -m py_compile main.py components/*.py geometry/*.py layouts/*.py assemblies/*.py case/*.py routing/*.py exports/*.py utilities/*.py keyboard/*.py keyboard/*/*.py
 ```
 
-* `--steps data` — config → components → layout → validation (8 checks), prints
-  a report. No CadQuery needed.
+* `--steps data` — config → components → layout → validation (9 checks), prints
+  a report. No CadQuery needed. Constraint-based layouts also print a constraint
+  resolution report.
 * `--steps all` — additionally builds the assembly/base/lid/hinge solids and
   exports STEP/STL/SVG to `generated/`. Boolean-heavy base shell takes ~1 min.
+* `--layout` accepts `default`, `default_v2`, `compact`, `compact_v2`,
+  `constrained`, `recipe_default`, `recipe_compact`.
+* `--layout-recipe <path>` overrides the built-in recipe for `recipe_*` layouts.
 
 ## Expected success output
 
@@ -51,7 +57,7 @@ python -m py_compile main.py components/*.py geometry/*.py layouts/*.py assembli
 
 ```
 [pipeline] placement validation:
-8 checks: PASS
+9 checks: PASS
   [ok  ] no-collisions: ...
   ...
 ```
@@ -62,6 +68,8 @@ python -m py_compile main.py components/*.py geometry/*.py layouts/*.py assembli
 2. `main.py` — `BuildPipeline.run` wires the whole pipeline together.
 3. `components/base.py` — the data model and `Component` interface.
 4. `utilities/config_loader.py` — how YAML becomes the `Config` dataclass.
+5. `CLAUDE.md` — full command reference, architecture summary, and conventions.
+6. `ROADMAP.md` — constraint system design decisions and refactoring phases.
 
 ## One safe first change
 

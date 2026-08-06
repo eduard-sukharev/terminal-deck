@@ -10,11 +10,12 @@ def test_display_flex_config():
         "width": 231.0,
         "height": 64.5,
         "thickness": 6.5,
-        "flex": {"width": 38.5, "thickness": 1.0, "fold": 6.0},
+        "flex": {"width": 38.5, "thickness": 1.0, "fold": 6.0, "edge_protrusion": 1.0},
     })
     assert d._flex_width == 38.5
     assert d._flex_thickness == 1.0
     assert d._flex_fold == 6.0
+    assert d._flex_edge_protrusion == 1.0
 
 
 def test_display_flex_defaults():
@@ -22,6 +23,7 @@ def test_display_flex_defaults():
     assert d._flex_width == 38.5
     assert d._flex_thickness == 1.0
     assert d._flex_fold == 6.0
+    assert d._flex_edge_protrusion == 0.75
 
 
 def test_hdmi_driver_fpc_slot():

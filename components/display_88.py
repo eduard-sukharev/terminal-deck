@@ -9,11 +9,12 @@ Measured (user, calipers, mm):
 
 Orientation: the panel ships with its ribbon on a short edge ("bottom" in the
 vendor's default portrait 480x1920 framing). This build mounts it landscape
-(1920 wide, 231.0 mm across). The ribbon exits the east (+X) short edge, then
-folds back immediately behind the panel — so the mating connector behind the
-panel faces west, toward the driver board's west FPC slot. The driver board
-mounts back-to-back behind the LCD (see ``components/hdmi_driver.py``). The FPC
-connection is internal (no shell cutout).
+(1920 wide, 231.0 mm across). The ribbon exits the east (+X) short edge — a
+thin stub protrudes past the panel outline (``flex.edge_protrusion``) — and
+runs flat into the driver board's FPC slot. The driver board mounts flat
+against the panel back, rotated 180° so its FPC slot faces east (see
+``components/hdmi_driver.py``). The FPC connection is internal (no shell
+cutout).
 
 The glass recess and bezel live in the lid (``case/lid.py``); this module
 describes the physical panel and its FPC.
@@ -43,6 +44,7 @@ class Display88(Component):
         self._flex_width = float(flex.get("width", 38.5))
         self._flex_thickness = float(flex.get("thickness", 1.0))
         self._flex_fold = float(flex.get("fold", 6.0))
+        self._flex_edge_protrusion = float(flex.get("edge_protrusion", 0.75))
 
     def size(self) -> BoundingBox:
         return BoundingBox(self.width, self.height, self.thickness)
@@ -81,4 +83,20 @@ class Display88(Component):
 
         cq_helpers.require_cq()
         box = cq_helpers.box_centered(self.width, self.height, self.thickness)
-        return cq_helpers.translate(box, 0.0, 0.0, self.thickness / 2.0)
+        body = cq_helpers.translate(box, 0.0, 0.0, self.thickness / 2.0)
+
+        # Ribbon stub standing proud of the east short edge, toward the driver
+        # board's FPC slot. Centered on the short edge at mid-thickness, the
+        # same height as the panel FPC connector it continues.
+        if self._flex_edge_protrusion > 0.0:
+            ribbon = cq_helpers.box_centered(
+                self._flex_edge_protrusion, self._flex_width, self._flex_thickness
+            )
+            ribbon = cq_helpers.translate(
+                ribbon,
+                self.width / 2 + self._flex_edge_protrusion / 2,
+                0.0,
+                self.thickness / 2,
+            )
+            body = body.union(ribbon)
+        return body

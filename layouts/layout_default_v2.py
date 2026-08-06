@@ -91,13 +91,18 @@ class LayoutDefaultV2(ConstraintLayout):
             # Display centered in the lid at stacking height.
             FixedPosition(subject="display", z=lid_z),
             CenteredOn(subject="display", axes=("x", "y")),
-            # Driver board behind the display (below it in Z).
+            # Driver board flat against the panel back (flipped), rotated 180°
+            # so its FPC slot faces the panel ribbon. offset_z=-0.5 keeps the
+            # PCB backside 0.5 mm off the panel; a flipped board hangs below
+            # its origin, so the driver's top face sits 0.5 mm below the
+            # display's Z.
             RelativePlacement(
                 subject="driver", target="display",
                 offset_x=driver.reference_origin()[0],
                 offset_y=driver.reference_origin()[1],
-                offset_z=-(driver.size().height
-                           if hasattr(driver, "size") else 8.0),
+                offset_z=-0.5,
+                rotation=180.0,
+                flip=True,
             ),
             # HDMI cable path: SBC → hinge wire tunnel → driver board.
             # The via point is at the hinge center (rear edge, mid-height).

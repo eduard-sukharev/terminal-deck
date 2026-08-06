@@ -12,10 +12,11 @@ updated_at: "2026-08-06"
 Every build runs a set of checks on **pure data** (placements + component specs +
 config) — no CadQuery needed. That is what `--steps data` prints as the report.
 
-## The 8 checks (`utilities/validation.py`)
+## The 9 checks (`utilities/validation.py`)
 
 1. **no-collisions** — placed components overlap in XY *and* Z (the clamshell
-   overlaps in XY by design; it only fails when Z ranges also collide).
+   overlaps in XY by design; it only fails when Z ranges also collide). Uses
+   `occupied_volumes()` so hollow parts only collide where they occupy space.
 2. **no-floating-bosses** — every component with mounting holes has a supporting
    wall beneath (`shell_depths`).
 3. **minimum-wall-thickness** — `config.wall.thickness` is at least 2.0 mm.
@@ -27,6 +28,9 @@ config) — no CadQuery needed. That is what `--steps data` prints as the report
    opening (`shell_opening` list).
 7. **lid-closes** — lid interior clears the tallest placed component.
 8. **hinge-clears** — hinge Z span does not intersect the component volume.
+9. **dimension-consistency** — keyboard and display envelope widths are
+   compatible (they share the hinge axis; width ratio must be ≤ 1.15). Every
+   placed component fits within the enclosure envelope.
 
 ## Constraint resolution report
 
@@ -55,6 +59,8 @@ inputs.
 `BuildPipeline.validate` in `main.py` computes `max_height` from placements and
 passes pre-enclosure assumptions: mounted components sit on the base floor
 (`shell_depths = wall_thickness`) and every external connector needs an opening.
+For constraint-based layouts, the pipeline also prints the constraint resolution
+report after validation (hard violations abort the build).
 
 See [[build-pipeline]] for where validation sits in the run, and [[cad-conventions]]
 for the rules the checks enforce.

@@ -19,6 +19,8 @@ shells, hinge, STEP/STL/SVG export).
 source $HOME/miniforge/bin/activate
 python main.py --config config/default.yaml --layout default --steps data   # data layer only
 python main.py --steps all                                                  # full CAD + exports
+python main.py --steps all --targets display                                # display sub-assembly only (fast)
+python main.py --steps all --targets display,base                           # selected targets
 python -m py_compile main.py components/*.py geometry/*.py layouts/*.py assemblies/*.py case/*.py routing/*.py exports/*.py utilities/*.py keyboard/*.py keyboard/*/*.py
 python -m pytest
 ```
@@ -27,6 +29,22 @@ python -m pytest
 prints the report. `--steps all` additionally sizes the enclosure/bosses/
 cutouts, builds the assembly/base/lid/hinge solids, and exports STEP/STL/SVG
 to `generated/`. Full run takes ~1 min (boolean-heavy base shell).
+
+**Selective build targets** (`--targets`, comma-separated):
+- `assembly` — full union of all placements
+- `base` — base shell (expensive boolean)
+- `lid` — combined lid assembly: lid_base + display + lid_bezel
+- `lid_base` — lid rear shell tray
+- `lid_bezel` — lid front plate with glass cutout
+- `hinge` — hinge barrels + pin + wire tunnel
+- `display` — LCD panel + HDMI driver combined (the sub-assembly, fast)
+- `components` — all per-component debug STLs
+- `comp:<role>` — a single component's raw STL (e.g. `comp:driver`, `comp:display`)
+- `all` — every target above (default)
+
+Makefile convenience targets: `make display`, `make base`, `make lid`,
+`make lid_base`, `make lid_bezel`, `make hinge`, `make assembly`,
+`make components`, `make build TARGETS=...`.
 
 ## Architecture
 

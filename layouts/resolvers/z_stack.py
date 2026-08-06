@@ -45,7 +45,8 @@ class ZStackResolver:
                     unplaced.append(name)
                     continue
                 placements[name] = Placement(
-                    comp, existing.x, existing.y, existing.rotation, current_z
+                    comp, existing.x, existing.y, existing.rotation, current_z,
+                    existing.flip_x,
                 )
                 max_height = max(max_height, comp.size().height)
             current_z += max_height + constraint.gap

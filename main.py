@@ -105,7 +105,7 @@ class BuildPipeline:
         """Run the placement validation suite and return its summary."""
         assert self.config is not None
         max_height = max(
-            (p.z + p.component.size().height for p in placements), default=0.0
+            (p.z_bounds()[1] for p in placements), default=0.0
         )
         report = run_all(
             placements,
@@ -118,7 +118,7 @@ class BuildPipeline:
         )
         return report.summary()
 
-    def run(self, steps: str = "all") -> None:
+    def run(self, steps: str = "all", targets: str = "all") -> None:
         """Execute the pipeline up to ``steps``.
 
         Parameters
@@ -126,6 +126,10 @@ class BuildPipeline:
         steps : str
             ``"all"`` runs every stage including CAD generation and export;
             ``"data"`` stops before CAD generation.
+        targets : str
+            Comma-separated build targets (default ``"all"``).  Buckets:
+            ``all``, ``assembly``, ``base``, ``lid``, ``hinge``, ``display``,
+            ``components``.  Per-component: ``comp:<role>``.
         """
         config = self.load_config()
         print(f"[pipeline] config: {self.config_path} ({self.topics})")
@@ -209,8 +213,13 @@ class BuildPipeline:
         from components.hinge import Hinge as HingePart
         from exports import EXPORTERS
         from utilities import cq_helpers
+        from utilities.targets import resolve_targets
 
         cq_helpers.require_cq()
+
+        # Resolve build targets.
+        target_tokens = [t.strip() for t in targets.split(",") if t.strip()]
+        buckets, comp_roles = resolve_targets(target_tokens, set(components))
 
         hinge_cfg = {
             "diameter": config.hinge.diameter,
@@ -219,39 +228,74 @@ class BuildPipeline:
         }
         hinge = HingePart(hinge_cfg, wall_thickness=config.wall_thickness)
 
-        assembly_solid = assembly.build()
-        base = Base(assembly, config, hinge=hinge)
-        base_solid = base.build()
+        # Build requested solids.
+        parts: dict[str, object] = {}
 
-        # The lid takes the display placement and the case footprint.
-        display = next(p for p in placements if p.component is components["display"])
-        lid = Lid(
-            display.component,
-            config,
-            hinge=hinge,
-            world_z=display.z,
-            footprint=(size.width, size.depth),
+        if "assembly" in buckets:
+            parts["assembly"] = assembly.build()
+
+        if "base" in buckets:
+            base = Base(assembly, config, hinge=hinge)
+            parts["base"] = base.build()
+
+        # Display placement is needed for lid and hinge.
+        needs_display_placement = (
+            "lid" in buckets or "lid_base" in buckets or "lid_bezel" in buckets
+            or "hinge" in buckets
         )
-        lid_solid = lid.build()
+        if needs_display_placement:
+            display = next(p for p in placements if p.component is components["display"])
 
-        # Hinge barrels at the rear edge, centered in the gap between the base
-        # cavity top and the lid underside.
-        base_top = max(
-            (p.z + p.component.size().height for p in placements if p.z <= 1e-6),
-            default=0.0,
-        ) + config.clearance.shell
-        driver_height = float(config.hardware.get("driver_board", {}).get("height", 4.6))
-        lid_outer_bottom = display.z - driver_height - config.clearance.shell - config.wall_thickness
-        hinge_z = (base_top + lid_outer_bottom) / 2.0
-        hinge_solid = hinge.build(case_depth=size.width)
-        hinge_solid = cq_helpers.translate(hinge_solid, 0.0, -size.depth / 2.0, hinge_z)
+        # Display sub-assembly solid (shared between "display" bucket and
+        # the combined "lid" target).
+        display_assembly_solid = None
+        if "display" in buckets or "lid" in buckets:
+            from assemblies.assembly import select_placements
 
-        parts = {
-            "assembly": assembly_solid,
-            "base": base_solid,
-            "lid": lid_solid,
-            "hinge": hinge_solid,
-        }
+            display_placements = select_placements(
+                placements, {components["display"], components["driver"]}
+            )
+            if display_placements:
+                display_assembly_solid = assembly.build_subset(display_placements)
+                if "display" in buckets:
+                    parts["display"] = display_assembly_solid
+
+        # Lid base, bezel, and combined lid assembly.
+        if "lid_base" in buckets or "lid_bezel" in buckets or "lid" in buckets:
+            lid = Lid(
+                display.component,
+                config,
+                hinge=hinge,
+                world_z=display.z,
+                footprint=(size.width, size.depth),
+            )
+
+        if "lid_base" in buckets:
+            parts["lid_base"] = lid.build_base()
+
+        if "lid_bezel" in buckets:
+            parts["lid_bezel"] = lid.build_bezel()
+
+        if "lid" in buckets:
+            lid_solid = lid.build_base()
+            if display_assembly_solid is not None:
+                lid_solid = lid_solid.union(display_assembly_solid)
+            lid_solid = lid_solid.union(lid.build_bezel())
+            parts["lid"] = lid_solid
+
+        if "hinge" in buckets:
+            base_top = max(
+                (p.z + p.component.size().height for p in placements if p.z <= 1e-6),
+                default=0.0,
+            ) + config.clearance.shell
+            driver_height = float(config.hardware.get("driver_board", {}).get("height", 4.6))
+            lid_outer_bottom = display.z - driver_height - config.clearance.shell - config.wall_thickness
+            hinge_z = (base_top + lid_outer_bottom) / 2.0
+            hinge_solid = hinge.build(case_depth=size.width)
+            hinge_solid = cq_helpers.translate(hinge_solid, 0.0, -size.depth / 2.0, hinge_z)
+            parts["hinge"] = hinge_solid
+
+        # Export all built parts.
         for name, solid in parts.items():
             for fmt, exporter_cls in EXPORTERS.items():
                 exporter = exporter_cls()
@@ -259,18 +303,29 @@ class BuildPipeline:
                 exporter.export(solid, path)
                 print(f"[pipeline] exported {name} -> {path}")
 
-        # Export individual component STLs for debug/visualisation.
+        # Per-component debug STLs.
         stl_cls = EXPORTERS.get("stl")
         if stl_cls is not None:
             stl_exporter = stl_cls()
-            for comp_name, comp in components.items():
-                try:
-                    comp_solid = comp.build()
-                except NotImplementedError:
-                    continue
-                path = stl_exporter.output_path(f"component_{comp_name}")
-                stl_exporter.export(comp_solid, path)
-                print(f"[pipeline] exported component {comp_name} -> {path}")
+            if "components" in buckets:
+                for comp_name, comp in components.items():
+                    try:
+                        comp_solid = comp.build()
+                    except NotImplementedError:
+                        continue
+                    path = stl_exporter.output_path(f"component_{comp_name}")
+                    stl_exporter.export(comp_solid, path)
+                    print(f"[pipeline] exported component {comp_name} -> {path}")
+            else:
+                for role in comp_roles:
+                    comp = components[role]
+                    try:
+                        comp_solid = comp.build()
+                    except NotImplementedError:
+                        continue
+                    path = stl_exporter.output_path(f"component_{role}")
+                    stl_exporter.export(comp_solid, path)
+                    print(f"[pipeline] exported component {role} -> {path}")
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
@@ -305,6 +360,14 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         choices=["all", "data"],
         help="'all' runs every stage; 'data' stops before CAD generation",
     )
+    parser.add_argument(
+        "--targets",
+        default="all",
+        help="comma-separated build targets (default: all). "
+             "Buckets: all, assembly, base, lid, lid_base, lid_bezel, "
+             "hinge, display, components. "
+             "Per-component: comp:<role> (e.g. comp:driver).",
+    )
     return parser.parse_args(argv)
 
 
@@ -316,7 +379,7 @@ def main(argv: list[str] | None = None) -> int:
         recipe_path=args.layout_recipe,
     )
     try:
-        pipeline.run(steps=args.steps)
+        pipeline.run(steps=args.steps, targets=args.targets)
     except NotImplementedError as exc:
         print(f"[pipeline] CAD stage not yet implemented: {exc}", file=sys.stderr)
         return 2

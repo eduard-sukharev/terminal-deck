@@ -22,6 +22,18 @@ from layouts.base import Placement
 from utilities.config_loader import Config
 
 
+def select_placements(
+    placements: list[Placement], keep: set[Component]
+) -> list[Placement]:
+    """Return the placements whose component is in ``keep``, in layout order.
+
+    Identity-matches on the component objects so grouping never depends on
+    component names. Used to build sub-assemblies (e.g. the display assembly:
+    the panel and its HDMI driver) from a subset of the full placement set.
+    """
+    return [p for p in placements if p.component in keep]
+
+
 @dataclass(frozen=True)
 class EnclosureSize:
     """Overall envelope of the closed case (mm)."""
@@ -68,7 +80,8 @@ class Assembly:
             half_d = abs(box.width * math.sin(rad)) / 2 + abs(box.depth * math.cos(rad)) / 2
             xs.extend([placement.x - half_w, placement.x + half_w])
             ys.extend([placement.y - half_d, placement.y + half_d])
-            zs.extend([placement.z, placement.z + box.height])
+            z0, z1 = placement.z_bounds()
+            zs.extend([z0, z1])
 
         width = 2 * max(abs(min(xs)), abs(max(xs))) + 2 * (clearance + wall)
         depth = 2 * max(abs(min(ys)), abs(max(ys))) + 2 * (clearance + wall)
@@ -92,13 +105,17 @@ class Assembly:
                 a, b = pa.component, pb.component
                 for ax, ay, az, abox in a.occupied_volumes():
                     for bx, by, bz, bbox in b.occupied_volumes():
-                        a_z0, a_z1 = pa.z + az, pa.z + az + abox.height
-                        b_z0, b_z1 = pb.z + bz, pb.z + bz + bbox.height
+                        # World-frame volume centers (rotation + flip aware).
+                        wx, wy, wz = pa.world_offset(ax, ay, az)
+                        vx, vy, vz = pb.world_offset(bx, by, bz)
+                        # Flipped components hang below their origin.
+                        a_z0, a_z1 = (wz - abox.height, wz) if pa.flip_x else (wz, wz + abox.height)
+                        b_z0, b_z1 = (vz - bbox.height, vz) if pb.flip_x else (vz, vz + bbox.height)
                         if a_z1 <= b_z0 or b_z1 <= a_z0:
                             continue
                         if _overlap_xy(
-                            pa.x + ax, pa.y + ay, abox.width, abox.depth,
-                            pb.x + bx, pb.y + by, bbox.width, bbox.depth,
+                            wx, wy, abox.width, abox.depth,
+                            vx, vy, bbox.width, bbox.depth,
                         ):
                             problems.append(f"{a.name} overlaps {b.name}")
         return problems
@@ -127,7 +144,9 @@ class Assembly:
                     hole_diameter=hole.diameter,
                     height=hole.height,
                 )
-                result.append((placement.x + hole.x, placement.y + hole.y, spec))
+                # Transform the hole into world space (rotation + flip aware).
+                bx, by, _ = placement.world_offset(hole.x, hole.y, 0.0)
+                result.append((bx, by, spec))
         return result
 
     def connector_cutouts(self, clearance: float | None = None) -> list:
@@ -150,7 +169,6 @@ class Assembly:
         cutouts = []
         for placement in self.placements:
             component: Component = placement.component
-            rad = math.radians(placement.rotation)
             box = component.size()
             for connector in component.connectors():
                 if connector.internal:
@@ -158,17 +176,15 @@ class Assembly:
                 cutout = from_connector(connector, clearance)
 
                 # World-space direction and origin after the placement's Z
-                # rotation (rotate the connector's local XY by the angle).
-                wx = connector.direction[0] * math.cos(rad) - connector.direction[1] * math.sin(rad)
-                wy = connector.direction[0] * math.sin(rad) + connector.direction[1] * math.cos(rad)
-                direction = (wx, wy, connector.direction[2])
-                cx = connector.x * math.cos(rad) - connector.y * math.sin(rad)
-                cy = connector.x * math.sin(rad) + connector.y * math.cos(rad)
+                # rotation and optional X flip.
+                direction = placement.world_direction(*connector.direction)
+                cx, cy, cz = placement.world_offset(connector.x, connector.y, connector.z)
+                wx, wy = direction[0], direction[1]
 
                 # Distance from the connector origin to the wall outer face.
                 # Determine the primary axis from the rotated direction (use
                 # a tolerance for floating-point noise from sin(π)).
-                px, py = placement.x + cx, placement.y + cy
+                px, py = cx, cy
                 if abs(wx) >= abs(wy):
                     distance = (half_w - px) if wx > 0.0 else (px + half_w)
                     reach = box.width / 2 + clearance + wall
@@ -195,7 +211,7 @@ class Assembly:
     def max_component_height(self) -> float:
         """Height of the highest component stack above z=0 (mm)."""
         return max(
-            (placement.z + placement.component.size().height for placement in self.placements),
+            (placement.z_bounds()[1] for placement in self.placements),
             default=0.0,
         )
 
@@ -203,21 +219,46 @@ class Assembly:
         """Generate the assembled solid (all components in place).
 
         Unions every placed component's solid, transformed to its world
-        placement (Z rotation first, then translation).
+        placement (Z rotation first, then translation). See
+        :meth:`build_subset` for the shared transform logic.
 
         Returns
         -------
         cadquery.Workplane
             The union of all component solids.
         """
+        return self.build_subset(self.placements)
+
+    def build_subset(self, placements: list[Placement]):
+        """Generate the union solid for ``placements`` in their world frames.
+
+        Each selected placement's solid is transformed to its world placement
+        (Z rotation first, then optional 180° flip about X, then translation)
+        and unioned into one compound. ``placements`` is any subset of the
+        assembly's placements, so callers can build named sub-assemblies
+        (e.g. the display assembly: panel + HDMI driver) without rebuilding
+        the whole case.
+
+        Returns
+        -------
+        cadquery.Workplane
+            The union of the selected component solids.
+
+        Raises
+        ------
+        ValueError
+            ``placements`` is empty.
+        """
         from utilities import cq_helpers
 
         cq_helpers.require_cq()
         parts = []
-        for placement in self.placements:
+        for placement in placements:
             solid = placement.component.build()
             if placement.rotation:
                 solid = cq_helpers.rotate_z(solid, placement.rotation)
+            if placement.flip_x:
+                solid = cq_helpers.rotate_x(solid, 180.0)
             solid = cq_helpers.translate(solid, placement.x, placement.y, placement.z)
             parts.append(solid)
         if not parts:

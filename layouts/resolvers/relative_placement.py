@@ -57,10 +57,15 @@ class RelativePlacementResolver:
             if constraint.rotation is not None
             else (existing.rotation if existing is not None else 0.0)
         )
+        flip_x = (
+            constraint.flip
+            if constraint.flip is not None
+            else (existing.flip_x if existing is not None else False)
+        )
 
         return ResolverResult(
             True,
-            {constraint.subject: Placement(subj, x, y, rotation, z)},
+            {constraint.subject: Placement(subj, x, y, rotation, z, flip_x)},
             f"{constraint.subject} @ ({x:.1f}, {y:.1f}, {z:.1f}) "
             f"rel. to {constraint.target} via {source}",
         )

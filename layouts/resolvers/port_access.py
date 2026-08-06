@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 from typing import Any
 
 from layouts.base import Placement
@@ -76,12 +75,10 @@ class PortAccessResolver:
         wall = getattr(config, "wall_thickness", 2.0)
         clearance = getattr(getattr(config, "clearance", None), "shell", 0.35)
 
-        rad = math.radians(placement.rotation)
-        cos_r, sin_r = math.cos(rad), math.sin(rad)
-        wx = connector.direction[0] * cos_r - connector.direction[1] * sin_r
-        wy = connector.direction[0] * sin_r + connector.direction[1] * cos_r
-        px = placement.x + connector.x * cos_r - connector.y * sin_r
-        py = placement.y + connector.x * sin_r + connector.y * cos_r
+        wx, wy, _ = placement.world_direction(
+            connector.direction[0], connector.direction[1], connector.direction[2]
+        )
+        px, py, _ = placement.world_offset(connector.x, connector.y, connector.z)
 
         box = subj.size()
         if abs(wx) >= abs(wy):

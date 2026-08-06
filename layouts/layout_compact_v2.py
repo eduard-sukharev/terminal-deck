@@ -73,15 +73,19 @@ class LayoutCompactV2(ConstraintLayout):
         constraints.append(FixedPosition(subject="display", z=60.0))
         constraints.append(CenteredOn(subject="display", axes=("x", "y")))
 
-        # Driver board behind the display.
+        # Driver board flat against the panel back (flipped), rotated 180°
+        # so its FPC slot faces the panel ribbon. offset_z=-0.5 keeps the
+        # PCB backside 0.5 mm off the panel; a flipped board hangs below its
+        # origin.
         if driver is not None:
             constraints.append(
                 RelativePlacement(
                     subject="driver", target="display",
                     offset_x=driver.reference_origin()[0],
                     offset_y=driver.reference_origin()[1],
-                    offset_z=-(driver.size().height
-                               if hasattr(driver, "size") else 8.0),
+                    offset_z=-0.5,
+                    rotation=180.0,
+                    flip=True,
                 )
             )
 

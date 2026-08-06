@@ -14,6 +14,8 @@ display:
     thickness: 1.0         # TODO: measure ribbon thickness (1.0 assumed)
     fold: 6.0              # TODO: measure folded-ribbon allowance behind panel
                            # (6.0 assumed)
+    edge_protrusion: 0.75  # ribbon stub standing proud of the panel's east
+                           # short edge, toward the driver slot (0.5-1.0)
 
 bezel:
   inset: 3                  # glass recess inset from panel edge
@@ -28,13 +30,14 @@ driver_board:
   height: 4.6               # PCB 1.3 + tallest socket 3.3, measured
   pcb_thickness: 1.3        # measured
   fpc_slot_height: 1.0      # TODO: measure FPC slot opening height (1.0 assumed)
-  offset_x: 85              # driver center X from display center — mounts the driver
-                            # back-to-back behind the LCD with its west FPC slot
-                            # toward the folded panel ribbon. Capped so the board
-                            # stays inside the panel outline: the display half-width
-                            # is 115.5 and the driver half-width 27.5, so anything
-                            # above 88.0 hangs past the lid wall.
-                            # (TODO: confirm against the real ribbon length)
+  offset_x: -9.5           # driver center X from display center — mounts the
+                           # driver back-to-back behind the LCD (flipped flat
+                           # against the panel back, rotated 180° so its FPC
+                           # slot faces east). Derived from the user-measured
+                           # 125 mm from the panel's FPC edge toward the panel
+                           # center: display half-width (115.5) - 125 = -9.5.
+                           # The board stays fully behind the panel outline.
+                           # (TODO: confirm against the real ribbon length)
   offset_y: 5.0             # aligns the driver FPC slot center with the panel FPC center
 
 mounts:

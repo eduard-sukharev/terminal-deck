@@ -100,7 +100,8 @@ class FixedPosition(Constraint):
     Only the specified axes are set; ``None`` leaves the current value
     unchanged (or defaults to 0 if no prior placement exists). ``rotation``
     follows the same rule, so pinning one axis later in a recipe does not
-    silently un-rotate a part.
+    silently un-rotate a part. ``flip`` turns the subject over (see
+    :class:`RelativePlacement`).
     """
     kind: str = field(default="fixed_position", init=False)
     subject: str
@@ -108,6 +109,7 @@ class FixedPosition(Constraint):
     y: float | None = None
     z: float | None = None
     rotation: float | None = None
+    flip: bool | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -269,6 +271,11 @@ class RelativePlacement(Constraint):
         own declaration of where it mounts relative to its partner (the HDMI
         driver behind the display, for instance), so deriving from it keeps
         the recipe from drifting out of sync with the component config.
+    flip : bool or None
+        Turn the subject over (a 180° rotation about X) so its top face sits
+        at the placed Z and the body hangs below — the mounting convention
+        for boards flat against the panel back. ``None`` keeps the subject's
+        current orientation.
     """
     kind: str = field(default="relative_placement", init=False)
     subject: str
@@ -278,6 +285,7 @@ class RelativePlacement(Constraint):
     offset_z: float = 0.0
     rotation: float | None = None
     use_reference_origin: bool = False
+    flip: bool | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

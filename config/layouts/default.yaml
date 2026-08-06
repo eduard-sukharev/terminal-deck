@@ -91,13 +91,18 @@ constraints:
     subject: display
     axes: ["x", "y"]
 
-  # Driver board back-to-back behind the panel; offsets come from the
-  # component's own reference_origin() (config/display.yaml driver_board).
+  # Driver board flat against the panel back (flipped), rotated 180° so its
+  # FPC slot faces the panel ribbon. Offsets come from the component's own
+  # reference_origin() (config/display.yaml driver_board); offset_z is -0.5
+  # because a flipped board hangs below its origin, so the driver's top face
+  # sits 0.5 mm below the display's Z to keep the PCB backside off the panel.
   - kind: relative_placement
     subject: driver
     target: display
     use_reference_origin: true
-    offset_z: "0 - {driver.height}"
+    offset_z: -0.5
+    rotation: 180.0
+    flip: true
 
   # ── Checks ────────────────────────────────────────────────────────────
   # No placements; these fail the build when the layout above stops being

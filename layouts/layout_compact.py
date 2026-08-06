@@ -72,9 +72,11 @@ class LayoutCompact(Layout):
 
         driver = self.components.get("driver")
         if driver is not None:
-            driver_height = getattr(driver, "height", 8.0)
-            driver_z = 60.0 - driver_height
+            # Driver board flat against the panel back (flipped), rotated 180°
+            # so its FPC slot faces the panel ribbon. A flipped board hangs
+            # below its origin, so its top face sits 0.5 mm below the
+            # display's Z to keep the PCB backside off the panel.
             offset_x, offset_y, _ = driver.reference_origin()
             placements.append(
-                Placement(driver, offset_x, offset_y, rotation=0.0, z=driver_z)
+                Placement(driver, offset_x, offset_y, rotation=180.0, z=59.5, flip_x=True)
             )

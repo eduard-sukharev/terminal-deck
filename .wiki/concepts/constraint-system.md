@@ -52,7 +52,17 @@ list[Placement] + ConstraintReport
 
 ## Resolvers (`layouts/resolvers/`)
 
-Each constraint kind has a corresponding resolver — a small (~30 line) geometric procedure. All 13 constraint types have real resolvers; no stubs remain.
+Each constraint kind has a corresponding resolver — a small (~30 line) geometric
+procedure. All 13 constraint types have real resolvers; no stubs remain. Resolvers
+split into two groups:
+
+* **Placement producers** — `fixed_position`, `centered_on`, `centered_group`,
+  `edge_alignment`, `relative_placement`, `z_stack`, `share_plane`,
+  `keyboard_mounting_holes`
+* **Verification-only** — `clearance`, `region`, `cable_path`, `port_access`,
+  `footprint_match` (validate an already-resolved layout)
+* **Envelope publisher** — `target_envelope` (declares enclosure size so
+  wall-relative resolvers align against real walls)
 
 ## Layout classes
 
@@ -65,7 +75,9 @@ Each constraint kind has a corresponding resolver — a small (~30 line) geometr
 
 ## YAML recipes (`config/layouts/`)
 
-Layouts can be defined entirely in YAML — no Python code needed:
+Layouts can be defined entirely in YAML — no Python code needed. The
+`RecipeLayout` adapter loads a YAML file via `recipe_loader.py`, which parses
+each constraint entry into the matching `Constraint` dataclass:
 
 ```yaml
 constraints:
@@ -77,9 +89,14 @@ constraints:
     axes: ["x"]
 ```
 
-Values support `{component.field}` and `{config.path}` references (e.g. `{sbc.depth}`, `{config.wall_thickness}`).
+Values support `{component.field}` and `{config.path}` references (e.g.
+`{sbc.depth}`, `{config.wall_thickness}`) resolved at load time. Arithmetic
+expressions over references are also supported (e.g.
+`"{display.width} + 2 * {config.clearance.shell} + 2 * {config.wall_thickness}"`).
 
-Built-in recipes: `config/layouts/default.yaml`, `config/layouts/compact.yaml`.
+Built-in recipes:
+* `config/layouts/default.yaml` — clamshell with battery on base floor beside SBC
+* `config/layouts/compact.yaml` — clamshell with battery under raised keyboard plate
 
 ## CLI usage
 
@@ -91,7 +108,8 @@ python main.py --layout recipe_default --layout-recipe my_layout.yaml  # custom 
 
 ## Constraint report
 
-When using a constraint-based layout, the pipeline prints a constraint resolution report alongside the validation report:
+When using a constraint-based layout, the pipeline prints a constraint resolution
+report alongside the validation report. Hard violations abort the build:
 
 ```
 [pipeline] constraint resolution:

@@ -80,6 +80,7 @@ class Flex:
     width: float  # ribbon width, measured
     thickness: float  # ribbon thickness (TODO: measure)
     fold: float  # folded-ribbon allowance behind panel (TODO: measure)
+    edge_protrusion: float = 0.75  # ribbon stub proud of the panel edge (mm)
 
 
 @dataclass(frozen=True)

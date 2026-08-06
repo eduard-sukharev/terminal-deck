@@ -96,12 +96,16 @@ def check_collisions(placements: list[Any], report: ValidationReport) -> None:
             a, b = pa.component, pb.component
             for ax, ay, az, abox in a.occupied_volumes():
                 for bx, by, bz, bbox in b.occupied_volumes():
-                    a_z0, a_z1 = pa.z + az, pa.z + az + abox.height
-                    b_z0, b_z1 = pb.z + bz, pb.z + bz + bbox.height
+                    # World-frame volume centers (rotation + flip aware).
+                    wx, wy, wz = pa.world_offset(ax, ay, az)
+                    vx, vy, vz = pb.world_offset(bx, by, bz)
+                    # Flipped components hang below their origin.
+                    a_z0, a_z1 = (wz - abox.height, wz) if pa.flip_x else (wz, wz + abox.height)
+                    b_z0, b_z1 = (vz - bbox.height, vz) if pb.flip_x else (vz, vz + bbox.height)
                     z_overlap = not (a_z1 <= b_z0 or b_z1 <= a_z0)
                     if z_overlap and _overlap_xy(
-                        pa.x + ax, pa.y + ay, abox.width, abox.depth,
-                        pb.x + bx, pb.y + by, bbox.width, bbox.depth,
+                        wx, wy, abox.width, abox.depth,
+                        vx, vy, bbox.width, bbox.depth,
                     ):
                         report.add(
                             "no-collisions",

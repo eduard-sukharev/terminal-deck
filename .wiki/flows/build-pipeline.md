@@ -35,8 +35,9 @@ For `all`, the stages are:
 3. `place_layout()` — `make_layout(name, components, config)` → placements.
    Constraint-based layouts ([[constraint-system]]) resolve constraints into
    placements via `LayoutComposer`.
-4. `validate()` — runs [[validation-suite]], prints the report. For constraint-based
-   layouts, also prints the constraint resolution report.
+4. `validate()` — runs [[validation-suite]] (9 checks), prints the report. For
+   constraint-based layouts, also prints the constraint resolution report. Hard
+   constraint violations abort the build before CAD generation.
 5. Build the `Assembly` → `enclosure_size()`, `bosses()`, `connector_cutouts()`.
 6. `cq_helpers.require_cq()` — enter the CAD pass ([[cad-generation]]).
 7. Build hinge → assembly solid → base shell → lid shell → hinge solid.
@@ -53,10 +54,12 @@ Available `--layout` values:
 | `compact` | Imperative | Original compact layout (Python) |
 | `compact_v2` | Constraint-based | Matches compact |
 | `constrained` | Constraint-based | Empty recipe (base class) |
-| `recipe_default` | YAML recipe | `config/layouts/default.yaml` |
-| `recipe_compact` | YAML recipe | `config/layouts/compact.yaml` |
+| `recipe_default` | YAML recipe | `config/layouts/default.yaml` — clamshell with battery on base floor |
+| `recipe_compact` | YAML recipe | `config/layouts/compact.yaml` — clamshell with battery under keyboard |
 
-Use `--layout-recipe PATH` to override the recipe file for `recipe_*` layouts.
+Use `--layout-recipe PATH` to override the recipe file for `recipe_*` layouts
+with an arbitrary YAML file. Recipes support `{component.field}` and
+`{config.path}` references resolved at load time.
 
 ## Failure mode
 

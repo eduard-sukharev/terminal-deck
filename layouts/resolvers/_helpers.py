@@ -62,7 +62,8 @@ def estimate_enclosure(
         box = comp.size()
         xs.extend([placement.x - box.width / 2, placement.x + box.width / 2])
         ys.extend([placement.y - box.depth / 2, placement.y + box.depth / 2])
-        zs.extend([placement.z, placement.z + box.height])
+        z0, z1 = placement.z_bounds()
+        zs.extend([z0, z1])
 
     width = max(xs) - min(xs) + 2 * (clearance + wall)
     depth = max(ys) - min(ys) + 2 * (clearance + wall)

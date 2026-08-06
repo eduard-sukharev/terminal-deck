@@ -85,6 +85,11 @@ def rotate_z(shape: Any, angle_deg: float) -> Any:
     return shape.rotate((0, 0, 0), (0, 0, 1), angle_deg)
 
 
+def rotate_x(shape: Any, angle_deg: float) -> Any:
+    """Rotate a shape about the X axis by ``angle_deg`` degrees."""
+    return shape.rotate((0, 0, 0), (1, 0, 0), angle_deg)
+
+
 def extrude_polygon(
     vertices: list[tuple[float, float]],
     height: float,

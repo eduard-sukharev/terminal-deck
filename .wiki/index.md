@@ -3,7 +3,7 @@ title: "Cyberdeck Wiki"
 type: "index"
 status: "active"
 language: "default"
-last_commit: "121a9ca687b329b09bd4d1550c54a4590afa86ef"
+last_commit: "c4479c4a776fabee8e7a6f57054775e4bfb15a14"
 updated_at: "2026-08-06"
 ---
 
@@ -31,6 +31,7 @@ source $HOME/miniforge/bin/activate        # CadQuery 2.8 lives here
 make data                                   # data layer only
 make all                                    # full CAD + exports (~1 min)
 make test                                   # pytest suite (55 tests)
+make check                                  # py_compile all modules
 ```
 
 Expected output of `make data`: a placement validation report with 9 checks
@@ -38,12 +39,18 @@ Expected output of `make data`: a placement validation report with 9 checks
 print a constraint resolution report. The full run writes
 `cyberdeck_{assembly,base,lid,hinge}.step/.stl/.svg` into `generated/`.
 
+Available `--layout` values: `default`, `default_v2`, `compact`, `compact_v2`,
+`constrained`, `recipe_default`, `recipe_compact`. Use `--layout-recipe <path>`
+to override the YAML recipe for `recipe_*` layouts.
+
 First files to read:
 
 * `main.py` — the pipeline driver (`BuildPipeline.run`)
 * `docs/design_spec.md` — the master spec (architecture + conventions)
 * `docs/component_spec.md` — the Component API contract
 * `components/base.py` — the data model (`BoundingBox`, `Hole`, `Connector`, `Keepout`)
+* `CLAUDE.md` — Claude Code guidance (commands, architecture, conventions)
+* `ROADMAP.md` — constraint-based layout roadmap and design
 
 Safe first change: tweak `config/default.yaml` (e.g. `wall.thickness`) and re-run
 `--steps data` to see the validation output shift.
@@ -67,11 +74,14 @@ load config → load components → place layout → validate → size enclosure
 bosses/cutouts → build assembly solid → shell the base and lid → build hinge →
 export STEP/STL/SVG → run validation.
 
-`--steps data` stops after validation (no CadQuery needed). See [[build-pipeline]].
+`--steps data` stops after validation (no CadQuery needed). Constraint-based
+layouts also print a constraint resolution report alongside the validation
+report. See [[build-pipeline]].
 
 ## Where is data saved?
 
 * Configuration lives in `config/` (topic files merge over `default.yaml`).
+* Layout recipes live in `config/layouts/` (YAML files for `recipe_*` layouts).
 * Everything the pipeline emits goes to `generated/`:
   * `generated/step/`, `generated/stl/`, `generated/svg/` — exported models
   * `generated/renders/`, `generated/ergogen/` — render PNGs and keyboard-plate
@@ -82,13 +92,14 @@ export STEP/STL/SVG → run validation.
 
 * The **data layer** (no CadQuery): components, config loading, layouts, assembly
   sizing, cable routing, validation. See [[data-layer]].
-* The **constraint system** — 13 constraint types with procedural resolvers that
-  replace imperative layout math with composable, declarative rules. Layouts can
-  be defined in Python or YAML. See [[constraint-system]].
+* The **constraint system** — 13 constraint types with 13 real procedural
+  resolvers that replace imperative layout math with composable, declarative
+  rules. Layouts can be defined in Python or YAML (via `config/layouts/*.yaml`
+  recipes). See [[constraint-system]].
 * The **CAD generation** pass: assembly union, base/lid shells, hinge, exporters,
   all routed through the single CadQuery adapter `utilities/cq_helpers.py`. See
   [[cad-generation]].
-* The **validation suite** — 8 checks that run on pure data, plus a constraint
+* The **validation suite** — 9 checks that run on pure data, plus a constraint
   resolution report for constraint-based layouts. See [[validation-suite]].
 * The **config model** — frozen dataclasses that every dimension flows from. See
   [[config-dataclasses]].
@@ -112,10 +123,14 @@ export STEP/STL/SVG → run validation.
 * No magic numbers — unmeasured dimensions carry `# TODO: measure`.
 * Layouts contain placements only, never CAD. See [[cad-conventions]].
 * Constraint resolvers are pure data — no CadQuery imports. See [[constraint-system]].
+* YAML recipes in `config/layouts/` must stay in sync with component specs
+  (references like `{sbc.depth}` resolve at load time).
 
 ## Where do I look first?
 
 Read `docs/design_spec.md` for the full contract, then `main.py` to see how the
 pieces connect, then [[getting-started]] for the first 10 minutes. The docs
 directory (`docs/cad_api.md`, `docs/component_spec.md`, `docs/coordinate_system.md`)
-is the design-spec reference material.
+is the design-spec reference material. `CLAUDE.md` has the full command reference
+and architecture summary; `ROADMAP.md` explains the constraint system design
+decisions.

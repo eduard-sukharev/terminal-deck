@@ -30,9 +30,8 @@ usb_breakout:
   # edge, west to east: 3x USB-A, micro-SD reader, audio jack, USB-C.
   pcb_width: 133.0          # measured
   pcb_depth: 24.0           # measured
-  pcb_thickness: 1.6        # TODO: measure (not measured; standard FR4 assumed)
+  pcb_thickness: 1.0        # measured
   port_protrusion: 1.4      # measured: every port overhangs its PCB edge by this much
-  holes: 2                  # TODO: measure (mounting hole positions not measured)
   edge_inset: 10.0          # layout margin from the PCB's west/east edges used to
                              # space the north-edge ports (not a measured PCB dimension)
   usb_a:
@@ -45,14 +44,11 @@ usb_breakout:
     depth: 3.3                   # measured
   audio_jack:
     diameter: 5.0              # measured
-    depth: 6.0                   # TODO: measure (barrel length not measured; assumed
-                                  # equal to the USB-A port depth)
+    depth: 15.0                  # measured (barrel length)
   microsd:
-    width: 8.0                 # TODO: measure (reader footprint not measured; typical
-                                # push-push micro-SD slot assumed)
-    thickness: 1.4               # TODO: measure
-    depth: 10.0                   # TODO: measure (module length not measured; typical
-                                   # push-push reader assumed)
+    width: 13.5                # measured
+    depth: 12.0                  # measured
+    thickness: 2.0                # measured (height above the PCB top surface)
 
 heat_inserts:
   diameter: 4              # M2.5 heat-set insert outside diameter

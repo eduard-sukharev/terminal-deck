@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from components.base import BoundingBox, Component, Connector, Hole
+from components.base import BoundingBox, Component, Connector
 from utilities.constants import (
     CONNECTOR_AUDIO,
     CONNECTOR_MICROSD,
@@ -34,9 +34,8 @@ class UsbBreakout(Component):
         data = (hardware or {}).get("usb_breakout", {})
         self.width = float(data.get("pcb_width", 133.0))
         self.depth = float(data.get("pcb_depth", 24.0))
-        self.pcb_thickness = float(data.get("pcb_thickness", 1.6))
+        self.pcb_thickness = float(data.get("pcb_thickness", 1.0))
         self.protrusion = float(data.get("port_protrusion", 1.4))
-        self.holes = int(data.get("holes", 2))
         self.edge_inset = float(data.get("edge_inset", 10.0))
 
         usb_a = data.get("usb_a", {})
@@ -51,12 +50,12 @@ class UsbBreakout(Component):
 
         audio = data.get("audio_jack", {})
         self.audio_diameter = float(audio.get("diameter", 5.0))
-        self.audio_depth = float(audio.get("depth", 6.0))
+        self.audio_depth = float(audio.get("depth", 15.0))
 
         microsd = data.get("microsd", {})
-        self.microsd_width = float(microsd.get("width", 8.0))
-        self.microsd_thickness = float(microsd.get("thickness", 1.4))
-        self.microsd_depth = float(microsd.get("depth", 10.0))
+        self.microsd_width = float(microsd.get("width", 13.5))
+        self.microsd_thickness = float(microsd.get("thickness", 2.0))
+        self.microsd_depth = float(microsd.get("depth", 12.0))
 
     # -- geometry helpers ---------------------------------------------------
 
@@ -98,15 +97,9 @@ class UsbBreakout(Component):
         height = max(self.usb_a_height, self.usb_c_height, microsd_top)
         return BoundingBox(self.width, self.depth, height)
 
-    def mounting_holes(self) -> list[Hole]:
-        # TODO: measure real hole positions; evenly spaced placeholder.
-        inset = 2.5
-        count = max(self.holes, 2)
-        holes: list[Hole] = []
-        for i in range(count):
-            x = -self.width / 2 + inset + i * (self.width - 2 * inset) / (count - 1)
-            holes.append(Hole(x, 0.0, 2.0))
-        return holes
+    # No mounting_holes() override: this board has no mounting holes — it
+    # must be retained by its edge connectors and a case-side clip/cradle
+    # instead (see the base Component default, which returns none).
 
     def connectors(self) -> list[Connector]:
         pcb_z = self._pcb_center_z()

@@ -40,6 +40,7 @@ def vent_slots(
     slot_width: float | None = None,
     gap: float | None = None,
     margin: float = 3.0,
+    keepouts: tuple[tuple[float, float], ...] = (),
 ) -> VentSpec:
     """Compute a row of vent slots.
 
@@ -55,6 +56,12 @@ def vent_slots(
         Material between slots (mm); defaults to ``slot_width``.
     margin : float
         Edge margin (mm).
+    keepouts : tuple[tuple[float, float], ...]
+        ``(x0, x1)`` ranges (same axis/frame as the returned ``positions``)
+        to leave solid — any slot whose own width would overlap one is
+        dropped. Meant for connector cutouts sharing this wall: a vent slat
+        interleaved with a cutout leaves a thin, unsupported, unprintable
+        sliver of wall material once both are cut.
 
     Returns
     -------
@@ -67,9 +74,15 @@ def vent_slots(
     usable = vent_axis_extent - 2 * margin
     step = slot_width + gap
     count = max(0, int(usable // step))
-    positions = tuple(
+    candidates = (
         -vent_axis_extent / 2 + margin + step / 2 + i * step for i in range(count)
     )
+
+    def clear(pos: float) -> bool:
+        lo, hi = pos - slot_width / 2, pos + slot_width / 2
+        return all(hi <= k0 or lo >= k1 for k0, k1 in keepouts)
+
+    positions = tuple(pos for pos in candidates if clear(pos))
     return VentSpec(
         slot_length=slot_length,
         slot_width=slot_width,

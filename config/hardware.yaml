@@ -32,8 +32,11 @@ usb_breakout:
   pcb_depth: 24.0           # measured
   pcb_thickness: 1.0        # measured
   port_protrusion: 1.4      # measured: every port overhangs its PCB edge by this much
-  edge_inset: 10.0          # layout margin from the PCB's west/east edges used to
-                             # space the north-edge ports (not a measured PCB dimension)
+  # North-edge port spacing (measured): distance from the west PCB edge to
+  # the first USB-A, then edge-to-edge gaps between each successive port
+  # pair, west to east (USB-A/USB-A/USB-A/micro-SD/audio/USB-C).
+  north_first_port_margin: 19.3   # measured
+  north_port_gaps: [6.0, 6.0, 9.2, 9.5, 4.5]   # measured
   usb_a:
     width: 13.3              # measured
     height: 8.5               # measured

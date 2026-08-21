@@ -36,7 +36,10 @@ class UsbBreakout(Component):
         self.depth = float(data.get("pcb_depth", 24.0))
         self.pcb_thickness = float(data.get("pcb_thickness", 1.0))
         self.protrusion = float(data.get("port_protrusion", 1.4))
-        self.edge_inset = float(data.get("edge_inset", 10.0))
+        self.north_first_port_margin = float(data.get("north_first_port_margin", 19.3))
+        self.north_port_gaps = [
+            float(g) for g in data.get("north_port_gaps", [6.0, 6.0, 9.2, 9.5, 4.5])
+        ]
 
         usb_a = data.get("usb_a", {})
         self.usb_a_width = float(usb_a.get("width", 13.3))
@@ -74,21 +77,18 @@ class UsbBreakout(Component):
         return [(kind, *by_kind[kind]) for kind in _NORTH_PORT_KINDS]
 
     def _north_port_x_positions(self) -> list[float]:
-        """Evenly space the north-edge ports within the PCB's edge margin.
-
-        Exact factory placement was not measured; ports are distributed with
-        equal gaps across the usable edge width (PCB width minus
-        ``edge_inset`` on each side), in the west-to-east order observed on
-        the board.
+        """North-edge port centers, from the measured west-edge margin and
+        the measured edge-to-edge gap between each successive port pair.
         """
         widths = [w for _, w, _, _ in self._north_port_specs()]
-        usable = self.width - 2.0 * self.edge_inset
-        gap = (usable - sum(widths)) / (len(widths) - 1)
+        west_edge = -self.width / 2.0
         xs: list[float] = []
-        cursor = -usable / 2.0
-        for w in widths:
+        cursor = west_edge + self.north_first_port_margin
+        for i, w in enumerate(widths):
             xs.append(cursor + w / 2.0)
-            cursor += w + gap
+            cursor += w
+            if i < len(self.north_port_gaps):
+                cursor += self.north_port_gaps[i]
         return xs
 
     def size(self) -> BoundingBox:
@@ -128,16 +128,25 @@ class UsbBreakout(Component):
     def validate(self) -> tuple[int, list[str]]:
         """Check that ports don't overlap each other or run off the PCB edges.
 
-        The north-edge ports are spaced by a computed (not measured) formula
-        and the east port is positioned independently, so nothing upstream
-        guarantees they stay clear of each other or within the board outline
-        as config values change. Returns ``(check_count, errors)``, matching
-        the keyboard subsystem's ``validate()`` convention.
+        The north-edge ports are placed from independently-measured margin
+        and gap values, and the east port is positioned independently again,
+        so nothing upstream guarantees they stay clear of each other or
+        within the board outline as those config values change. Returns
+        ``(check_count, errors)``, matching the keyboard subsystem's
+        ``validate()`` convention.
         """
         errors: list[str] = []
         checks = 0
 
         specs = self._north_port_specs()
+
+        checks += 1
+        if len(self.north_port_gaps) != len(specs) - 1:
+            errors.append(
+                f"north_port_gaps has {len(self.north_port_gaps)} entries, "
+                f"expected {len(specs) - 1} (one per gap between {len(specs)} ports)"
+            )
+
         xs = self._north_port_x_positions()
         north_boxes = [
             (kind, x - w / 2.0, x + w / 2.0, y_span)
@@ -165,7 +174,7 @@ class UsbBreakout(Component):
             if gap < 0.0:
                 errors.append(
                     f"north ports {kind_a!r} and {kind_b!r} overlap by {-gap:.2f} mm "
-                    "— widen edge_inset or shrink the ports"
+                    "— check north_port_gaps / north_first_port_margin against the board"
                 )
 
         east_d = self.usb_a_depth

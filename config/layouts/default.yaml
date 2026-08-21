@@ -17,15 +17,18 @@ constraints:
   # ── Enclosure envelope ────────────────────────────────────────────────
   # Declared first so the wall-relative constraints below have real walls to
   # align against instead of estimating from what is placed so far.
-  #   width = widest of keyboard/display + clearance + walls
+  #   width = the rear strip (SBC | battery | hub, side by side with a 2 mm
+  #           gap each) + clearance + walls — the hub's 133 mm width makes
+  #           this strip wider than the display, unlike the depth axis below
   #   depth = rear strip (battery, the deepest) + gap + keyboard
   #           + 30 mm palm rest + walls
   - kind: target_envelope
-    width: "{display.width} + 2 * {config.clearance.shell} + 2 * {config.wall_thickness}"
+    width: "{sbc.width} + 2.0 + {battery.width} + 2.0 + {usb_breakout.width} + 2 * {config.clearance.shell} + 2 * {config.wall_thickness}"
     depth: "{battery.depth} + 2.0 + {keyboard.depth} + 30.0 + 2 * {config.wall_thickness}"
     description: >-
-      Display-limited in X; in Y a single-floor rear I/O strip plus a 30 mm
-      palm rest around the 40% keyboard.
+      Rear-strip-limited in X (SBC + battery + hub side by side); in Y a
+      single-floor rear I/O strip plus a 30 mm palm rest around the 40%
+      keyboard.
 
   # ── Rear I/O strip: SBC | battery | hub, all against the rear wall ────
   # SBC also against the left wall, so its -X microSD slot reaches it.
@@ -40,19 +43,30 @@ constraints:
     target: enclosure
     target_edge: left
 
-  - kind: centered_on
+  # Battery beside the SBC (not centered — the hub's real width leaves no
+  # room for a centered battery to clear it).
+  - kind: relative_placement
     subject: battery
-    axes: ["x"]
+    target: sbc
+    offset_x: "{sbc.width} / 2 + 2.0 + {battery.width} / 2"
   - kind: edge_alignment
     subject: battery
     subject_edge: rear
     target: enclosure
     target_edge: rear
 
-  # Hub turned 180° so its USB-A (locally +Y) points at the rear wall.
+  # Hub mounted upside down (flip) rather than turned 180° about Z: its
+  # north edge (3x USB-A + micro-SD + audio + USB-C) and east edge (1x
+  # USB-A) are rigidly 90° apart on the physical board, so a Z-rotation
+  # alone can only pair "rear + left" or "front + right" — never the
+  # "rear + right" corner this recipe aligns it into below. Flipped, its
+  # top face sits at z=hub.height and the body hangs down to the floor
+  # (z=0), same as an unflipped board sitting on the floor.
   - kind: fixed_position
     subject: usb_breakout
-    rotation: 180.0
+    rotation: 0.0
+    flip: true
+    z: "{usb_breakout.height}"
   - kind: edge_alignment
     subject: usb_breakout
     subject_edge: right
@@ -78,8 +92,10 @@ constraints:
     offset: 2.0
 
   # ── Base floor ────────────────────────────────────────────────────────
+  # usb_breakout is flipped and gets its z set explicitly above, since this
+  # resolver would otherwise overwrite it with a flip-unaware z=0.
   - kind: z_stack
-    layers: [["keyboard", "sbc", "battery", "usb_breakout"]]
+    layers: [["keyboard", "sbc", "battery"]]
 
   # ── Lid ───────────────────────────────────────────────────────────────
   # The lid closes onto the base rim, so the display sits one keyboard-height

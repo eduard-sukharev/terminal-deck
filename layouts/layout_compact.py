@@ -62,15 +62,23 @@ class LayoutCompact(Layout):
             sbc_x = cw + 6.0 + sb.width / 2
             placements.append(Placement(sbc, sbc_x, 0.0, rotation=0.0, z=0.0))
 
-            # USB hub behind the SBC, sockets facing the rear wall (rotation
-            # 180 turns its +Y connector toward -Y). Placed so the connector
-            # sits just inside the rear wall (distance ~1 mm).
+            # USB hub behind the SBC, in the case's rear-right corner. Its
+            # long north edge (3x USB-A + micro-SD + audio + USB-C) faces the
+            # rear wall and its single east-edge USB-A faces the right wall —
+            # two adjacent walls, as the board has no mounting holes of its
+            # own and relies on this cradle fit. Getting both edges to face
+            # outward from the SAME corner needs the board mounted upside
+            # down (flip_x): an unflipped Z-rotation can only pair "rear +
+            # left" or "front + right", never "rear + right", since the two
+            # edges are rigidly 90° apart on the physical PCB. Flipped, its
+            # top face sits at z=hb.height and the body hangs down to the
+            # floor (z=0), same as an unflipped board sitting on the floor.
             if hub is not None:
                 hb = hub.size()
                 hub_x = sbc_x
                 hub_y = -(sb.depth / 2 + hb.depth / 2 + 1.0)
                 placements.append(
-                    Placement(hub, hub_x, hub_y, rotation=180.0, z=0.0)
+                    Placement(hub, hub_x, hub_y, rotation=0.0, z=hb.height, flip_x=True)
                 )
 
         # Battery beside the controller on the opposite side of the SBC.

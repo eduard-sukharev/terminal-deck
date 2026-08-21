@@ -50,12 +50,27 @@ class LayoutCompactV2(ConstraintLayout):
             sbc_x = cw + 6.0 + sb.width / 2
             constraints.append(FixedPosition(subject="sbc", x=sbc_x, y=0.0))
 
-            # USB hub behind the SBC, facing rear.
+            # USB hub behind the SBC, in the case's rear-right corner. Its
+            # long north edge (3x USB-A + micro-SD + audio + USB-C) faces the
+            # rear wall and its single east-edge USB-A faces the right wall —
+            # two adjacent walls, as the board has no mounting holes of its
+            # own and relies on this cradle fit. Getting both edges to face
+            # outward from the SAME corner needs the board mounted upside
+            # down (flip): an unflipped Z-rotation can only pair "rear +
+            # left" or "front + right", never "rear + right", since the two
+            # edges are rigidly 90° apart on the physical PCB. Flipped, its
+            # top face sits at z=hb.height and the body hangs down to the
+            # floor (z=0), same as an unflipped board sitting on the floor —
+            # set directly (not through the shared ZStack layer below, which
+            # assigns a flip-unaware z=0 to everything in it).
             if hub is not None:
                 hb = hub.size()
                 hub_y = -(sb.depth / 2 + hb.depth / 2 + 1.0)
                 constraints.append(
-                    FixedPosition(subject="usb_breakout", x=sbc_x, y=hub_y, rotation=180.0)
+                    FixedPosition(
+                        subject="usb_breakout", x=sbc_x, y=hub_y,
+                        z=hb.height, rotation=0.0, flip=True,
+                    )
                 )
 
         # Battery on the opposite side of the controller.
@@ -64,9 +79,11 @@ class LayoutCompactV2(ConstraintLayout):
             battery_x = -(cw + 6.0 + bb.width / 2)
             constraints.append(FixedPosition(subject="battery", x=battery_x, y=0.0))
 
-        # Base-floor Z stack.
+        # Base-floor Z stack (usb_breakout is flipped and gets its z set
+        # explicitly above, since this resolver would otherwise overwrite it
+        # with a flip-unaware z=0).
         constraints.append(
-            ZStack(layers=[["keyboard", "sbc", "battery", "usb_breakout"]])
+            ZStack(layers=[["keyboard", "sbc", "battery"]])
         )
 
         # Display centered in the lid at stacking height.

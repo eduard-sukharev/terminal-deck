@@ -59,7 +59,10 @@ class LayoutDefaultV2(ConstraintLayout):
         front_margin = 20.0
         sbc_gap = 6.0
         battery_gap = 6.0
-        hub_gap = 6.0
+        # The hub's west edge (its stiff ribbon cable) needs more room to bend
+        # than a bare clearance gap; its blank south edge needs none beyond
+        # the usual shell clearance, since nothing sits directly against it.
+        hub_cable_clearance = 20.0
         lid_z = 60.0
 
         return [
@@ -76,17 +79,32 @@ class LayoutDefaultV2(ConstraintLayout):
                 subject="battery", target="sbc",
                 offset_x=sb.width / 2 + battery_gap + bb.width / 2,
             ),
-            # USB hub beside the battery, turned 180° so its USB-A (locally
-            # +Y) faces the rear wall instead of into the case interior.
+            # USB hub beside the battery, in the case's rear-right corner.
+            # Its long north edge (3x USB-A + micro-SD + audio + USB-C) faces
+            # the rear wall and its single east-edge USB-A faces the right
+            # wall — two adjacent walls, since the board has no mounting
+            # holes of its own and relies on this cradle fit. Getting both
+            # edges to face outward from the SAME corner needs the board
+            # mounted upside down (flip): an unflipped Z-rotation can only
+            # pair "rear + left" or "front + right", never "rear + right",
+            # since the two edges are rigidly 90° apart on the physical PCB.
+            # Flipped, its top face sits at offset_z=hb.height and the body
+            # hangs down to the floor (z=0), same as an unflipped board
+            # sitting on the floor. Its west edge (the stiff ribbon cable)
+            # ends up facing the battery, with extra room to bend.
             RelativePlacement(
                 subject="usb_breakout", target="battery",
-                offset_x=bb.width / 2 + hub_gap + hb.width / 2,
-                rotation=180.0,
+                offset_x=bb.width / 2 + hub_cable_clearance + hb.width / 2,
+                offset_z=hb.height,
+                rotation=0.0,
+                flip=True,
             ),
             # Keyboard mounting holes: between rows, near wide keys.
             KeyboardMountingHoles(subject="keyboard"),
-            # Base-floor Z stack.
-            ZStack(layers=[["keyboard", "sbc", "battery", "usb_breakout"]]),
+            # Base-floor Z stack (usb_breakout is flipped and gets its z set
+            # explicitly above, since this resolver would otherwise overwrite
+            # it with a flip-unaware z=0).
+            ZStack(layers=[["keyboard", "sbc", "battery"]]),
             PortAccess(subject="usb_breakout", connector_type="USB-A", wall="rear"),
             # Display centered in the lid at stacking height.
             FixedPosition(subject="display", z=lid_z),

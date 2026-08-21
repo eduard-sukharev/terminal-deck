@@ -7,8 +7,9 @@
 # The keyboard's switch plate stands on 10 mm standoffs, and the battery
 # lives in that hollow. The SBC does not: its power inlet and microSD are
 # the two things that must be reachable without opening the case, so it sits
-# in the rear strip against the wall instead. The hub sits beside it, turned
-# to face its USB-A at the same rear wall.
+# in the rear strip against the wall instead. The hub sits beside it, in the
+# rear-right corner, flipped so its two port-bearing edges face the rear and
+# right walls.
 #
 # Every value is derived from component sizes and config, so re-measuring a
 # part (the battery and hub are still TODO: measure) moves the layout with it.
@@ -42,16 +43,28 @@ constraints:
     target: enclosure
     target_edge: left
 
-  # Hub turned 180° so its USB-A (locally +Y) points at the rear wall.
+  # Hub mounted upside down (flip) rather than turned 180° about Z: its
+  # north edge (3x USB-A + micro-SD + audio + USB-C) and east edge (1x
+  # USB-A) are rigidly 90° apart on the physical board, so a Z-rotation
+  # alone can only pair "rear + left" or "front + right" — never the
+  # "rear + right" corner this recipe aligns it into below. Flipped, its
+  # top face sits at z=hub.height and the body hangs down to the floor
+  # (z=0), same as an unflipped board sitting on the floor.
   - kind: fixed_position
     subject: usb_breakout
-    x: 60.0
-    rotation: 180.0
+    rotation: 0.0
+    flip: true
+    z: "{usb_breakout.height}"
   - kind: edge_alignment
     subject: usb_breakout
     subject_edge: rear
     target: enclosure
     target_edge: rear
+  - kind: edge_alignment
+    subject: usb_breakout
+    subject_edge: right
+    target: enclosure
+    target_edge: right
 
   # ── Keyboard ──────────────────────────────────────────────────────────
   # Centered on X; on Y it clears the rear strip by 2 mm, which leaves the
@@ -83,8 +96,10 @@ constraints:
     axes: ["y"]
 
   # ── Base floor ────────────────────────────────────────────────────────
+  # usb_breakout is flipped and gets its z set explicitly above, since this
+  # resolver would otherwise overwrite it with a flip-unaware z=0.
   - kind: z_stack
-    layers: [["keyboard", "sbc", "battery", "usb_breakout"]]
+    layers: [["keyboard", "sbc", "battery"]]
 
   # ── Lid ───────────────────────────────────────────────────────────────
   # The lid closes onto the base rim, so the display sits one keyboard-height

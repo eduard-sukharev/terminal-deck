@@ -51,6 +51,23 @@ class Rp2040Keyboard(Component):
         self._keycap_profile = str(keycap_cfg.get("profile", "xda"))
         self._keycap_enabled = bool(keycap_cfg.get("enabled", True))
 
+    def set_plate_raise(self, height: float) -> None:
+        """Override the plate standoff height (mm).
+
+        The layout calls this when components buried under the raised plate
+        (e.g. the SBC) require more clearance than the controller alone.
+        """
+        self._plate_raise = height
+
+    @property
+    def switch_bottom_protrusion(self) -> float:
+        """Deepest point of the switch bodies below the plate bottom (mm).
+
+        The simplified switch pins hang 3.5 mm below the plate bottom surface.
+        Components buried under the plate must clear this protrusion.
+        """
+        return 3.5
+
     def size(self) -> BoundingBox:
         box = self._plate.size()
         from components.keycap_set import CAP_PLATE_GAP

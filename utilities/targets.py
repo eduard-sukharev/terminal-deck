@@ -25,7 +25,8 @@ from __future__ import annotations
 
 #: All recognised bucket names.
 BUCKETS: frozenset[str] = frozenset({
-    "all", "assembly", "base", "lid", "lid_base", "lid_bezel",
+    "all", "assembly", "assembly_opened", "base", "base_bottom", "base_top",
+    "lid", "lid_base", "lid_bezel",
     "hinge", "display", "components",
 })
 

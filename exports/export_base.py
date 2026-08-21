@@ -22,6 +22,17 @@ class Exporter(ABC):
     #: Export format identifier, one of ``utilities.constants.FORMAT_*``.
     format: str = ""
 
+    #: Provenance metadata embedded in the exported file (e.g. the layout
+    #: that produced it).  Each exporter writes it as a format-appropriate
+    #: comment/header so the file records how it was generated.
+    metadata: dict[str, str] = {}
+
+    def _metadata_comment(self) -> str:
+        """Format ``metadata`` as a single comment string, or ``""`` if empty."""
+        if not self.metadata:
+            return ""
+        return ", ".join(f"{k}={v}" for k, v in self.metadata.items())
+
     def output_path(self, name: str, output_dir: Path | None = None) -> Path:
         """Return the absolute output path for ``name`` in this format.
 

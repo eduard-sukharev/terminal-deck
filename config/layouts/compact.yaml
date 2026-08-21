@@ -18,13 +18,15 @@ constraints:
   # Declared first: the wall-relative constraints below align against this
   # rather than guessing from whatever is placed so far.
   #   width = widest of keyboard/display + clearance + walls
-  #   depth = rear strip (SBC) + gap + keyboard + palm rest + walls
+  #   depth = rear strip (SBC) + gap + keyboard + walls (no palm rest —
+  #           the group is centered on Y below so the symmetric enclosure
+  #           hugs the content instead of wasting a front palm rest)
   - kind: target_envelope
     width: "{display.width} + 2 * {config.clearance.shell} + 2 * {config.wall_thickness}"
-    depth: "{sbc.depth} + 2.0 + {keyboard.depth} + 25.0 + 2 * {config.wall_thickness}"
+    depth: "{sbc.depth} + 2.0 + {keyboard.depth} + 2 * {config.clearance.shell} + 2 * {config.wall_thickness}"
     description: >-
-      Display-limited in X; in Y the rear I/O strip plus a 25 mm palm rest
-      around the 40% keyboard.
+      Display-limited in X; in Y the rear I/O strip plus the 40% keyboard,
+      centered so the symmetric enclosure is as small as the content allows.
 
   # ── Rear I/O strip ────────────────────────────────────────────────────
   # SBC hard against the rear wall so its -Y power inlet reaches it, and
@@ -70,6 +72,15 @@ constraints:
     subject: battery
     target: keyboard
     offset_x: -50.0
+
+  # ── Compactness: center the base content on Y ─────────────────────────
+  # The enclosure is symmetric about the origin, so its depth is set by the
+  # larger of the rear (SBC) and front (keyboard) extents. Centering the
+  # whole base group makes those two extents equal, shrinking the depth to
+  # the minimum the content allows instead of wasting a front palm rest.
+  - kind: centered_group
+    subjects: ["sbc", "keyboard", "battery", "usb_breakout"]
+    axes: ["y"]
 
   # ── Base floor ────────────────────────────────────────────────────────
   - kind: z_stack
@@ -147,7 +158,7 @@ constraints:
     to_connector_type: HDMI
     via_point:
       - 0.0
-      - "0 - ({sbc.depth} + 2.0 + {keyboard.depth} + 25.0) / 2 - {config.wall_thickness}"
+      - "0 - ({sbc.depth} + 2.0 + {keyboard.depth} + 2 * {config.clearance.shell} + 2 * {config.wall_thickness}) / 2 - {config.wall_thickness}"
       - "{keyboard.height} + {config.clearance.shell}"
     clearance_diameter: "{config.hinge.wire_tunnel}"
     bend_radius: 30.0

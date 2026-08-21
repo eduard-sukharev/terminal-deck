@@ -23,4 +23,14 @@ class SvgExporter(Exporter):
         path = Path(path)
         # CadQuery's SVG export expects a 2D shape (Workplane with faces/edges).
         cq.exporters.export(shape, str(path), exportType="SVG")
+        comment = self._metadata_comment()
+        if comment:
+            text = path.read_text()
+            if text.startswith("<?xml"):
+                idx = text.find("?>")
+                if idx != -1:
+                    text = text[: idx + 2] + f"\n<!-- {comment} -->" + text[idx + 2 :]
+            else:
+                text = f"<!-- {comment} -->\n" + text
+            path.write_text(text)
         return path

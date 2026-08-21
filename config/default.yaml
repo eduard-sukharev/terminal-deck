@@ -7,6 +7,7 @@ wall:
 corners:
   radius: 4             # corner_radius: outer case corner fillet
   edge_radius: 2        # edge_radius: general edge fillet
+  cutout_chamfer: 0.5   # lead-in bevel on connector cutout openings
 
 clearance:
   shell: 0.35           # air gap between a component and the shell interior

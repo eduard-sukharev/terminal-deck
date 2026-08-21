@@ -4,7 +4,7 @@ type: "feature"
 status: "active"
 language: "default"
 source_paths: ["components/", "utilities/", "layouts/", "assemblies/assembly.py", "routing/cable_routing.py", "keyboard/"]
-updated_at: "2026-08-06"
+updated_at: "2026-08-07"
 ---
 
 # Data Layer
@@ -34,6 +34,10 @@ Python data — it imports cleanly and is what `--steps data` exercises.
   Pure data, no CadQuery. See [[constraint-system]].
 * **Assembly sizing** (`assemblies/assembly.py`) — computes enclosure size,
   mounting bosses, and connector cutouts from placements without building solids.
+  Also provides `select_placements(placements, keep)` for grouping placements
+  by component identity (used by the display sub-assembly target) and
+  `Assembly.build_subset(placements)` for building a subset of placements
+  into a world-transformed solid.
 * **Cable routing** (`routing/cable_routing.py`) — tracks HDMI/USB/power, outputs
   minimum bend radius and clearance tunnels.
 * **Fasteners** (`utilities/fasteners.py`) — screw/insert/nut-trap library.
@@ -43,8 +47,9 @@ Python data — it imports cleanly and is what `--steps data` exercises.
   and stabilizer libraries, plate geometry model, and its own validation. No
   CadQuery; the cyberdeck adapter (`components/keyboard_plate.py`) extrudes the
   model into a solid only during the CAD pass. See [[keyboard-subsystem]].
-* **Constants** (`utilities/constants.py`) — connector type identifiers and
-  other shared values.
+* **Build targets** (`utilities/targets.py`) — `resolve_targets(tokens, roles)`
+  validates and resolves `--targets` tokens into bucket names and per-component
+  roles. Pure data, no CadQuery.
 
 ## The CadQuery boundary
 

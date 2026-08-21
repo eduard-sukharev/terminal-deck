@@ -30,6 +30,22 @@ class LayoutCompact(Layout):
         battery = self.components.get("battery")
         hub = self.components.get("usb_breakout")
 
+        # Raise the keyboard plate to clear the tallest under-plate component
+        # (SBC or RP2040 controller — max'd, not stacked). The SBC sits under
+        # the switch protrusions, so the raise must account for those too.
+        if sbc is not None:
+            controller = getattr(keyboard, "controller", None)
+            ctrl_height = controller.size().height if controller is not None else 8.0
+            z_clearance = 2.0  # matches keyboard.yaml controller.z_clearance
+            sbc_height = sbc.size().height
+            protrusion = keyboard.switch_bottom_protrusion
+            clearance = 0.35  # matches config.clearance.shell
+            plate_raise = max(
+                ctrl_height + z_clearance,
+                sbc_height + protrusion + clearance,
+            )
+            keyboard.set_plate_raise(plate_raise)
+
         # Keyboard centered on the base origin; the plate is raised on standoffs
         # in the component's own build (space beneath holds the buried parts).
         placements.append(Placement(keyboard, 0.0, 0.0, rotation=0.0, z=0.0))

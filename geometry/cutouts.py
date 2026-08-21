@@ -8,6 +8,7 @@ opening + clearance — calculated, never guessed.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from components.base import Connector
 
@@ -77,7 +78,47 @@ def generate(connectors: list[Connector], clearance: float) -> list[Cutout]:
     return [from_connector(connector, clearance) for connector in connectors]
 
 
-def build(cutouts: list, shell, wall_thickness: float):
+def _chamfered_cut(
+    cq_helpers,
+    width: float,
+    height: float,
+    length: float,
+    chamfer: float,
+    direction: tuple[float, float, float],
+) -> Any:
+    """Build a cut solid with a lead-in bevel on its outer opening.
+
+    The cut is a loft from the connector opening (``width`` x ``height``) at
+    the inner end to a slightly larger opening (``+ 2 * chamfer`` per side) at
+    the outer end, so the shell opening flares outward for easy plug insertion.
+    The long axis is aligned with ``direction`` and the inner end sits at the
+    origin, ready for the caller to translate to the connector position.
+    """
+    dx, dy, _ = direction
+    outer_w = width + 2 * chamfer
+    outer_h = height + 2 * chamfer
+    bottom = [
+        (-width / 2, -height / 2),
+        (width / 2, -height / 2),
+        (width / 2, height / 2),
+        (-width / 2, height / 2),
+    ]
+    top = [
+        (-outer_w / 2, -outer_h / 2),
+        (outer_w / 2, -outer_h / 2),
+        (outer_w / 2, outer_h / 2),
+        (-outer_w / 2, outer_h / 2),
+    ]
+    cut = cq_helpers.loft_between(bottom, top, length)
+    # Rotate the loft's Z axis to align with the (axis-aligned) direction.
+    if abs(dy) >= abs(dx):
+        cut = cut.rotate((0, 0, 0), (1, 0, 0), 90.0 if dy > 0 else -90.0)
+    else:
+        cut = cut.rotate((0, 0, 0), (0, 1, 0), 90.0 if dx > 0 else -90.0)
+    return cut
+
+
+def build(cutouts: list, shell, wall_thickness: float, chamfer: float = 0.0):
     """Cut all cutouts into a shell solid.
 
     Parameters
@@ -90,6 +131,9 @@ def build(cutouts: list, shell, wall_thickness: float):
         Shell solid to cut, in the same (world) frame as the cutouts.
     wall_thickness : float
         Shell wall thickness (mm).
+    chamfer : float
+        Lead-in bevel (mm) applied to the outer opening of each cutout. When
+        zero, a plain box is bored (no bevel).
 
     Returns
     -------
@@ -117,10 +161,12 @@ def build(cutouts: list, shell, wall_thickness: float):
         length = distance + wall_thickness
         dx, dy, dz = direction
 
-        # Assumes axis-aligned directions. The cut box long axis (Z) is
-        # rotated to align with ``direction``; width/height map so the opening
-        # stays horizontal-along-wall / vertical.
-        if abs(dy) >= abs(dx):
+        # Assumes axis-aligned directions. The cut long axis (Z) is rotated to
+        # align with ``direction``; width/height map so the opening stays
+        # horizontal-along-wall / vertical.
+        if chamfer > 0.0:
+            cut = _chamfered_cut(cq_helpers, width, height, length, chamfer, direction)
+        elif abs(dy) >= abs(dx):
             cut = cq_helpers.box_centered(width, height, length)
             cut = cut.rotate((0, 0, 0), (1, 0, 0), 90)
         else:

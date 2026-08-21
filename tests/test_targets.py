@@ -63,3 +63,23 @@ def test_all_buckets_are_recognised():
             assert buckets == BUCKETS - {"all"}
         else:
             assert buckets == {bucket}
+
+
+def test_base_bottom_bucket():
+    buckets, comp_roles = resolve_targets(["base_bottom"], {"display"})
+    assert buckets == {"base_bottom"}
+    assert comp_roles == set()
+
+
+def test_base_top_bucket():
+    buckets, comp_roles = resolve_targets(["base_top"], {"display"})
+    assert buckets == {"base_top"}
+    assert comp_roles == set()
+
+
+def test_base_bottom_and_top_together():
+    buckets, comp_roles = resolve_targets(
+        ["base_bottom", "base_top"], {"display"}
+    )
+    assert buckets == {"base_bottom", "base_top"}
+    assert comp_roles == set()

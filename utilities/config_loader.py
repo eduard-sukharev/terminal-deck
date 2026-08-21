@@ -55,6 +55,7 @@ class Wall:
 class Corners:
     radius: float
     edge_radius: float
+    cutout_chamfer: float = 0.5  # lead-in bevel on connector cutout openings
 
 
 @dataclass(frozen=True)

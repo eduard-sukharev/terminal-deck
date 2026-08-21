@@ -3,8 +3,8 @@ title: "Cyberdeck Wiki"
 type: "index"
 status: "active"
 language: "default"
-last_commit: "c4479c4a776fabee8e7a6f57054775e4bfb15a14"
-updated_at: "2026-08-06"
+last_commit: "65c48a44c34ac6a79de96162915dcef0cbb156fc"
+updated_at: "2026-08-07"
 ---
 
 # Cyberdeck Wiki
@@ -30,14 +30,21 @@ The data layer needs no CadQuery; the CAD pass needs the miniforge env.
 source $HOME/miniforge/bin/activate        # CadQuery 2.8 lives here
 make data                                   # data layer only
 make all                                    # full CAD + exports (~1 min)
-make test                                   # pytest suite (55 tests)
+make test                                   # pytest suite (76 tests)
 make check                                  # py_compile all modules
 ```
 
 Expected output of `make data`: a placement validation report with 9 checks
 (`9 checks: PASS`). Constraint-based layouts (e.g. `--layout default_v2`) also
 print a constraint resolution report. The full run writes
-`cyberdeck_{assembly,base,lid,hinge}.step/.stl/.svg` into `generated/`.
+`cyberdeck_{assembly,base,base_bottom,base_top,lid,lid_base,lid_bezel,display,hinge}.step/.stl/.svg`
+into `generated/`.
+
+Selective build via `--targets` (comma-separated): `assembly`, `base`,
+`base_bottom`, `base_top`, `lid`, `lid_base`, `lid_bezel`, `hinge`, `display`
+(LCD + HDMI driver combined), `components` (all debug STLs), `comp:<role>`
+(single component). Makefile convenience targets: `make display`,
+`make base_bottom`, `make base_top`, `make lid_base`, `make lid_bezel`, etc.
 
 Available `--layout` values: `default`, `default_v2`, `compact`, `compact_v2`,
 `constrained`, `recipe_default`, `recipe_compact`. Use `--layout-recipe <path>`

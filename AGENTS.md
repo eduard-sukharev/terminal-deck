@@ -32,7 +32,9 @@ to `generated/`. Full run takes ~1 min (boolean-heavy base shell).
 
 **Selective build targets** (`--targets`, comma-separated):
 - `assembly` — full union of all placements
-- `base` — base shell (expensive boolean)
+- `base` — combined base assembly: base_bottom + keyboard + base_top
+- `base_bottom` — base bottom tray (floor, walls, bosses, ribs, vents, cutouts)
+- `base_top` — base top deck with keyboard cutout
 - `lid` — combined lid assembly: lid_base + display + lid_bezel
 - `lid_base` — lid rear shell tray
 - `lid_bezel` — lid front plate with glass cutout
@@ -42,9 +44,9 @@ to `generated/`. Full run takes ~1 min (boolean-heavy base shell).
 - `comp:<role>` — a single component's raw STL (e.g. `comp:driver`, `comp:display`)
 - `all` — every target above (default)
 
-Makefile convenience targets: `make display`, `make base`, `make lid`,
-`make lid_base`, `make lid_bezel`, `make hinge`, `make assembly`,
-`make components`, `make build TARGETS=...`.
+Makefile convenience targets: `make display`, `make base`, `make base_bottom`,
+`make base_top`, `make lid`, `make lid_base`, `make lid_bezel`, `make hinge`,
+`make assembly`, `make components`, `make build TARGETS=...`.
 
 ## Architecture
 
@@ -58,9 +60,10 @@ Makefile convenience targets: `make display`, `make base`, `make lid`,
   CadQuery (the cyberdeck adapters `components/keyboard_plate.py` and
   `components/rp2040_keyboard.py` extrude its model during the CAD pass).
 - **CAD generation (implemented, requires CadQuery):** `Assembly.build()`
-  unions component solids at their placements; `case.Base.build()` shells the
-  open-top tray (bosses/ribs/vents/cutouts); `case.Lid.build()` shells the
-  open-bottom lid (glass opening); `components/hinge.py` builds the barrels,
+  unions component solids at their placements; `case.Base.build_bottom()` and
+  `case.Base.build_top()` produce the base bottom tray and the top deck with
+  keyboard cutout; `case.Lid.build_base()` and `case.Lid.build_bezel()` produce
+  the lid rear tray and front bezel; `components/hinge.py` builds the barrels,
   pin, and wire tunnel; `geometry/*` hold the primitives. Wire-up lives in
   `main.py run()`.
 - `utilities/cq_helpers.py` is the **only** CadQuery adapter; it imports

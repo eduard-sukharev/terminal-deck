@@ -125,6 +125,73 @@ class UsbBreakout(Component):
         )
         return conns
 
+    def validate(self) -> tuple[int, list[str]]:
+        """Check that ports don't overlap each other or run off the PCB edges.
+
+        The north-edge ports are spaced by a computed (not measured) formula
+        and the east port is positioned independently, so nothing upstream
+        guarantees they stay clear of each other or within the board outline
+        as config values change. Returns ``(check_count, errors)``, matching
+        the keyboard subsystem's ``validate()`` convention.
+        """
+        errors: list[str] = []
+        checks = 0
+
+        specs = self._north_port_specs()
+        xs = self._north_port_x_positions()
+        north_boxes = [
+            (kind, x - w / 2.0, x + w / 2.0, y_span)
+            for (kind, w, _h, d), x in zip(specs, xs)
+            for y_span in [(self.depth / 2.0 - d + self.protrusion, self.depth / 2.0 + self.protrusion)]
+        ]
+
+        checks += 1
+        if north_boxes[0][1] < -self.width / 2.0:
+            errors.append(
+                f"north port {north_boxes[0][0]!r} starts at x={north_boxes[0][1]:.2f}, "
+                f"{-self.width / 2.0 - north_boxes[0][1]:.2f} mm off the west edge of the PCB"
+            )
+
+        checks += 1
+        if north_boxes[-1][2] > self.width / 2.0:
+            errors.append(
+                f"north port {north_boxes[-1][0]!r} ends at x={north_boxes[-1][2]:.2f}, "
+                f"{north_boxes[-1][2] - self.width / 2.0:.2f} mm off the east edge of the PCB"
+            )
+
+        for (kind_a, _, x1_end, _), (kind_b, x2_start, _, _) in zip(north_boxes, north_boxes[1:]):
+            checks += 1
+            gap = x2_start - x1_end
+            if gap < 0.0:
+                errors.append(
+                    f"north ports {kind_a!r} and {kind_b!r} overlap by {-gap:.2f} mm "
+                    "— widen edge_inset or shrink the ports"
+                )
+
+        east_d = self.usb_a_depth
+        east_x = self.width / 2.0 - east_d / 2.0 + self.protrusion
+        east_x0, east_x1 = east_x - east_d / 2.0, east_x + east_d / 2.0
+        east_y0, east_y1 = -self.usb_a_width / 2.0, self.usb_a_width / 2.0
+
+        checks += 1
+        if east_y1 > self.depth / 2.0 or east_y0 < -self.depth / 2.0:
+            errors.append(
+                f"east USB-A port spans y=[{east_y0:.2f}, {east_y1:.2f}], "
+                f"outside the PCB depth [{-self.depth / 2.0:.2f}, {self.depth / 2.0:.2f}]"
+            )
+
+        for kind, nx0, nx1, (ny0, ny1) in north_boxes:
+            checks += 1
+            x_overlap = min(east_x1, nx1) - max(east_x0, nx0)
+            y_overlap = min(east_y1, ny1) - max(east_y0, ny0)
+            if x_overlap > 0.0 and y_overlap > 0.0:
+                errors.append(
+                    f"east USB-A port overlaps north port {kind!r} by "
+                    f"{x_overlap:.2f} x {y_overlap:.2f} mm at the NE corner"
+                )
+
+        return checks, errors
+
     def build(self):
         """PCB slab boolean-unioned with every port body (no PCB cutouts).
 

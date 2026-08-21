@@ -197,15 +197,16 @@ class BuildPipeline:
                         "violation(s) above"
                     )
 
-        keyboard_component = components.get("keyboard")
-        if keyboard_component is not None and hasattr(keyboard_component, "validate"):
-            kb_checks, kb_errors = keyboard_component.validate()
+        for comp_name, component in components.items():
+            if not hasattr(component, "validate"):
+                continue
+            comp_checks, comp_errors = component.validate()
             print(
-                f"[pipeline] keyboard validation: "
-                f"{kb_checks} check(s): "
-                f"{'PASS' if not kb_errors else 'FAIL'}"
+                f"[pipeline] {comp_name} validation: "
+                f"{comp_checks} check(s): "
+                f"{'PASS' if not comp_errors else 'FAIL'}"
             )
-            for error in kb_errors:
+            for error in comp_errors:
                 print(f"  [x ] {error}")
 
         if steps == "data":

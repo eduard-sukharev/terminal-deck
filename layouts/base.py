@@ -17,6 +17,21 @@ from dataclasses import dataclass
 from components.base import Component
 
 
+def rotated_footprint(width: float, depth: float, rotation: float) -> tuple[float, float]:
+    """Axis-aligned world-frame ``(width, depth)`` of a box rotated about Z.
+
+    A 90°/270° rotation swaps which physical dimension faces which world
+    axis (e.g. a 65x30 mm board rotated 90° occupies 30 mm in X and 65 mm in
+    Y) — this is the general form of that swap, exact at any angle. Used
+    everywhere a placement's own ``rotation`` must be accounted for before
+    comparing its footprint to a wall or another component.
+    """
+    rad = math.radians(rotation)
+    eff_w = abs(width * math.cos(rad)) + abs(depth * math.sin(rad))
+    eff_d = abs(width * math.sin(rad)) + abs(depth * math.cos(rad))
+    return eff_w, eff_d
+
+
 @dataclass(frozen=True)
 class Placement:
     """A single component placed in the world frame.
@@ -51,13 +66,19 @@ class Placement:
 
     @property
     def box(self) -> tuple[float, float, float, float]:
-        """Axis-aligned XY footprint ``(x0, y0, x1, y1)`` ignoring rotation (mm)."""
+        """Axis-aligned world-frame XY footprint ``(x0, y0, x1, y1)`` (mm).
+
+        Accounts for the placement's Z rotation (see :func:`rotated_footprint`)
+        so a 90°/270°-rotated non-square component reports its true world
+        extent, not its unrotated local one.
+        """
         size = self.component.size()
+        eff_w, eff_d = rotated_footprint(size.width, size.depth, self.rotation)
         return (
-            self.x - size.width / 2,
-            self.y - size.depth / 2,
-            self.x + size.width / 2,
-            self.y + size.depth / 2,
+            self.x - eff_w / 2,
+            self.y - eff_d / 2,
+            self.x + eff_w / 2,
+            self.y + eff_d / 2,
         )
 
     def world_offset(self, x: float, y: float, z: float) -> tuple[float, float, float]:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from layouts.base import Placement
+from layouts.base import Placement, rotated_footprint
 
 
 def enclosure_from_context(
@@ -60,8 +60,9 @@ def estimate_enclosure(
         if comp is None:
             continue
         box = comp.size()
-        xs.extend([placement.x - box.width / 2, placement.x + box.width / 2])
-        ys.extend([placement.y - box.depth / 2, placement.y + box.depth / 2])
+        eff_w, eff_d = rotated_footprint(box.width, box.depth, placement.rotation)
+        xs.extend([placement.x - eff_w / 2, placement.x + eff_w / 2])
+        ys.extend([placement.y - eff_d / 2, placement.y + eff_d / 2])
         z0, z1 = placement.z_bounds()
         zs.extend([z0, z1])
 

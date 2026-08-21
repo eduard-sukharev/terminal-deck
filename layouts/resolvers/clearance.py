@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from layouts.base import Placement
+from layouts.base import Placement, rotated_footprint
 from layouts.composer import ConstraintResolver, ResolverResult
 from layouts.constraints import Clearance
 
@@ -72,9 +72,11 @@ class ClearanceResolver:
                     tz -= bbox.height / 2.0
                 else:
                     tz += bbox.height / 2.0
+                aw, ad = rotated_footprint(abox.width, abox.depth, subj_placement.rotation)
+                bw, bd = rotated_footprint(bbox.width, bbox.depth, target_placement.rotation)
                 seps = (
-                    _separation(sx, abox.width, tx, bbox.width),
-                    _separation(sy, abox.depth, ty, bbox.depth),
+                    _separation(sx, aw, tx, bw),
+                    _separation(sy, ad, ty, bd),
                     _separation(sz, abox.height, tz, bbox.height),
                 )
                 pair_gap = seps[axis_index] if axis_index is not None else max(seps)

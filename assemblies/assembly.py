@@ -13,12 +13,12 @@ data-side math here is implemented.
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
+from typing import Any
 
 from components.base import BoundingBox, Component
 from geometry.boss import BossSpec, boss_spec
-from layouts.base import Placement
+from layouts.base import Placement, rotated_footprint
 from utilities.config_loader import Config
 
 
@@ -74,10 +74,8 @@ class Assembly:
         zs: list[float] = []
         for placement in self.placements:
             box = placement.component.size()
-            # Rotation about Z swaps footprint width/depth (axis-aligned bound).
-            rad = math.radians(placement.rotation)
-            half_w = abs(box.width * math.cos(rad)) / 2 + abs(box.depth * math.sin(rad)) / 2
-            half_d = abs(box.width * math.sin(rad)) / 2 + abs(box.depth * math.cos(rad)) / 2
+            eff_w, eff_d = rotated_footprint(box.width, box.depth, placement.rotation)
+            half_w, half_d = eff_w / 2, eff_d / 2
             xs.extend([placement.x - half_w, placement.x + half_w])
             ys.extend([placement.y - half_d, placement.y + half_d])
             z0, z1 = placement.z_bounds()
@@ -113,10 +111,9 @@ class Assembly:
                         b_z0, b_z1 = (vz - bbox.height, vz) if pb.flip_x else (vz, vz + bbox.height)
                         if a_z1 <= b_z0 or b_z1 <= a_z0:
                             continue
-                        if _overlap_xy(
-                            wx, wy, abox.width, abox.depth,
-                            vx, vy, bbox.width, bbox.depth,
-                        ):
+                        aw, ad = rotated_footprint(abox.width, abox.depth, pa.rotation)
+                        bw, bd = rotated_footprint(bbox.width, bbox.depth, pb.rotation)
+                        if _overlap_xy(wx, wy, aw, ad, vx, vy, bw, bd):
                             problems.append(f"{a.name} overlaps {b.name}")
         return problems
 
@@ -149,6 +146,63 @@ class Assembly:
                 result.append((bx, by, spec))
         return result
 
+    def connector_cutout(
+        self,
+        placement: Placement,
+        connector: Any,
+        clearance: float | None = None,
+    ) -> dict | None:
+        """Return the shell cutout for one placed connector, or ``None``.
+
+        ``None`` means the connector is internal (mates inside the case, no
+        shell opening) or unreachable (its opening faces far from the
+        nearest shell wall). Factored out of :meth:`connector_cutouts` so
+        callers that already have a specific ``(placement, connector)`` pair
+        — e.g. debug section-view tooling — can get its cutout without
+        re-deriving the reach/direction math or scanning every placement.
+        """
+        from geometry.cutouts import from_connector
+
+        if connector.internal:
+            return None
+
+        clearance = clearance if clearance is not None else self.config.clearance.shell
+        wall = self.config.wall_thickness
+        size = self.enclosure_size()
+        half_w, half_d = size.width / 2, size.depth / 2
+        box = placement.component.size()
+
+        cutout = from_connector(connector, clearance)
+
+        # World-space direction and origin after the placement's Z rotation
+        # and optional X flip.
+        direction = placement.world_direction(*connector.direction)
+        cx, cy, cz = placement.world_offset(connector.x, connector.y, connector.z)
+        wx, wy = direction[0], direction[1]
+
+        # Distance from the connector origin to the wall outer face.
+        # Determine the primary axis from the rotated direction (use a
+        # tolerance for floating-point noise from sin(π)).
+        if abs(wx) >= abs(wy):
+            distance = (half_w - cx) if wx > 0.0 else (cx + half_w)
+            reach = box.width / 2 + clearance + wall
+        else:
+            distance = (half_d - cy) if wy > 0.0 else (cy + half_d)
+            reach = box.depth / 2 + clearance + wall
+        if distance > reach:
+            return None
+
+        return {
+            "type": cutout.connector_type,
+            "x": cx,
+            "y": cy,
+            "z": cz,
+            "width": cutout.width,
+            "height": cutout.height,
+            "direction": direction,
+            "distance": distance,
+        }
+
     def connector_cutouts(self, clearance: float | None = None) -> list:
         """Return the shell cutouts required by all placed connectors (mm).
 
@@ -159,53 +213,12 @@ class Assembly:
         carries its world-space ``direction`` and wall ``distance`` so the
         shell pass can bore it through the wall.
         """
-        from geometry.cutouts import from_connector
-
-        clearance = clearance if clearance is not None else self.config.clearance.shell
-        wall = self.config.wall_thickness
-        size = self.enclosure_size()
-        half_w, half_d = size.width / 2, size.depth / 2
-
         cutouts = []
         for placement in self.placements:
-            component: Component = placement.component
-            box = component.size()
-            for connector in component.connectors():
-                if connector.internal:
-                    continue
-                cutout = from_connector(connector, clearance)
-
-                # World-space direction and origin after the placement's Z
-                # rotation and optional X flip.
-                direction = placement.world_direction(*connector.direction)
-                cx, cy, cz = placement.world_offset(connector.x, connector.y, connector.z)
-                wx, wy = direction[0], direction[1]
-
-                # Distance from the connector origin to the wall outer face.
-                # Determine the primary axis from the rotated direction (use
-                # a tolerance for floating-point noise from sin(π)).
-                px, py = cx, cy
-                if abs(wx) >= abs(wy):
-                    distance = (half_w - px) if wx > 0.0 else (px + half_w)
-                    reach = box.width / 2 + clearance + wall
-                else:
-                    distance = (half_d - py) if wy > 0.0 else (py + half_d)
-                    reach = box.depth / 2 + clearance + wall
-                if distance > reach:
-                    continue
-
-                cutouts.append(
-                    {
-                        "type": cutout.connector_type,
-                        "x": px,
-                        "y": py,
-                        "z": placement.z + cutout.z,
-                        "width": cutout.width,
-                        "height": cutout.height,
-                        "direction": direction,
-                        "distance": distance,
-                    }
-                )
+            for connector in placement.component.connectors():
+                cutout = self.connector_cutout(placement, connector, clearance)
+                if cutout is not None:
+                    cutouts.append(cutout)
         return cutouts
 
     def max_component_height(self) -> float:
@@ -267,3 +280,64 @@ class Assembly:
         for part in parts[1:]:
             result = result.union(part)
         return result
+
+    def build_colored(
+        self,
+        placements: list[Placement] | None = None,
+        role_map: dict[int, str] | None = None,
+        assembly: Any | None = None,
+        extra_parts: list[tuple[str, Any]] | None = None,
+    ):
+        """Build a ``cadquery.Assembly`` with one colored child per part.
+
+        Unlike :meth:`build`/:meth:`build_subset`, which fuse everything into
+        a single boolean solid, this keeps each component (and any
+        ``extra_parts``, e.g. a case shell) as a separate named, colored
+        child — for glTF export, where telling components and sub-assemblies
+        apart by color is the point.
+
+        Parameters
+        ----------
+        placements : list[Placement] or None
+            Placements to add as colored components; defaults to the whole
+            assembly's placements.
+        role_map : dict[int, str] or None
+            ``id(component) -> role`` (e.g. ``{id(sbc): "sbc"}``), used to
+            look up each component's color in ``utilities.colors``. A
+            component missing from the map falls back to its ``.name``,
+            then to the palette's default color.
+        assembly : cadquery.Assembly or None
+            Existing assembly to add children to; a new one is created if
+            omitted (so callers can compose a case shell with components in
+            one call, e.g. via ``extra_parts``).
+        extra_parts : list[(str, shape)] or None
+            Additional pre-built, already-world-positioned solids to add as
+            colored children, keyed by role/name (e.g.
+            ``[("case", base_shell_solid)]``).
+
+        Returns
+        -------
+        cadquery.Assembly
+        """
+        from utilities import cq_helpers
+        from utilities.colors import color_for
+
+        cq = cq_helpers.require_cq()
+        placements = self.placements if placements is None else placements
+        role_map = role_map or {}
+        assy = assembly if assembly is not None else cq.Assembly()
+
+        for placement in placements:
+            solid = placement.component.build()
+            if placement.rotation:
+                solid = cq_helpers.rotate_z(solid, placement.rotation)
+            if placement.flip_x:
+                solid = cq_helpers.rotate_x(solid, 180.0)
+            solid = cq_helpers.translate(solid, placement.x, placement.y, placement.z)
+            role = role_map.get(id(placement.component), placement.component.name)
+            assy.add(solid, name=placement.component.name, color=cq.Color(*color_for(role)))
+
+        for role, solid in extra_parts or []:
+            assy.add(solid, name=role, color=cq.Color(*color_for(role)))
+
+        return assy

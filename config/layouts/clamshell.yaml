@@ -1,18 +1,40 @@
-# Compact clamshell layout recipe.
+# The cyberdeck layout: a compact clamshell, declared as constraints.
+#
+# This is the only layout. `--layout compact` resolves it; point
+# `--layout-recipe <path>` at a copy of this file to try a variant without
+# touching the build.
 #
 # Laptop arrangement, front (+Y, toward the user) to rear (-Y, the hinge):
 #
-#   palm rest  |  keyboard  |  rear I/O strip (SBC + USB hub)
+#   keyboard  |  rear I/O strip (SBC + USB hub)
 #
-# The keyboard's switch plate stands on 10 mm standoffs, and the battery
-# lives in that hollow. The SBC does not: its power inlet and microSD are
-# the two things that must be reachable without opening the case, so it sits
-# in the rear strip against the wall instead. The hub sits beside it, in the
-# rear-right corner, flipped so its two port-bearing edges face the rear and
-# right walls.
+# There is no palm rest: the whole base group is centered on Y so the
+# symmetric enclosure hugs its contents. The keyboard's switch plate stands
+# on standoffs and the battery lives in that hollow. The SBC does not: its
+# only externally-reachable connector is the USB hub's rear port strip
+# (the SBC's own Power/HDMI/USB-C are all internal — the hub is the deck's
+# one external USB/power surface), so the SBC sits wherever keeps its
+# internal USB-C-OTG cable to the hub short, rather than against a wall.
+#
+# SBC in the rear-right corner, rotated 270° so its I/O edge (HDMI +
+# USB-C-OTG + Power — all internal, none need a wall) faces west, toward
+# the hub. The microSD slot (west-facing before this rotation) now faces
+# the keyboard instead of a wall and loses its external access — accepted
+# per the current hardware plan; re-flashing means opening the case.
+#
+# Hub in the rear-left corner. Its north edge (3x USB-A + micro-SD + audio
+# + USB-C) must still face rear, and its lone side port must now face left
+# (west) instead of right, to stay on the case's outer edge in the new
+# corner. A plain 180° Z-rotation (no flip) achieves both at once — the
+# same "north+side, 90° apart" board geometry that used to require a flip
+# to reach "rear+right" reaches "rear+left" with rotation alone. Unflipped
+# also means the board sits right-side-up, rather than upside-down for no
+# reason now that flipping isn't needed for the port pairing.
 #
 # Every value is derived from component sizes and config, so re-measuring a
-# part (the battery and hub are still TODO: measure) moves the layout with it.
+# part (the battery and hub are still TODO: measure) moves the layout with
+# it. The `fixed_position` entries below are the deliberate manual
+# overrides — each one carries the reason it cannot be derived.
 
 constraints:
   # ── Enclosure envelope ────────────────────────────────────────────────
@@ -30,41 +52,54 @@ constraints:
       centered so the symmetric enclosure is as small as the content allows.
 
   # ── Rear I/O strip ────────────────────────────────────────────────────
-  # SBC hard against the rear wall so its -Y power inlet reaches it, and
-  # against the left wall so the -X microSD slot reaches that one.
-  - kind: edge_alignment
-    subject: sbc
-    subject_edge: rear
-    target: enclosure
-    target_edge: rear
-  - kind: edge_alignment
-    subject: sbc
-    subject_edge: left
-    target: enclosure
-    target_edge: left
-
-  # Hub mounted upside down (flip) rather than turned 180° about Z: its
-  # north edge (3x USB-A + micro-SD + audio + USB-C) and east edge (1x
-  # USB-A) are rigidly 90° apart on the physical board, so a Z-rotation
-  # alone can only pair "rear + left" or "front + right" — never the
-  # "rear + right" corner this recipe aligns it into below. Flipped, its
-  # top face sits at z=hub.height and the body hangs down to the floor
-  # (z=0), same as an unflipped board sitting on the floor.
+  # SBC hard against the rear wall and the right (east) wall. Rotated 270°
+  # about Z so its I/O edge (HDMI + USB-C-OTG + Power, all internal — see
+  # header) faces west, toward the hub, instead of its unmodified-recipe
+  # rear-facing orientation. `edge_alignment` below is rotation-aware (it
+  # reads the rotation already set here and aligns the true rotated
+  # footprint), so "right"/"rear" below place the SBC's actual world-space
+  # edges, not its unrotated local ones — a 65x30 mm board rotated 90°
+  # occupies 30 mm in X and 65 mm in Y.
+  #
+  # Raised one wall-thickness off the floor, onto its own mounting bosses,
+  # so it clears the base floor's stiffening ribs (geometry.ribs.rib_height;
+  # OrangePiZero2W.set_floor_raise sizes the bosses to match). Set here
+  # rather than left to z_stack below, so that resolver doesn't reset it
+  # back to z=0.
   - kind: fixed_position
-    subject: usb_breakout
-    rotation: 0.0
-    flip: true
-    z: "{usb_breakout.height}"
+    subject: sbc
+    rotation: 270.0
+    z: "{config.wall_thickness}"
   - kind: edge_alignment
-    subject: usb_breakout
+    subject: sbc
     subject_edge: rear
     target: enclosure
     target_edge: rear
   - kind: edge_alignment
-    subject: usb_breakout
+    subject: sbc
     subject_edge: right
     target: enclosure
     target_edge: right
+
+  # Hub: plain 180° Z-rotation, no flip (see header for why this reaches
+  # "rear+left" the same way the old flip reached "rear+right"). Right-side
+  # up, so it sits flat on the floor exactly like the SBC — raised the same
+  # one wall-thickness, same reason.
+  - kind: fixed_position
+    subject: usb_breakout
+    rotation: 180.0
+    flip: false
+    z: "{config.wall_thickness}"
+  - kind: edge_alignment
+    subject: usb_breakout
+    subject_edge: rear
+    target: enclosure
+    target_edge: rear
+  - kind: edge_alignment
+    subject: usb_breakout
+    subject_edge: left
+    target: enclosure
+    target_edge: left
 
   # ── Keyboard ──────────────────────────────────────────────────────────
   # Centered on X; on Y it clears the rear strip by 2 mm, which leaves the
@@ -97,9 +132,11 @@ constraints:
 
   # ── Base floor ────────────────────────────────────────────────────────
   # usb_breakout is flipped and gets its z set explicitly above, since this
-  # resolver would otherwise overwrite it with a flip-unaware z=0.
+  # resolver would otherwise overwrite it with a flip-unaware z=0. sbc is
+  # likewise set explicitly above (raised onto its mounting bosses, off the
+  # floor ribs), so it's left out of this layer too.
   - kind: z_stack
-    layers: [["keyboard", "sbc", "battery"]]
+    layers: [["keyboard", "battery"]]
 
   # ── Lid ───────────────────────────────────────────────────────────────
   # The lid closes onto the base rim, so the display sits one keyboard-height
@@ -130,15 +167,11 @@ constraints:
   # These produce no placements; they fail the build when the arrangement
   # above stops being physically buildable.
 
-  # The three ports that must survive to the shell as real openings.
-  - kind: port_access
-    subject: sbc
-    connector_type: Power
-    wall: rear
-  - kind: port_access
-    subject: sbc
-    connector_type: MicroSD
-    wall: left
+  # The hub's rear port strip is the deck's one externally-reachable I/O
+  # surface in this layout — see header. The SBC's own Power/HDMI/USB-C are
+  # all internal (routed by cable, not a wall cutout) and MicroSD no longer
+  # needs one either, so none of the SBC's connectors get a port_access
+  # check here.
   - kind: port_access
     subject: usb_breakout
     connector_type: USB-A
@@ -151,11 +184,13 @@ constraints:
     target: keyboard
     gap: 1.0
 
-  # Rear strip parts must not run into each other.
+  # Rear strip parts must not run into each other — and, now that the SBC's
+  # I/O edge faces the hub, must leave room for the USB-C-OTG-to-hub cable
+  # to plug in and bend clear (measured requirement, not a guess).
   - kind: clearance
     subject: sbc
     target: usb_breakout
-    gap: 2.0
+    gap: 30.0
     axis: x
 
   # Nothing in the base may touch the lid when it closes.

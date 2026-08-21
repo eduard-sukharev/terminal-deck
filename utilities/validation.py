@@ -17,8 +17,23 @@ without CadQuery.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any, Protocol
+
+
+def _rotated_footprint(width: float, depth: float, rotation: float) -> tuple[float, float]:
+    """Axis-aligned world-frame ``(width, depth)`` of a box rotated about Z.
+
+    Duplicated from ``layouts.base.rotated_footprint`` rather than imported:
+    ``utilities`` sits below ``layouts`` in the import graph (``layouts``
+    already imports from ``components``, which imports from ``utilities``),
+    so importing back from ``layouts`` here would be circular.
+    """
+    rad = math.radians(rotation)
+    eff_w = abs(width * math.cos(rad)) + abs(depth * math.sin(rad))
+    eff_d = abs(width * math.sin(rad)) + abs(depth * math.cos(rad))
+    return eff_w, eff_d
 
 
 class SizedComponent(Protocol):
@@ -103,10 +118,9 @@ def check_collisions(placements: list[Any], report: ValidationReport) -> None:
                     a_z0, a_z1 = (wz - abox.height, wz) if pa.flip_x else (wz, wz + abox.height)
                     b_z0, b_z1 = (vz - bbox.height, vz) if pb.flip_x else (vz, vz + bbox.height)
                     z_overlap = not (a_z1 <= b_z0 or b_z1 <= a_z0)
-                    if z_overlap and _overlap_xy(
-                        wx, wy, abox.width, abox.depth,
-                        vx, vy, bbox.width, bbox.depth,
-                    ):
+                    aw, ad = _rotated_footprint(abox.width, abox.depth, pa.rotation)
+                    bw, bd = _rotated_footprint(bbox.width, bbox.depth, pb.rotation)
+                    if z_overlap and _overlap_xy(wx, wy, aw, ad, vx, vy, bw, bd):
                         report.add(
                             "no-collisions",
                             False,

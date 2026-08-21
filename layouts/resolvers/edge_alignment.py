@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from layouts.base import Placement
+from layouts.base import Placement, rotated_footprint
 from layouts.composer import ConstraintResolver, ResolverResult
 from layouts.constraints import EdgeAlignment
 from layouts.resolvers._helpers import align_edges, estimate_enclosure, interior_bounds
@@ -31,6 +31,13 @@ class EdgeAlignmentResolver:
             )
 
         subj_size = subj.size()
+        # A pending rotation (set by an earlier fixed_position constraint on
+        # the same subject) changes which physical dimension faces which
+        # world axis — align against the rotated footprint, not the raw
+        # component-local one, or a non-square 90°/270°-rotated component
+        # ends up offset from the wall by half the width/depth difference.
+        subj_rotation = current[constraint.subject].rotation if constraint.subject in current else 0.0
+        eff_subj_w, eff_subj_d = rotated_footprint(subj_size.width, subj_size.depth, subj_rotation)
 
         if constraint.target == "enclosure":
             w, d, _ = estimate_enclosure(current, components, config, context=context)
@@ -65,10 +72,12 @@ class EdgeAlignmentResolver:
                 )
             target_size = target_comp.size()
             tx, ty = target_placement.x, target_placement.y
-            target_w, target_d = target_size.width, target_size.depth
+            target_w, target_d = rotated_footprint(
+                target_size.width, target_size.depth, target_placement.rotation
+            )
 
         x, y = align_edges(
-            subj_size.width, subj_size.depth,
+            eff_subj_w, eff_subj_d,
             tx, ty, target_w, target_d,
             constraint.subject_edge, constraint.target_edge,
             constraint.offset,

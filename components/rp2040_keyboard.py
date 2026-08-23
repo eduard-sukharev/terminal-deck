@@ -1,27 +1,33 @@
-"""40% keyboard assembly: switch plate + RP2040 controller.
+"""40% keyboard assembly: switch plate + keycaps.
 
-The physical keyboard is the Cherry-MX-compatible switch plate with a
-Waveshare RP2040-Zero controller running QMK/Vial. Plate geometry comes
-from the :mod:`keyboard` package (KLE layout → geometry model); this
-component is the cyberdeck adapter that produces the CadQuery solid.
+The physical keyboard is the Cherry-MX-compatible switch plate driven by a
+Waveshare RP2040-Zero running QMK/Vial. Plate geometry comes from the
+:mod:`keyboard` package (KLE layout → geometry model); this component is the
+cyberdeck adapter that produces the CadQuery solid.
 
-The plate is raised on standoffs so the controller fits beneath it; the
-controller's USB-C is internal and connects to the SBC with a cable inside
-the housing — no external keyboard connector.
+The controller is **not** part of this component: it is placed separately on
+the case floor (``components/rp2040_zero.py``, role ``controller`` in the
+layout), because it has to sit in the wedge the sloped deck opens up rather
+than hang from the tilted plate. See :attr:`switch_bottom_protrusion` for why
+it cannot live directly under the plate.
+
+The plate stands on standoffs high enough to keep the switch bodies clear of
+whatever is beneath them: the bare floor by default, or a board buried under
+the plate (the SBC) when the layout calls :meth:`set_plate_raise` with
+:meth:`plate_raise_for_buried`.
 """
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
-from components.base import BoundingBox, Component, Connector, Hole
+from components.base import BoundingBox, Component, Hole
 from components.keyboard_plate import KeyboardPlate
-from components.rp2040_zero import Rp2040Zero
-from utilities.constants import CONNECTOR_USB_C, DIR_POS_X
 
 
 class Rp2040Keyboard(Component):
-    """40% keyboard: switch plate + XDA keycaps + RP2040-Zero controller.
+    """40% keyboard: switch plate + XDA keycaps.
 
     Switch housings are not rendered — only the plate cutouts and keycaps
     are visible.  Keycaps are lofted from an 18.5 mm square base to a
@@ -29,6 +35,18 @@ class Rp2040Keyboard(Component):
     """
 
     name = "40% Keyboard (RP2040)"
+
+    #: Simplified switch geometry (mm). The body is a cube passing up through
+    #: the plate cutout into the keycap, with a pin stub below it. These are
+    #: the single source for both :meth:`build` and
+    #: :attr:`switch_bottom_protrusion` — they used to be build-local literals
+    #: while the property returned a stale, smaller number, which understated
+    #: how much room the switches need under the plate by half.
+    switch_body_size = 13.0
+    switch_pin_diameter = 4.0
+    switch_pin_height = 3.5
+    #: Cube bottom, measured below the plate's TOP surface.
+    switch_cube_bottom_offset = 5.0
 
     def __init__(self, keyboard: dict[str, Any] | None = None) -> None:
         data = keyboard or {}
@@ -40,12 +58,11 @@ class Rp2040Keyboard(Component):
         self._plate_inset = float(plate_cfg.get("edge_margin", 6.0))
         self._pitch = float(data.get("pitch", 19.05))
 
-        controller_cfg = data.get("controller", {}) or {}
-        self.controller = Rp2040Zero(controller_cfg)
-        self._controller_x = float(controller_cfg.get("x", 0.0))
-        self._controller_y = float(controller_cfg.get("y", 0.0))
-        z_clearance = float(controller_cfg.get("z_clearance", 2.0))
-        self._plate_raise = self.controller.height + z_clearance
+        # Default standoff: just enough to keep the switch bodies off the
+        # bare floor. The layout raises it further (set_plate_raise) when a
+        # board is buried underneath.
+        self._floor_gap = float(plate_cfg.get("floor_gap", 1.0))
+        self._plate_raise = self.switch_bottom_protrusion + self._floor_gap
 
         keycap_cfg = data.get("keycap", {}) or {}
         self._keycap_profile = str(keycap_cfg.get("profile", "xda"))
@@ -54,19 +71,81 @@ class Rp2040Keyboard(Component):
     def set_plate_raise(self, height: float) -> None:
         """Override the plate standoff height (mm).
 
-        The layout calls this when components buried under the raised plate
-        (e.g. the SBC) require more clearance than the controller alone.
+        The layout calls this when something buried under the raised plate
+        needs more clearance than the switch bodies alone.
         """
         self._plate_raise = height
+
+    def plate_raise_for_buried(
+        self,
+        part_height: float,
+        part_depth: float,
+        slope: float,
+        gap: float,
+    ) -> float:
+        """Plate standoff (mm) needed to bury a floor-mounted part under the plate.
+
+        The binding point is the buried part's *front* edge, not its centre:
+        on a deck sloped by ``slope`` the plate rises toward the rear, so
+        clearance is worst at the front of anything tucked under it. This
+        assumes the part is pushed rear-flush with the plate, which is how
+        the recipe places it — the deepest position, and therefore the one
+        needing the least raise.
+
+        Note this is clearance under the **switch bodies**, which hang
+        :attr:`switch_bottom_protrusion` below the plate: that protrusion,
+        not the plate itself, is what the buried part actually has to miss.
+
+        Parameters
+        ----------
+        part_height : float
+            Top of the buried part above the case floor (mm) — including any
+            standoff/boss raise, not just the part's own thickness.
+        part_depth : float
+            The part's depth along Y (mm).
+        slope : float
+            Deck slope in degrees (``config.deck.slope``).
+        gap : float
+            Required clearance between the part's top and the switch bodies.
+
+        Returns
+        -------
+        float
+            The standoff height, never less than the plain
+            switch-clearance-plus-floor-gap value.
+        """
+        rad = math.radians(slope)
+        plate_depth = self._plate.size().depth
+        # Clearance checks bound each tilted slice by its own worst corner,
+        # so they read a slice as reaching half its depth * sin(tilt) lower
+        # than it does at its centre. Size against that same conservative
+        # bound, or the derivation and the check disagree by exactly that
+        # much and a layout sized here fails the check it was sized for.
+        slice_bias = (plate_depth / self._occupied_volume_slices / 2.0) * math.sin(rad)
+        # Rear-flush: the part's front edge sits `part_depth` in from the
+        # plate's rear edge, and the keyboard's own origin rides half the
+        # plate depth up the slope (see the deck_mount resolver).
+        needed = (
+            part_height + gap + slice_bias
+            + math.sin(rad) * (part_depth - plate_depth)
+        ) / math.cos(rad)
+        return max(
+            self.switch_bottom_protrusion + self._floor_gap,
+            self.switch_bottom_protrusion + needed,
+        )
 
     @property
     def switch_bottom_protrusion(self) -> float:
         """Deepest point of the switch bodies below the plate bottom (mm).
 
-        The simplified switch pins hang 3.5 mm below the plate bottom surface.
-        Components buried under the plate must clear this protrusion.
+        Derived from the same constants :meth:`build` uses: the switch cube
+        starts ``switch_cube_bottom_offset`` below the plate top, and the pin
+        stub hangs ``switch_pin_height`` below the cube. For the stock 1.5 mm
+        plate that is 7.0 mm, which is why nothing (the controller included)
+        fits between the plate and the floor.
         """
-        return 3.5
+        cube_bottom = self._plate_thickness - self.switch_cube_bottom_offset
+        return -(cube_bottom - self.switch_pin_height)
 
     def size(self) -> BoundingBox:
         box = self._plate.size()
@@ -77,26 +156,117 @@ class Rp2040Keyboard(Component):
         height = self._plate_raise + self._plate_thickness + CAP_PLATE_GAP + cap_height
         return BoundingBox(box.width, box.depth, height)
 
-    def occupied_volumes(self) -> list[tuple[float, float, float, BoundingBox]]:
-        """Solid sub-volumes: the raised plate block and the controller block.
+    #: Y-slices the plate's occupied volume is reported in. Collision/
+    #: clearance checks widen each sub-volume's Z-span by up to half its own
+    #: depth times sin(tilt) to bound a tilted box — one box spanning the
+    #: whole plate would report that swing (front-edge low point to
+    #: rear-edge high point) at *every* Y, phantom-colliding with something
+    #: correctly tucked under the plate's high (rear) end only, nowhere near
+    #: the low end. More slices means each one's own depth — and so its own
+    #: swing — shrinks toward the true local clearance at that Y.
+    _occupied_volume_slices = 8
 
-        The plate sits on standoffs at ``_plate_raise``; the space beneath it is
-        hollow (occupied only by the controller), so a component buried under
-        the plate does not collide with the keyboard.
+    def switch_grid_extent(self) -> tuple[float, float, float, float]:
+        """Bounding ``(x0, y0, x1, y1)`` of the switch bodies (mm, local).
+
+        The switch cubes are centered on the grid positions, so the occupied
+        footprint is the grid extent grown by half a cube on every side. This
+        is narrower than the plate: the plate's edge margin carries no
+        switches, and that margin is the only place a tall part can sit
+        directly under the plate.
+        """
+        grid = self.switch_grid
+        half = self.switch_body_size / 2.0
+        xs = [x for x, _ in grid]
+        ys = [y for _, y in grid]
+        return (min(xs) - half, min(ys) - half, max(xs) + half, max(ys) + half)
+
+    def _sliced(
+        self, x0: float, y0: float, x1: float, y1: float, z: float, height: float
+    ) -> list[tuple[float, float, float, BoundingBox]]:
+        """Slice an axis-aligned block into ``_occupied_volume_slices`` Y-bands."""
+        n = self._occupied_volume_slices
+        depth = (y1 - y0) / n
+        return [
+            (
+                (x0 + x1) / 2.0,
+                y0 + (i + 0.5) * depth,
+                z,
+                BoundingBox(x1 - x0, depth, height),
+            )
+            for i in range(n)
+        ]
+
+    def occupied_volumes(self) -> list[tuple[float, float, float, BoundingBox]]:
+        """Solid sub-volumes: two boxes per switch, plus the plate above them.
+
+        The switch volume is split into the same two bodies :meth:`build`
+        actually generates, not one box spanning both: a ``switch_body_size``
+        (13 mm) square for the cube, and a narrower ``switch_pin_diameter``
+        (4 mm) square for the pin stub below it. An earlier version used the
+        cube's wider footprint for the *entire* protrusion height, including
+        the lower band where only the narrow pin exists — a real, measured
+        source of false-positive collisions: a clearance check compared
+        against a real boolean intersection of the built solids (no overlap,
+        1.5+ mm to spare) still failed by over a millimetre with the
+        single-wide-box model, purely from crediting the pin's own clearance
+        to the wider cube footprint it doesn't actually have there.
+        Before that, an even coarser version reported one full-width slab
+        per Y-slice, as if every switch merged into a continuous wall the
+        entire width of the grid — a part sitting in the real gap *between*
+        two switch columns still tripped the collision check, because the
+        slab covered X positions no switch actually occupies.
+        Reporting only the plate, before either of those, hid the switch
+        band entirely: a board could be placed straight through the switch
+        pins with every clearance check still passing.
+
+        Both remaining sources of conservatism versus a true boolean check
+        are inherent to axis-aligned box comparison, not further-fixable
+        bugs: a square bounding a round pin/cell reaches slightly past the
+        true curved surface, and the per-axis separating-axis test (X, Y, Z
+        only) can't find a shorter true diagonal separation the real curved
+        surfaces achieve. That residual margin is intentional safety
+        margin, not error.
+
+        The plate itself and everything above it (cutouts, keycaps) is
+        still sliced along Y (see :attr:`_occupied_volume_slices`) for the
+        tilt-swing reasons documented there; individual switch boxes are
+        small enough relative to the tilt that one box per switch/segment is
+        already an accurate bound without further slicing.
+
+        The space below the switch boxes is hollow, so parts tucked under
+        the keyboard clear it — provided they clear both boxes, and clear
+        them in X too, which per-switch (rather than per-row-slab) boxes
+        correctly allow for between columns.
         """
         plate_box = self._plate.size()
         plate_height = self.size().height - self._plate_raise
-        controller_box = self.controller.size()
-        return [
-            (0.0, 0.0, self._plate_raise, BoundingBox(plate_box.width, plate_box.depth, plate_height)),
-            (self._controller_x, self._controller_y, 0.0, controller_box),
-        ]
+        cube_z = self._plate_raise - self.switch_cube_bottom_offset + (
+            self._plate_thickness
+        )
+        cube_height = self.switch_cube_bottom_offset - self._plate_thickness
+        pin_z = cube_z - self.switch_pin_height
+        switch_boxes = []
+        for x, y in self.switch_grid:
+            switch_boxes.append(
+                (x, y, cube_z, BoundingBox(self.switch_body_size, self.switch_body_size, cube_height))
+            )
+            switch_boxes.append(
+                (x, y, pin_z, BoundingBox(
+                    self.switch_pin_diameter, self.switch_pin_diameter, self.switch_pin_height
+                ))
+            )
+        return (
+            switch_boxes
+            + self._sliced(
+                -plate_box.width / 2.0, -plate_box.depth / 2.0,
+                plate_box.width / 2.0, plate_box.depth / 2.0,
+                self._plate_raise, plate_height,
+            )
+        )
 
     def mounting_holes(self) -> list[Hole]:
-        # The plate mounts on four standoff bosses (height = plate raise). The
-        # controller rests flat on the base floor beneath the plate and is held
-        # by the plate assembly — its own corner holes stay on the Rp2040Zero
-        # component for serviceability but generate no case bosses.
+        # The plate mounts on four standoff bosses (height = plate raise).
         return [
             Hole(h.x, h.y, h.diameter, height=self._plate_raise)
             for h in self._plate.mounting_holes()
@@ -105,24 +275,6 @@ class Rp2040Keyboard(Component):
     def mounting_screw(self) -> str:
         """The plate's standoff screw size (from keyboard.mounting.screw)."""
         return self._plate.mounting_screw()
-
-    def connectors(self) -> list[Connector]:
-        # The controller's USB-C is internal — it cables to the SBC inside the
-        # case, so no shell cutout is generated for it.
-        conn = self.controller.connectors()[0]
-        return [
-            Connector(
-                type=CONNECTOR_USB_C,
-                x=self._controller_x + conn.x,
-                y=self._controller_y + conn.y,
-                z=conn.z,
-                direction=DIR_POS_X,
-                width=conn.width,
-                height=conn.height,
-                depth=conn.depth,
-                internal=True,
-            )
-        ]
 
     @property
     def switch_grid(self) -> list[tuple[float, float]]:
@@ -140,11 +292,10 @@ class Rp2040Keyboard(Component):
         return self._plate.validate()
 
     def build(self):
-        """Generate the keyboard solid: raised plate, switch bodies, keycaps, controller.
+        """Generate the keyboard solid: raised plate, switch bodies, keycaps.
 
         The plate sits on standoffs at ``_plate_raise`` with simplified switch
         bodies protruding through the cutouts and keycaps lofted above them.
-        The RP2040-Zero controller rests on the mounting plane beneath the plate.
         """
         from components.keycap_set import KeycapSet
         from utilities import cq_helpers
@@ -157,10 +308,10 @@ class Rp2040Keyboard(Component):
         # Cube (13 mm) has its **bottom** 5 mm below the plate top surface,
         # so it passes up through the plate cutout and pokes into the keycap.
         # A 4 mm diameter cylinder pokes 3.5 mm below the cube bottom.
-        switch_body_size = 13.0
-        switch_pin_diameter = 4.0
-        switch_pin_height = 3.5
-        cube_bottom_offset = 5.0  # cube bottom below plate top surface
+        switch_body_size = self.switch_body_size
+        switch_pin_diameter = self.switch_pin_diameter
+        switch_pin_height = self.switch_pin_height
+        cube_bottom_offset = self.switch_cube_bottom_offset
         cube_center_z = self._plate_thickness - cube_bottom_offset + switch_body_size / 2.0
         pin_center_z = self._plate_thickness - cube_bottom_offset - switch_pin_height / 2.0
         switch_shapes: list[Any] = []
@@ -189,11 +340,4 @@ class Rp2040Keyboard(Component):
             layout_centroid=centroid,
             enabled=self._keycap_enabled,
         )
-        body = body.union(caps.build())
-
-        # Controller beneath the plate, on the mounting plane.
-        controller = self.controller.build()
-        controller = cq_helpers.translate(
-            controller, self._controller_x, self._controller_y, 0.0
-        )
-        return body.union(controller)
+        return body.union(caps.build())

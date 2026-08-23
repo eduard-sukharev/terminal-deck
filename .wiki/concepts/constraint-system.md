@@ -70,8 +70,6 @@ split into two groups:
 |---|---|---|
 | `ConstraintLayout` | `layouts/layout_constrained.py` | Base class: overrides `_build_placements` with `LayoutComposer` |
 | `RecipeLayout` | `layouts/layout_recipe.py` | Loads constraints from a YAML file instead of Python |
-| `LayoutDefaultV2` | `layouts/layout_default_v2.py` | Constraint-based default layout (matches original) |
-| `LayoutCompactV2` | `layouts/layout_compact_v2.py` | Constraint-based compact layout (matches original) |
 
 ## YAML recipes (`config/layouts/`)
 
@@ -94,16 +92,15 @@ Values support `{component.field}` and `{config.path}` references (e.g.
 expressions over references are also supported (e.g.
 `"{display.width} + 2 * {config.clearance.shell} + 2 * {config.wall_thickness}"`).
 
-Built-in recipes:
-* `config/layouts/default.yaml` — clamshell with battery on base floor beside SBC
-* `config/layouts/compact.yaml` — clamshell with battery under raised keyboard plate
+The built-in recipe is `config/layouts/clamshell.yaml` — the compact
+clamshell: battery in the hollow under the raised keyboard plate, SBC and USB
+hub in the rear I/O strip, no palm rest.
 
 ## CLI usage
 
 ```bash
-python main.py --layout default_v2 --steps data     # constraint-based Python layout
-python main.py --layout recipe_default --steps data  # YAML recipe layout
-python main.py --layout recipe_default --layout-recipe my_layout.yaml  # custom recipe
+python main.py --steps data                          # the built-in recipe
+python main.py --layout-recipe my_layout.yaml        # a custom recipe
 ```
 
 ## Constraint report

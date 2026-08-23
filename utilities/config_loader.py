@@ -38,6 +38,7 @@ _HARDWARE_SECTIONS: frozenset[str] = frozenset({
     "storage",
     "io",
     "usb_breakout",
+    "usb_c_plug",
     "heat_inserts",
     "battery",
     "driver_board",
@@ -63,6 +64,21 @@ class Clearance:
     shell: float
     insert: float
     screw: float
+
+
+@dataclass(frozen=True)
+class Deck:
+    """Base top deck geometry.
+
+    Attributes
+    ----------
+    slope : float
+        Typing slope in degrees. The deck plane tilts about X so the rear
+        (-Y, hinge side) rises while the front edge stays at the flat-case
+        deck level, wedging the base. ``0.0`` reproduces the flat deck.
+    """
+
+    slope: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -137,6 +153,7 @@ class Config:
     wall: Wall
     corners: Corners
     clearance: Clearance
+    deck: Deck
     display: Display
     bezel: Bezel
     glass: Glass
@@ -177,6 +194,9 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
     wall = _as_dict(raw, "wall")
     corners = _as_dict(raw, "corners")
     clearance = _as_dict(raw, "clearance")
+    # Optional: a recipe/config predating the sloped deck has no `deck:`
+    # section and gets slope 0.0, i.e. the original flat geometry.
+    deck = raw.get("deck") if isinstance(raw.get("deck"), dict) else {}
     display = _as_dict(raw, "display")
     bezel = _as_dict(raw, "bezel")
     glass = _as_dict(raw, "glass")
@@ -198,6 +218,7 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
         wall=Wall(**{k: float(v) for k, v in wall.items()}),
         corners=Corners(**{k: float(v) for k, v in corners.items()}),
         clearance=Clearance(**{k: float(v) for k, v in clearance.items()}),
+        deck=Deck(**{k: float(v) for k, v in deck.items()}),
         display=Display(
             **{k: float(v) for k, v in display.items()},
             flex=Flex(**{k: float(v) for k, v in flex.items()}) if isinstance(flex, dict) else None,

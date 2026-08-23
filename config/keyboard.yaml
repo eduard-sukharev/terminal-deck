@@ -19,9 +19,9 @@ keyboard:
     enabled: true
   controller:
     rp2040: true
-    width: 23.5
-    depth: 18.0
-    height: 8.0
+    width: 18.0
+    depth: 23.5
+    height: 5.3
     hole_diameter: 2.0
     x: 0.0            # controller center X offset under the plate (mm)
     y: 0.0            # controller center Y offset under the plate (mm)

@@ -4,7 +4,7 @@ Each recipe file contains a list of constraints under a ``constraints`` key.
 Values are pre-computed (no expression evaluation). Component size references
 like ``{keyboard.depth}`` are resolved at load time from the component specs.
 
-Example ``config/layouts/default.yaml``::
+Example ``config/layouts/clamshell.yaml``::
 
     constraints:
       - kind: fixed_position
@@ -32,6 +32,7 @@ from layouts.constraints import (
     Constraint,
     ConstraintPriority,
     EdgeAlignment,
+    DeckMount,
     FixedPosition,
     FootprintMatch,
     KeyboardMountingHoles,
@@ -50,6 +51,7 @@ _CONSTRAINT_KINDS: dict[str, type[Constraint]] = {
     "centered_on": CenteredOn,
     "clearance": Clearance,
     "edge_alignment": EdgeAlignment,
+    "deck_mount": DeckMount,
     "fixed_position": FixedPosition,
     "footprint_match": FootprintMatch,
     "keyboard_mounting_holes": KeyboardMountingHoles,
@@ -118,6 +120,10 @@ def _resolve_refs(value: Any, components: dict[str, Any], config: Any) -> Any:
     * ``{config.wall_thickness}`` → ``config.wall_thickness``
     * ``{config.clearance.shell}`` → ``config.clearance.shell``
     * ``{config.hardware.driver_board.height}`` → nested dict lookups
+    * ``{battery.cradle_height}`` → any other numeric attribute read straight
+      off the component (falls back here once ``width``/``depth``/``height``
+      don't match, so a component's own calculated values stay the single
+      source of truth instead of being restated as a literal in the recipe)
 
     The substituted string is then evaluated as arithmetic, so a value may be
     an expression over those references.
@@ -147,6 +153,10 @@ def _resolve_refs(value: Any, components: dict[str, Any], config: Any) -> Any:
             if len(parts) == 2 and parts[1] in ("width", "depth", "height"):
                 box = comp.size()
                 return str(getattr(box, parts[1]))
+            if len(parts) == 2 and isinstance(
+                getattr(comp, parts[1], None), (int, float)
+            ):
+                return str(getattr(comp, parts[1]))
             raise ValueError(f"Unknown component reference: {path}")
 
     resolved = _REF_PATTERN.sub(_resolve_one, value)

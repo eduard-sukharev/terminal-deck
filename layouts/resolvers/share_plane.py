@@ -32,7 +32,8 @@ class SharePlaneResolver:
             y = existing.y if existing is not None else 0.0
             rot = existing.rotation if existing is not None else 0.0
             flip = existing.flip_x if existing is not None else False
-            placements[name] = Placement(comp, x, y, rot, constraint.plane_z, flip)
+            tilt = existing.tilt_x if existing is not None else 0.0
+            placements[name] = Placement(comp, x, y, rot, constraint.plane_z, flip, tilt)
 
         return ResolverResult(
             True,

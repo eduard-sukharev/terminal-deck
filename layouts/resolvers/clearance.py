@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from layouts.base import Placement, rotated_footprint
+from layouts.base import Placement, volume_footprint, volume_z_span
 from layouts.composer import ConstraintResolver, ResolverResult
 from layouts.constraints import Clearance
 
@@ -12,6 +12,19 @@ from layouts.constraints import Clearance
 def _separation(ca: float, sa: float, cb: float, sb: float) -> float:
     """Signed gap between two 1-D spans given their centers and sizes."""
     return abs(ca - cb) - (sa + sb) / 2.0
+
+
+def _span_gap(a0: float, a1: float, b0: float, b1: float) -> float:
+    """Signed gap between two 1-D intervals given their raw bounds.
+
+    Unlike :func:`_separation`, this does not assume the interval is
+    symmetric about a center — needed for Z, where a ``tilt_x`` (see
+    :func:`layouts.base.volume_z_span`) can widen a sub-volume's Z-span
+    asymmetrically. Using ``_separation`` with a naive center+height for a
+    tilted volume understates how far it actually reaches, letting a
+    clearance check pass that the equivalent collision check would catch.
+    """
+    return max(a0 - b1, b0 - a1)
 
 
 class ClearanceResolver:
@@ -63,21 +76,14 @@ class ClearanceResolver:
                 # World-frame volume centers (rotation + flip aware).
                 sx, sy, sz = subj_placement.world_offset(ax, ay, az)
                 tx, ty, tz = target_placement.world_offset(bx, by, bz)
-                # Flipped components hang below their origin.
-                if subj_placement.flip_x:
-                    sz -= abox.height / 2.0
-                else:
-                    sz += abox.height / 2.0
-                if target_placement.flip_x:
-                    tz -= bbox.height / 2.0
-                else:
-                    tz += bbox.height / 2.0
-                aw, ad = rotated_footprint(abox.width, abox.depth, subj_placement.rotation)
-                bw, bd = rotated_footprint(bbox.width, bbox.depth, target_placement.rotation)
+                aw, ad = volume_footprint(subj_placement, abox)
+                bw, bd = volume_footprint(target_placement, bbox)
+                az0, az1 = volume_z_span(subj_placement, abox, sz)
+                bz0, bz1 = volume_z_span(target_placement, bbox, tz)
                 seps = (
                     _separation(sx, aw, tx, bw),
                     _separation(sy, ad, ty, bd),
-                    _separation(sz, abox.height, tz, bbox.height),
+                    _span_gap(az0, az1, bz0, bz1),
                 )
                 pair_gap = seps[axis_index] if axis_index is not None else max(seps)
                 worst = pair_gap if worst is None else min(worst, pair_gap)

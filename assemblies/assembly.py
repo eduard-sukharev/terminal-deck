@@ -18,7 +18,7 @@ from typing import Any
 
 from components.base import BoundingBox, Component
 from geometry.boss import BossSpec, boss_spec
-from layouts.base import Placement, rotated_footprint
+from layouts.base import Placement, volume_footprint, volume_z_span
 from utilities.config_loader import Config
 
 
@@ -74,10 +74,11 @@ class Assembly:
         zs: list[float] = []
         for placement in self.placements:
             box = placement.component.size()
-            eff_w, eff_d = rotated_footprint(box.width, box.depth, placement.rotation)
-            half_w, half_d = eff_w / 2, eff_d / 2
-            xs.extend([placement.x - half_w, placement.x + half_w])
-            ys.extend([placement.y - half_d, placement.y + half_d])
+            # placement.box already folds in both the Z rotation and any
+            # tilt_x, so a wedge-mounted part reports its true world extent.
+            x0, y0, x1, y1 = placement.box
+            xs.extend([x0, x1])
+            ys.extend([y0, y1])
             z0, z1 = placement.z_bounds()
             zs.extend([z0, z1])
 
@@ -106,13 +107,14 @@ class Assembly:
                         # World-frame volume centers (rotation + flip aware).
                         wx, wy, wz = pa.world_offset(ax, ay, az)
                         vx, vy, vz = pb.world_offset(bx, by, bz)
-                        # Flipped components hang below their origin.
-                        a_z0, a_z1 = (wz - abox.height, wz) if pa.flip_x else (wz, wz + abox.height)
-                        b_z0, b_z1 = (vz - bbox.height, vz) if pb.flip_x else (vz, vz + bbox.height)
+                        # Flipped components hang below their origin; a tilt
+                        # swings depth into Z, widening both ranges.
+                        a_z0, a_z1 = volume_z_span(pa, abox, wz)
+                        b_z0, b_z1 = volume_z_span(pb, bbox, vz)
                         if a_z1 <= b_z0 or b_z1 <= a_z0:
                             continue
-                        aw, ad = rotated_footprint(abox.width, abox.depth, pa.rotation)
-                        bw, bd = rotated_footprint(bbox.width, bbox.depth, pb.rotation)
+                        aw, ad = volume_footprint(pa, abox)
+                        bw, bd = volume_footprint(pb, bbox)
                         if _overlap_xy(wx, wy, aw, ad, vx, vy, bw, bd):
                             problems.append(f"{a.name} overlaps {b.name}")
         return problems
@@ -272,6 +274,8 @@ class Assembly:
                 solid = cq_helpers.rotate_z(solid, placement.rotation)
             if placement.flip_x:
                 solid = cq_helpers.rotate_x(solid, 180.0)
+            if placement.tilt_x:
+                solid = cq_helpers.rotate_x(solid, placement.tilt_x)
             solid = cq_helpers.translate(solid, placement.x, placement.y, placement.z)
             parts.append(solid)
         if not parts:
@@ -333,6 +337,8 @@ class Assembly:
                 solid = cq_helpers.rotate_z(solid, placement.rotation)
             if placement.flip_x:
                 solid = cq_helpers.rotate_x(solid, 180.0)
+            if placement.tilt_x:
+                solid = cq_helpers.rotate_x(solid, placement.tilt_x)
             solid = cq_helpers.translate(solid, placement.x, placement.y, placement.z)
             role = role_map.get(id(placement.component), placement.component.name)
             assy.add(solid, name=placement.component.name, color=cq.Color(*color_for(role)))

@@ -39,12 +39,12 @@ usb_breakout:
   north_port_gaps: [6.0, 6.0, 9.2, 9.5, 4.5]   # measured
   usb_a:
     width: 13.3              # measured
-    height: 8.5               # measured
-    depth: 6.0                 # measured
+    height: 5.9                # measured (Z, vertical)
+    depth: 8.5                  # measured (Y, into the board edge)
   usb_c:
     width: 9.0                # measured
-    height: 7.0                 # measured
-    depth: 3.3                   # measured
+    height: 3.4                 # measured (Z, vertical)
+    depth: 7.0                    # measured (Y, into the board edge)
   audio_jack:
     diameter: 5.0              # measured
     depth: 15.0                  # measured (barrel length)
@@ -58,10 +58,25 @@ heat_inserts:
   depth: 4
   clearance: 0.2
 
+# Mated USB-C cable plug on the SBC. Modelled as a real obstruction rather
+# than an abstract clearance margin — see components/usb_c_plug.py.
+usb_c_plug:
+  protrusion: 25.0   # how far the plug body stands off the board's port face
+  width: 11.0        # overmold is wider than it is thick
+  height: 7.0
+  port_index: 0      # which SBC USB-C port carries the cable: 0 = OTG (the
+                     # hub link), 1 = power. Assembly-time choice.
+
 battery:
   present: true            # sealed deck: internal power source (USB hub is the
                            # only external connectivity)
-  width: 60                # TODO: measure chosen cell (60 x 35 x 8 assumed)
-  depth: 35
-  height: 8
-  clearance: 2.0           # keepout margin around the cell in the compartment
+  # 18650 cells, laid flat in the wedge under the sloped deck. The pack
+  # outline is calculated from these by components/battery.py — cell count
+  # and packing, not a hand-written box.
+  cell_diameter: 18.6      # 18650 nominal: 18.6 max dia (18.0 + wrap)
+  cell_length: 65.2        # 18650 nominal: 65.2 max length (button top)
+  count: 2                 # at least two cells
+  arrangement: side_by_side  # side_by_side ("two barrels") | end_to_end ("snake")
+  clearance: 2.0           # keepout margin around the pack in the compartment
+  cradle_height: 5.0       # floor cradle rim height (mm); also the pack's
+                           # own floor standoff, see components/battery.py

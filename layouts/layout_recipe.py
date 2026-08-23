@@ -19,7 +19,7 @@ class RecipeLayout(ConstraintLayout):
     The recipe file contains a ``constraints`` list. Each entry has a
     ``kind`` field matching a constraint type and the relevant parameters.
 
-    Example ``config/layouts/my_layout.yaml``::
+    Example ``config/layouts/clamshell.yaml``::
 
         constraints:
           - kind: fixed_position

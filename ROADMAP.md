@@ -1,5 +1,11 @@
 # Constraint-Based Layout Composition — Roadmap
 
+> **Historical.** This roadmap describes the migration from imperative to
+> constraint-based layouts. That migration is complete: the imperative and
+> `*_v2` layout modules it names have been removed, and the single remaining
+> layout is the YAML recipe `config/layouts/clamshell.yaml`. Kept for the
+> design rationale.
+
 ## Architectural Decision
 
 **Approach**: Declarative Constraints + Procedural Resolvers + Dependency Graph

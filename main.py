@@ -26,8 +26,11 @@ from components.display_88 import Display88
 from components.hdmi_driver import HdmiDriver
 from components.orange_pi_zero2w import OrangePiZero2W
 from components.rp2040_keyboard import Rp2040Keyboard
+from components.rp2040_zero import Rp2040Zero
 from components.usb_breakout import UsbBreakout
-from layouts import make_layout
+from components.usb_c_plug import UsbCPlug
+from geometry.ribs import rib_height
+from layouts import LAYOUTS, make_layout
 from layouts.layout_constrained import ConstraintLayout
 from utilities.config_loader import Config, load_config
 from utilities.file_metadata import apply as apply_fs_metadata
@@ -40,12 +43,14 @@ class BuildPipeline:
     def __init__(
         self,
         config_path: str | Path = "config/default.yaml",
-        layout_name: str = "default",
+        layout_name: str = "compact",
         topics: tuple[str, ...] = ("display", "keyboard", "hardware"),
+        recipe_path: str | Path | None = None,
     ) -> None:
         self.config_path = Path(config_path)
         self.layout_name = layout_name
         self.topics = topics
+        self.recipe_path = Path(recipe_path) if recipe_path else None
         self.config: Config | None = None
 
     # --- pipeline stages -------------------------------------------------
@@ -73,29 +78,51 @@ class BuildPipeline:
             "stabilizer_family": cfg.keyboard.stabilizer_family,
             "plate": cfg.keyboard.plate or {},
             "mounting": cfg.keyboard.mounting or {},
-            "controller": cfg.keyboard.controller or {},
         }
+        sbc = OrangePiZero2W(cfg.hardware)
+        # Raise the SBC onto its mounting bosses, clear of the base floor's
+        # stiffening ribs (geometry.ribs.rib_height); the layout recipe
+        # raises the SBC's placement by the same amount.
+        sbc.set_floor_raise(rib_height(cfg.wall_thickness))
+        controller = Rp2040Zero(cfg.keyboard.controller or {})
+        controller.set_floor_raise(rib_height(cfg.wall_thickness))
+
+        # The SBC is buried under the keyboard plate, so the plate has to
+        # stand tall enough for its switch bodies to clear the board — not
+        # just the bare floor. Derived from the SBC's own height and the deck
+        # slope rather than dialled in by hand, so re-measuring the board or
+        # changing the slope re-sizes the standoffs with it.
+        keyboard = Rp2040Keyboard(keyboard_cfg)
+        keyboard.set_plate_raise(
+            keyboard.plate_raise_for_buried(
+                part_height=rib_height(cfg.wall_thickness) + sbc.size().height,
+                part_depth=sbc.size().depth,
+                slope=cfg.deck.slope,
+                # Targets the sbc<->keyboard clearance the recipe checks
+                # (1.5mm); the two numbers differ because the clearance
+                # check is a true 3D separating-axis test (worst case over
+                # every sub-volume pair, best axis per pair) while this is a
+                # single along-Z estimate — 2.5 here reliably clears 1.5
+                # there, empirically, not by a matching derivation.
+                gap=2.5,
+            )
+        )
         return {
             "display": Display88(display_cfg),
             "driver": HdmiDriver(display_cfg),
-            "keyboard": Rp2040Keyboard(keyboard_cfg),
-            "sbc": OrangePiZero2W(cfg.hardware),
+            "keyboard": keyboard,
+            # The controller is its own placed component, not a sub-part of
+            # the keyboard: the switch bodies hang 7 mm below the plate, so it
+            # cannot fit under there — it sits on the case floor in the wedge
+            # the sloped deck opens up beneath the keyboard's raised rear.
+            "controller": controller,
+            "sbc": sbc,
+            # The cable plugged into the SBC is a solid obstruction in its
+            # own right; which port it occupies is config, not geometry.
+            "sbc_plug": UsbCPlug(cfg.hardware.get("usb_c_plug", {}), host=sbc),
             "battery": Battery(cfg.hardware),
             "usb_breakout": UsbBreakout(cfg.hardware),
         }
-
-    def __init__(
-        self,
-        config_path: str | Path = "config/default.yaml",
-        layout_name: str = "default",
-        topics: tuple[str, ...] = ("display", "keyboard", "hardware"),
-        recipe_path: str | Path | None = None,
-    ) -> None:
-        self.config_path = Path(config_path)
-        self.layout_name = layout_name
-        self.topics = topics
-        self.recipe_path = Path(recipe_path) if recipe_path else None
-        self.config: Config | None = None
 
     def place_layout(self, components: dict):
         layout = make_layout(
@@ -136,7 +163,9 @@ class BuildPipeline:
         prov["built"] = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
         return prov
 
-    def run(self, steps: str = "all", targets: str = "all") -> None:
+    def run(
+        self, steps: str = "all", targets: str = "all", ignore_validation: bool = False
+    ) -> None:
         """Execute the pipeline up to ``steps``.
 
         Parameters
@@ -148,6 +177,15 @@ class BuildPipeline:
             Comma-separated build targets (default ``"all"``).  Buckets:
             ``all``, ``assembly``, ``base``, ``lid``, ``hinge``, ``display``,
             ``components``.  Per-component: ``comp:<role>``.
+        ignore_validation : bool
+            Normally a hard constraint violation aborts the build before any
+            CAD is generated — the layout already knows the geometry is
+            wrong, so exporting it would just ship that mistake as a file.
+            Set this to build anyway: useful for inspecting *how* a rejected
+            layout is wrong (a section view, a render) while iterating on a
+            fix, not for shipping the result. The violation is still printed
+            and still fails ``placement validation``/``constraint
+            resolution`` above — this only skips the ``SystemExit``.
         """
         config = self.load_config()
         print(f"[pipeline] config: {self.config_path} ({self.topics})")
@@ -190,11 +228,19 @@ class BuildPipeline:
                 if not creport.passed:
                     # HARD is defined as "violation stops the build"; carrying
                     # on would export geometry the layout already knows is
-                    # wrong.
-                    raise SystemExit(
-                        "[pipeline] aborted: "
+                    # wrong — unless the caller explicitly asked to see that
+                    # geometry anyway (--ignore-validation).
+                    if not ignore_validation:
+                        raise SystemExit(
+                            "[pipeline] aborted: "
+                            f"{len(creport.hard_violations)} hard constraint "
+                            "violation(s) above"
+                        )
+                    print(
+                        "[pipeline] WARNING: "
                         f"{len(creport.hard_violations)} hard constraint "
-                        "violation(s) above"
+                        "violation(s) above — continuing anyway "
+                        "(--ignore-validation)"
                     )
 
         for comp_name, component in components.items():
@@ -249,9 +295,17 @@ class BuildPipeline:
 
         # Build requested solids.
         parts: dict[str, object] = {}
+        # Per-bucket colored `cadquery.Assembly` for glTF export only — a
+        # bucket without an entry here falls back to a single-color glTF
+        # wrapping its fused `parts[name]` solid (see the export loop below).
+        gltf_parts: dict[str, object] = {}
+        role_map = {id(c): role for role, c in components.items()}
 
         if "assembly" in buckets:
             parts["assembly"] = assembly.build()
+            gltf_parts["assembly"] = assembly.build_colored(
+                placements=placements, role_map=role_map
+            )
 
         # Keyboard placement is needed for base and hinge.
         needs_keyboard_placement = (
@@ -272,17 +326,34 @@ class BuildPipeline:
                 keyboard=components.get("keyboard"),
                 hinge=hinge,
             )
+            # Bosses (component mounting bosses and deck-mount standoffs)
+            # are case-build-time geometry, never placed components, so the
+            # ordinary collision system never sees them — check them here,
+            # once the case geometry that generates them exists.
+            from utilities.validation import ValidationReport, check_boss_collisions
 
-        # Base sub-assembly solid: keyboard + SBC (shared between "base"
-        # bucket and the combined "base" target). The SBC sits under the
-        # keyboard plate alongside the RP2040 controller.
+            boss_report = ValidationReport()
+            check_boss_collisions(base_obj.all_bosses(), placements, boss_report)
+            print(f"[pipeline] boss validation: {boss_report.summary()}")
+            if not boss_report.passed and not ignore_validation:
+                raise SystemExit(
+                    "[pipeline] aborted: a boss overlaps a component above "
+                    "(pass --ignore-validation to build anyway)"
+                )
+
+        # Base sub-assembly solid: everything mounted on the base floor
+        # (shared between "base" bucket and the combined "base" target). The
+        # SBC and RP2040 controller sit tucked under the keyboard plate; the
+        # battery sits beside the hub.
         base_subset_solid = None
+        subset_placements: list = []
         if "base" in buckets and keyboard_placement is not None:
             from assemblies.assembly import select_placements
 
             base_subset_roles = {components["keyboard"]}
-            if "sbc" in components:
-                base_subset_roles.add(components["sbc"])
+            for role in ("sbc", "sbc_plug", "controller", "battery", "usb_breakout"):
+                if role in components:
+                    base_subset_roles.add(components[role])
             subset_placements = select_placements(placements, base_subset_roles)
             if subset_placements:
                 base_subset_solid = assembly.build_subset(subset_placements)
@@ -294,11 +365,20 @@ class BuildPipeline:
             parts["base_top"] = base_obj.build_top()
 
         if "base" in buckets and base_obj is not None:
-            base_solid = base_obj.build_bottom()
+            base_bottom_solid = base_obj.build_bottom()
+            base_top_solid = base_obj.build_top()
+            base_solid = base_bottom_solid
             if base_subset_solid is not None:
                 base_solid = base_solid.union(base_subset_solid)
-            base_solid = base_solid.union(base_obj.build_top())
+            base_solid = base_solid.union(base_top_solid)
             parts["base"] = base_solid
+
+            if subset_placements:
+                gltf_parts["base"] = assembly.build_colored(
+                    placements=subset_placements,
+                    role_map=role_map,
+                    extra_parts=[("case", base_bottom_solid.union(base_top_solid))],
+                )
 
         # Display placement is needed for lid and hinge.
         needs_display_placement = (
@@ -339,11 +419,20 @@ class BuildPipeline:
             parts["lid_bezel"] = lid.build_bezel()
 
         if "lid" in buckets:
-            lid_solid = lid.build_base()
+            lid_base_solid = lid.build_base()
+            lid_bezel_solid = lid.build_bezel()
+            lid_solid = lid_base_solid
             if display_assembly_solid is not None:
                 lid_solid = lid_solid.union(display_assembly_solid)
-            lid_solid = lid_solid.union(lid.build_bezel())
+            lid_solid = lid_solid.union(lid_bezel_solid)
             parts["lid"] = lid_solid
+
+            if display_placements:
+                gltf_parts["lid"] = assembly.build_colored(
+                    placements=display_placements,
+                    role_map=role_map,
+                    extra_parts=[("case", lid_base_solid.union(lid_bezel_solid))],
+                )
 
         if "hinge" in buckets:
             base_outer_top = (
@@ -386,8 +475,9 @@ class BuildPipeline:
             base_solid = base_obj.build_bottom()
             if "keyboard" in components:
                 base_subset_roles = {components["keyboard"]}
-                if "sbc" in components:
-                    base_subset_roles.add(components["sbc"])
+                for role in ("sbc", "sbc_plug", "controller", "battery", "usb_breakout"):
+                    if role in components:
+                        base_subset_roles.add(components[role])
                 subset = select_placements(placements, base_subset_roles)
                 if subset:
                     base_solid = base_solid.union(
@@ -472,7 +562,12 @@ class BuildPipeline:
                 exporter = exporter_cls()
                 exporter.metadata = provenance
                 path = exporter.output_path(f"cyberdeck_{name}")
-                exporter.export(solid, path)
+                # glTF prefers the colored per-component/sub-assembly
+                # `cadquery.Assembly` built above; buckets without one (e.g.
+                # hinge, a single part) fall back to the fused solid, which
+                # GltfExporter wraps in a single default color.
+                export_obj = gltf_parts.get(name, solid) if fmt == "gltf" else solid
+                exporter.export(export_obj, path)
                 if not apply_fs_metadata(provenance, path):
                     print(f"[pipeline] warning: could not write fs metadata for {path}")
                 print(f"[pipeline] exported {name} -> {path}")
@@ -535,19 +630,14 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--layout",
-        default="default",
-        choices=[
-            "default", "default_v2",
-            "compact", "compact_v2",
-            "constrained",
-            "recipe_default", "recipe_compact",
-        ],
+        default="compact",
+        choices=list(LAYOUTS),
         help="layout definition to place components",
     )
     parser.add_argument(
         "--layout-recipe",
         default=None,
-        help="path to a YAML recipe file (overrides built-in recipe for recipe_* layouts)",
+        help="path to a YAML recipe file, used instead of the built-in recipe",
     )
     parser.add_argument(
         "--steps",
@@ -563,6 +653,14 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
              "lid, lid_base, lid_bezel, hinge, display, components. "
              "Per-component: comp:<role> (e.g. comp:driver).",
     )
+    parser.add_argument(
+        "--ignore-validation",
+        action="store_true",
+        help="build and export even if a hard constraint (collision, "
+             "clearance, etc.) fails, instead of aborting. The failure is "
+             "still printed. For inspecting a known-bad layout while "
+             "iterating on a fix, not for shipping the result.",
+    )
     return parser.parse_args(argv)
 
 
@@ -574,7 +672,11 @@ def main(argv: list[str] | None = None) -> int:
         recipe_path=args.layout_recipe,
     )
     try:
-        pipeline.run(steps=args.steps, targets=args.targets)
+        pipeline.run(
+            steps=args.steps,
+            targets=args.targets,
+            ignore_validation=args.ignore_validation,
+        )
     except NotImplementedError as exc:
         print(f"[pipeline] CAD stage not yet implemented: {exc}", file=sys.stderr)
         return 2

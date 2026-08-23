@@ -50,7 +50,14 @@ class RelativePlacementResolver:
 
         x = target_placement.x + offset_x
         y = target_placement.y + offset_y
-        z = target_placement.z + offset_z
+        # from_top measures the gap from the target's highest occupied point
+        # rather than its origin, so a tilted or otherwise grown target
+        # pushes the subject up with it.
+        z_datum = (
+            target_placement.z_bounds()[1] if constraint.from_top
+            else target_placement.z
+        )
+        z = z_datum + offset_z
         existing = current.get(constraint.subject)
         rotation = (
             constraint.rotation
@@ -62,10 +69,20 @@ class RelativePlacementResolver:
             if constraint.flip is not None
             else (existing.flip_x if existing is not None else False)
         )
+        # Tilt is never inherited from the target: "positioned relative to X"
+        # does not imply "mounted on X". The display is placed relative to
+        # the keyboard but lives in the lid, so inheriting the keyboard's
+        # deck tilt would tip the whole screen. A part that really does ride
+        # a tilted surface says so with `tilt:` or its own `deck_mount`.
+        tilt_x = (
+            constraint.tilt
+            if constraint.tilt is not None
+            else (existing.tilt_x if existing is not None else 0.0)
+        )
 
         return ResolverResult(
             True,
-            {constraint.subject: Placement(subj, x, y, rotation, z, flip_x)},
+            {constraint.subject: Placement(subj, x, y, rotation, z, flip_x, tilt_x)},
             f"{constraint.subject} @ ({x:.1f}, {y:.1f}, {z:.1f}) "
             f"rel. to {constraint.target} via {source}",
         )

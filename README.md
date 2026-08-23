@@ -55,8 +55,8 @@ docs/          specifications
 # activate the CadQuery environment (miniforge)
 source $HOME/miniforge/bin/activate
 
-# generate the default build (STEP + STL + SVG)
-python main.py --config config/default.yaml --layout layouts.layout_default
+# generate the build (STEP + STL + SVG)
+python main.py --config config/default.yaml --steps all
 ```
 
 ## Status

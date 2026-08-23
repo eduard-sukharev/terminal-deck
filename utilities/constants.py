@@ -45,6 +45,7 @@ CONNECTOR_POWER: Final[str] = "Power"
 FORMAT_STEP: Final[str] = "step"
 FORMAT_STL: Final[str] = "stl"
 FORMAT_SVG: Final[str] = "svg"
+FORMAT_GLTF: Final[str] = "gltf"
 
 # Material defaults ----------------------------------------------------------
 MINIMUM_WALL_THICKNESS: Final[float] = 2.5

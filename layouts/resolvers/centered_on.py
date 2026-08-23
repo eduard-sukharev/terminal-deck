@@ -36,6 +36,7 @@ class CenteredOnResolver:
         subj_z = existing.z if existing is not None else 0.0
         subj_rot = existing.rotation if existing is not None else 0.0
         subj_flip = existing.flip_x if existing is not None else False
+        subj_tilt = existing.tilt_x if existing is not None else 0.0
 
         if constraint.relative_to is None or constraint.relative_to == "enclosure":
             w, d, _ = estimate_enclosure(current, components, config, context=context)
@@ -62,7 +63,7 @@ class CenteredOnResolver:
 
         return ResolverResult(
             True,
-            {constraint.subject: Placement(subj, subj_x, subj_y, subj_rot, subj_z, subj_flip)},
+            {constraint.subject: Placement(subj, subj_x, subj_y, subj_rot, subj_z, subj_flip, subj_tilt)},
             f"{constraint.subject} centered on {','.join(constraint.axes)}",
         )
 

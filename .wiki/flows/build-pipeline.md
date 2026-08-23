@@ -46,23 +46,15 @@ For `all`, the stages are:
 8. Export every part through the `EXPORTERS` registry to `generated/`.
    Only requested `--targets` are built and exported.
 
-## Layout choices
+## Layout
 
-Available `--layout` values:
+There is one layout, `compact` (the default): the clamshell declared in
+`config/layouts/clamshell.yaml` — battery in the hollow under the raised
+keyboard plate, SBC and USB hub in the rear I/O strip, no palm rest.
 
-| Layout | Type | Description |
-|---|---|---|
-| `default` | Imperative | Original layout (Python) |
-| `default_v2` | Constraint-based | Matches default, plus HDMI cable path + mounting hole constraints |
-| `compact` | Imperative | Original compact layout (Python) |
-| `compact_v2` | Constraint-based | Matches compact |
-| `constrained` | Constraint-based | Empty recipe (base class) |
-| `recipe_default` | YAML recipe | `config/layouts/default.yaml` — clamshell with battery on base floor |
-| `recipe_compact` | YAML recipe | `config/layouts/compact.yaml` — clamshell with battery under keyboard |
-
-Use `--layout-recipe PATH` to override the recipe file for `recipe_*` layouts
-with an arbitrary YAML file. Recipes support `{component.field}` and
-`{config.path}` references resolved at load time.
+Use `--layout-recipe PATH` to run an arbitrary recipe file through the same
+composer. Recipes support `{component.field}` and `{config.path}` references
+resolved at load time.
 
 ## `--targets` selective build
 

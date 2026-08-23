@@ -43,10 +43,15 @@ class FixedPositionResolver:
             if constraint.flip is not None
             else (existing.flip_x if existing is not None else False)
         )
+        tilt_x = (
+            constraint.tilt
+            if constraint.tilt is not None
+            else (existing.tilt_x if existing is not None else 0.0)
+        )
 
         return ResolverResult(
             True,
-            {constraint.subject: Placement(subj, x, y, rotation, z, flip_x)},
+            {constraint.subject: Placement(subj, x, y, rotation, z, flip_x, tilt_x)},
             f"{constraint.subject} @ ({x:.1f}, {y:.1f}, {z:.1f}) rot={rotation:g}°",
         )
 

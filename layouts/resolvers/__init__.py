@@ -3,7 +3,7 @@
 Every constraint kind has a working resolver. Resolvers split into two
 groups: those that produce placements (``fixed_position``, ``centered_on``,
 ``centered_group``, ``edge_alignment``, ``relative_placement``, ``z_stack``,
-``share_plane``) and those that only verify an already-resolved layout
+``share_plane``, ``deck_mount``) and those that only verify an already-resolved layout
 (``clearance``, ``region``, ``cable_path``, ``port_access``,
 ``footprint_match``), plus ``target_envelope``, which publishes the enclosure
 size the wall-relative resolvers align against.
@@ -16,6 +16,7 @@ from layouts.resolvers.cable_path import CablePathResolver
 from layouts.resolvers.centered_group import CenteredGroupResolver
 from layouts.resolvers.centered_on import CenteredOnResolver
 from layouts.resolvers.clearance import ClearanceResolver
+from layouts.resolvers.deck_mount import DeckMountResolver
 from layouts.resolvers.edge_alignment import EdgeAlignmentResolver
 from layouts.resolvers.fixed_position import FixedPositionResolver
 from layouts.resolvers.footprint_match import FootprintMatchResolver
@@ -35,6 +36,7 @@ def default_resolver_registry() -> dict[str, ConstraintResolver]:
         "centered_group": CenteredGroupResolver(),
         "centered_on": CenteredOnResolver(),
         "clearance": ClearanceResolver(),
+        "deck_mount": DeckMountResolver(),
         "edge_alignment": EdgeAlignmentResolver(),
         "fixed_position": FixedPositionResolver(),
         "footprint_match": FootprintMatchResolver(),

@@ -43,13 +43,13 @@ class UsbBreakout(Component):
 
         usb_a = data.get("usb_a", {})
         self.usb_a_width = float(usb_a.get("width", 13.3))
-        self.usb_a_height = float(usb_a.get("height", 8.5))
-        self.usb_a_depth = float(usb_a.get("depth", 6.0))
+        self.usb_a_height = float(usb_a.get("height", 5.9))
+        self.usb_a_depth = float(usb_a.get("depth", 8.5))
 
         usb_c = data.get("usb_c", {})
         self.usb_c_width = float(usb_c.get("width", 9.0))
-        self.usb_c_height = float(usb_c.get("height", 7.0))
-        self.usb_c_depth = float(usb_c.get("depth", 3.3))
+        self.usb_c_height = float(usb_c.get("height", 3.4))
+        self.usb_c_depth = float(usb_c.get("depth", 7.0))
 
         audio = data.get("audio_jack", {})
         self.audio_diameter = float(audio.get("diameter", 5.0))

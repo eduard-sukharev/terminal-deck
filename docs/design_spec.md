@@ -157,7 +157,9 @@ cyberdeck/
         display_88.py
         hdmi_driver.py
         rp2040_keyboard.py
+        rp2040_zero.py
         usb_breakout.py
+        usb_c_plug.py
         heatset_insert.py
         hinge.py
 
@@ -172,8 +174,9 @@ cyberdeck/
 
     layouts/
 
-        layout_default.py
-        layout_compact.py
+        layout_recipe.py
+        composer.py
+        resolvers/
 
     assemblies/
 

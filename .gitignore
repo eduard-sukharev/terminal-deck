@@ -7,8 +7,10 @@ dist/
 generated/step/*
 generated/stl/*
 generated/svg/*
+generated/gltf/*
 !generated/step/.gitkeep
 !generated/stl/.gitkeep
 !generated/svg/.gitkeep
+!generated/gltf/.gitkeep
 generated/ergogen/
 generated/renders/

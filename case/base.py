@@ -90,11 +90,17 @@ class Base:
         return None
 
     def deck_level(self) -> float:
-        """Height of the deck (base_top bottom face) above the floor (mm).
+        """Height of the deck (base_top bottom face) at the FRONT edge (mm).
 
         The deck sits at the keyboard plate top: the plate is raised on
         standoffs, and the deck covers the cavity at that level. Keycaps
         protrude through the cutout above the deck.
+
+        With a sloped deck this is the wedge's low end — the plane's value at
+        the front wall. It is found by taking the keyboard's plate-top height
+        at the keyboard's own Y (the point the deck must actually meet) and
+        back-projecting it down the slope to the front edge, so the deck and
+        the keyboard mounted to it stay coincident whatever the slope.
 
         If no keyboard is present, falls back to the tallest base-floor
         component + clearance (the old open-top tray height).
@@ -103,12 +109,72 @@ class Base:
         if kb_placement is not None and hasattr(self.keyboard, "_plate_raise"):
             plate_raise = self.keyboard._plate_raise
             plate_thickness = self.keyboard._plate_thickness
-            return kb_placement.z + plate_raise + plate_thickness
+            # Plate-top height above the keyboard's origin, foreshortened by
+            # the keyboard's own tilt (it is tilted with the deck).
+            stack = (plate_raise + plate_thickness) * math.cos(
+                math.radians(kb_placement.tilt_x)
+            )
+            plate_top = kb_placement.z + stack
+            front_y = self.size().depth / 2.0
+            return plate_top - (front_y - kb_placement.y) * math.tan(
+                math.radians(self.slope())
+            )
         base_placements = self._base_placements()
         return max(
             (p.z + p.component.size().height for p in base_placements),
             default=0.0,
         ) + self.config.clearance.shell
+
+    def slope(self) -> float:
+        """Typing slope of the deck in degrees (0 = flat)."""
+        deck = getattr(self.config, "deck", None)
+        return deck.slope if deck is not None else 0.0
+
+    def deck_level_at(self, y: float) -> float:
+        """Deck bottom-face height at world ``y`` (mm).
+
+        The deck is a plane tilted about X: it stays at :meth:`deck_level`
+        along the front edge and rises toward the rear (-Y), so the base is
+        a wedge. This is the single source of the slope — every other piece
+        of deck geometry (tray rim, corner standoffs, the deck slab, the
+        hinge datum) asks this rather than re-deriving the tilt, so changing
+        ``config.deck.slope`` moves all of them together.
+        """
+        front_y = self.size().depth / 2.0
+        return self.deck_level() + (front_y - y) * math.tan(math.radians(self.slope()))
+
+    def deck_rear_level(self) -> float:
+        """Deck bottom-face height at the rear wall (mm) — the wedge's high end."""
+        return self.deck_level_at(-self.size().depth / 2.0)
+
+    def _slope_cut_tool(self, z_at_front: float, size, height: float):
+        """A half-space solid lying above the deck-parallel plane through
+        ``z_at_front`` (its height at the front edge), for cutting a solid
+        down to the sloped profile.
+
+        Built oversized in X/Y so it always overhangs the case footprint,
+        then rotated about X by the slope angle. Returns a box whose bottom
+        face is that plane and which extends ``height`` above it.
+        """
+        from utilities import cq_helpers
+
+        slope = self.slope()
+        # Long enough that the tilted box still covers the full footprint.
+        pad = 4.0 * (size.width + size.depth)
+        tool = cq_helpers.box_centered(size.width + pad, size.depth + pad, height)
+        # Sit the box on z=0, tilt it about the origin, then lift the plane
+        # to the requested front-edge height. Rotating about X by -slope
+        # raises -Y (rear) and lowers +Y, matching deck_level_at.
+        tool = cq_helpers.translate(tool, 0.0, 0.0, height / 2.0)
+        if slope:
+            tool = tool.rotate((0, 0, 0), (1, 0, 0), -slope)
+        front_y = size.depth / 2.0
+        # After the rotation the plane passes through the origin; shift it so
+        # it passes through (y=front_y, z=z_at_front) as deck_level_at says.
+        return cq_helpers.translate(
+            tool, 0.0, 0.0,
+            z_at_front + front_y * math.tan(math.radians(slope)),
+        )
 
     def _corner_standoff_outer_diameter(self) -> float:
         """Outer diameter of a corner deck-mount standoff boss (mm, M2.5)."""
@@ -118,29 +184,20 @@ class Base:
         sleeve = 1.2
         return screw.clearance + 2 * sleeve
 
-    def _corner_positions(self) -> list[tuple[float, float]]:
-        """Return the 4 deck-mount corner positions (mm, XY).
+    def _deck_standoff_conflict_test(self):
+        """Return ``conflicts(cx, cy) -> bool`` for a deck-mount standoff.
 
-        Nominally inset 3 mm from the interior wall faces. A component
-        mounting boss (e.g. the SBC, which sits hard against a corner) can
-        land right on top of that nominal spot, so each corner is nudged
-        further inward along its diagonal until it clears every base-floor
-        boss by at least one wall thickness of material — otherwise the two
-        bosses fuse into one oversized, off-shape blob and their pilot bores
-        merge into a single ragged hole neither screw seats in correctly —
-        and until it clears every base-floor component's footprint outright:
-        a standoff runs the full height up to the deck, so if its XY lands
-        inside a board's outline (the SBC and USB hub both occupy a rear
-        corner) it punches straight through the board regardless of Z.
+        A standoff runs the full height up to the deck, so it conflicts with
+        another boss it would fuse into (within one wall thickness, so their
+        pilot bores don't merge into one ragged hole neither screw seats in
+        correctly), or with any base-floor component's XY footprint outright
+        — regardless of Z, since a floor-mounted part and a standoff spanning
+        0..deck_level always overlap in Z in practice (every part this recipe
+        places is well under deck_level).
         """
-        size = self.size()
         wall = self.config.wall_thickness
-        inset = 3.0
-        half_iw = (size.width - 2 * wall) / 2
-        half_id = (size.depth - 2 * wall) / 2
         standoff_radius = self._corner_standoff_outer_diameter() / 2
         margin = wall
-
         base_placements = self._base_placements()
         other_bosses = self.assembly.bosses(base_placements)
 
@@ -159,32 +216,160 @@ class Base:
                     return True
             return False
 
-        positions = []
-        for sx, sy in ((1, 1), (-1, 1), (-1, -1), (1, -1)):
-            shift = 0.0
-            max_shift = min(half_iw, half_id) - inset
-            while True:
-                cx = sx * (half_iw - inset - shift)
-                cy = sy * (half_id - inset - shift)
-                if not conflicts(cx, cy) or shift >= max_shift:
-                    break
-                shift += 0.5
-            positions.append((cx, cy))
+        return conflicts
+
+    def _nearest_free_spot(
+        self, tx: float, ty: float, conflicts, bounds: tuple[float, float, float, float]
+    ) -> tuple[float, float] | None:
+        """Nearest point to ``(tx, ty)`` clear of ``conflicts``, within ``bounds``.
+
+        A full 2D search (expanding rings around the target), not just a
+        nudge along one line toward the case center: with a component (the
+        keyboard) now spanning almost the entire footprint, the straight
+        path from a nominal corner toward the center is blocked along its
+        whole length, and only a 2D search finds the gaps that exist off to
+        the side of it. Returns ``None`` if nothing within ``bounds`` clears.
+        """
+        if not conflicts(tx, ty):
+            return (tx, ty)
+        x0, y0, x1, y1 = bounds
+        step = 1.0
+        max_radius = math.hypot(x1 - x0, y1 - y0)
+        r = step
+        while r <= max_radius:
+            n = max(12, int(2 * math.pi * r / step))
+            for i in range(n):
+                theta = 2 * math.pi * i / n
+                cx = tx + r * math.cos(theta)
+                cy = ty + r * math.sin(theta)
+                if x0 <= cx <= x1 and y0 <= cy <= y1 and not conflicts(cx, cy):
+                    return (cx, cy)
+            r += step
+        return None
+
+    def _corner_positions(self) -> list[tuple[float, float]]:
+        """Return deck-mount standoff positions (mm, XY).
+
+        Nominally the 4 corners, inset 3 mm from the interior wall faces,
+        each snapped to the nearest clear spot (see
+        :meth:`_nearest_free_spot`) — a component mounting boss or a whole
+        component's footprint (the SBC, the USB hub) can otherwise sit right
+        on top of the nominal spot.
+
+        With the keyboard now spanning nearly the full footprint, "nearest
+        clear spot to a corner" alone tends to cluster near wherever the
+        corner search happens to escape to and leave the rest of the deck
+        unsupported, so three more targets — the quarter-width and center
+        points of the rear (-Y) inset line — are added to reach into the
+        rear strip's own free space. All targets are snapped the same way
+        (:meth:`_nearest_free_spot`), so this tracks the layout rather than
+        hardcoding where the rear strip's gaps happen to be. Targets that
+        snap too close together to exist as separate printed bosses are
+        merged.
+        """
+        size = self.size()
+        wall = self.config.wall_thickness
+        inset = 3.0
+        half_iw = (size.width - 2 * wall) / 2
+        half_id = (size.depth - 2 * wall) / 2
+        bounds = (-half_iw + inset, -half_id + inset, half_iw - inset, half_id - inset)
+        conflicts = self._deck_standoff_conflict_test()
+
+        targets = [
+            (sx * (half_iw - inset), sy * (half_id - inset))
+            for sx, sy in ((1, 1), (-1, 1), (-1, -1), (1, -1))
+        ]
+        # Quarter- and center-width points at the rear (-Y) inset line: a
+        # second pass of targets to reach into the rear strip's own free
+        # space, distinct from whatever spot the corner search already
+        # found. Without the center target, the two corner searches and the
+        # two quarter searches all tend to get pulled toward whichever side
+        # (west/east) has a clear channel, leaving the middle — often the
+        # widest actually-free span, once the components crowding the
+        # corners are dodged — with no standoff at all.
+        targets += [
+            (sx * half_iw / 2.0, -(half_id - inset))
+            for sx in (1, -1)
+        ]
+        targets.append((0.0, -(half_id - inset)))
+
+        # Two targets squeezed toward the same tight gap (common once the
+        # keyboard and rear-strip parts leave only one or two clear pockets)
+        # can snap only a few mm apart — closer than two standoff bodies can
+        # actually sit without nearly fusing. Merge distance is one
+        # standoff diameter beyond touching, not just a token epsilon.
+        standoff_diameter = self._corner_standoff_outer_diameter()
+        min_separation = 2 * standoff_diameter + wall
+
+        positions: list[tuple[float, float]] = []
+        for tx, ty in targets:
+            spot = self._nearest_free_spot(tx, ty, conflicts, bounds)
+            if spot is None:
+                continue
+            if any(
+                math.hypot(spot[0] - px, spot[1] - py) < min_separation
+                for px, py in positions
+            ):
+                continue
+            positions.append(spot)
         return positions
+
+    def all_bosses(self) -> list[tuple[float, float, float, float, Component | None]]:
+        """Every boss on the base floor (mm, world frame), CAD-free.
+
+        Each entry is ``(x, y, outer_diameter, height, owner)``: component
+        mounting bosses (``owner`` the component the boss supports — a
+        mounting boss legitimately touches/overlaps the part it holds up,
+        so callers should skip that pair) and deck-mount standoffs
+        (:meth:`_corner_positions`, ``owner`` ``None`` — a standoff belongs
+        to no single component and should be checked against all of them).
+
+        Bosses are case-build-time geometry (see :meth:`build_bottom`) —
+        never themselves placed components, so the ordinary collision
+        system (which compares placed components against each other) never
+        sees them. This is what feeds
+        :func:`utilities.validation.check_boss_collisions`, which closes
+        that gap.
+        """
+        from geometry.boss import boss_spec
+
+        wall = self.config.wall_thickness
+        default_screw = self.config.screws.standoff
+        result: list[tuple[float, float, float, float, Component | None]] = []
+        for placement in self._base_placements():
+            component = placement.component
+            screw_size = component.mounting_screw() or default_screw
+            for hole in component.mounting_holes():
+                spec = boss_spec(
+                    wall_thickness=wall,
+                    screw_size=screw_size,
+                    insert_type=screw_size,
+                    hole_diameter=hole.diameter,
+                    height=hole.height,
+                )
+                bx, by, _ = placement.world_offset(hole.x, hole.y, 0.0)
+                result.append((bx, by, spec.outer_diameter, spec.height, component))
+
+        boss_od = self._corner_standoff_outer_diameter()
+        for cx, cy in self._corner_positions():
+            result.append((cx, cy, boss_od, self.deck_level_at(cy), None))
+        return result
 
     def build_bottom(self):
         """Generate the base bottom tray solid.
 
         An open-top tray (shelled at >Z) with the floor, walls, mounting
-        bosses, ribs, vents, connector cutouts, and 4 corner standoff bosses
-        that support the deck.
+        bosses, ribs, vents, connector cutouts, and the deck-mount standoff
+        bosses (see :meth:`_corner_positions` — nominally 4, more if the
+        layout leaves the corners too crowded to support the deck alone).
 
         Returns
         -------
         cadquery.Workplane
             The base bottom tray solid.
         """
-        from geometry import boss, cutouts, fillet, ribs, shell, vents
+        from components.battery import Battery
+        from geometry import boss, cradle, cutouts, fillet, ribs, shell, vents
         from utilities import cq_helpers, fasteners
 
         cq_helpers.require_cq()
@@ -193,13 +378,24 @@ class Base:
         clearance = config.clearance.shell
         size = self.size()
         dl = self.deck_level()
+        rear_dl = self.deck_rear_level()
 
-        # Outer tray box from -wall to deck_level; corner fillet first so
-        # the shell keeps the outer envelope exactly (negative shell offset).
-        outer = cq_helpers.box_centered(size.width, size.depth, dl + wall)
-        outer = cq_helpers.translate(outer, 0.0, 0.0, (dl - wall) / 2.0)
+        # Outer tray box, tall enough to reach the wedge's high (rear) end;
+        # corner fillet first so the shell keeps the outer envelope exactly
+        # (negative shell offset). The sloped rim is cut afterwards — shelling
+        # a prism and then slicing it leaves the walls following the slope,
+        # which is what the deck seats against.
+        outer = cq_helpers.box_centered(size.width, size.depth, rear_dl + wall)
+        outer = cq_helpers.translate(outer, 0.0, 0.0, (rear_dl - wall) / 2.0)
         outer = fillet.fillet_corners(outer, config.corners.radius)
         body = outer.faces(">Z").shell(-wall)
+        if self.slope():
+            # Trim the prism down to the sloped rim: everything above the
+            # deck's own underside plane goes, leaving walls whose top edge
+            # is the seat the deck lies on.
+            body = body.cut(
+                self._slope_cut_tool(dl, size, rear_dl + 2 * wall)
+            )
 
         # Mounting bosses for base-floor components.
         interior_w = size.width - 2 * wall
@@ -208,16 +404,63 @@ class Base:
         mounting_bosses = self.assembly.bosses(base_placements)
         features = [boss.build(spec, x, y) for x, y, spec in mounting_bosses]
 
-        # 4 corner standoff bosses for the deck (M2.5).
+        # Deck-mount standoff bosses (M2.5), see _corner_positions(). Each
+        # rises to the deck's underside *at its own Y*, so on a sloped deck
+        # ones further back are taller than ones toward the front and all of
+        # them still meet the plate.
         screw = fasteners.screw("M2.5")
         boss_od = self._corner_standoff_outer_diameter()
         corner_positions = self._corner_positions()
         for cx, cy in corner_positions:
-            standoff = cq_helpers.cylinder_centered(boss_od, dl)
-            standoff = cq_helpers.translate(standoff, cx, cy, dl / 2.0)
-            bore = cq_helpers.cylinder_centered(screw.pilot_hole, dl + 1.0)
-            bore = cq_helpers.translate(bore, cx, cy, dl / 2.0)
+            corner_dl = self.deck_level_at(cy)
+            standoff = cq_helpers.cylinder_centered(boss_od, corner_dl)
+            standoff = cq_helpers.translate(standoff, cx, cy, corner_dl / 2.0)
+            bore = cq_helpers.cylinder_centered(screw.pilot_hole, corner_dl + 1.0)
+            bore = cq_helpers.translate(bore, cx, cy, corner_dl / 2.0)
+            # Square off the top against the sloped underside so the standoff
+            # meets the deck flush instead of poking a cylinder through it.
+            if self.slope():
+                standoff = standoff.cut(
+                    self._slope_cut_tool(dl, size, rear_dl + 2 * wall)
+                )
             features.append(standoff.cut(bore))
+
+        # Battery cell cradles: printed floor saddles that key each cell's
+        # lateral position (geometry.cradle) — the pack isn't fastened like
+        # a bossed component, so this isn't part of mounting_bosses above.
+        # Not sourced from base_placements: that list is filtered to
+        # z-bounds within one wall thickness of the floor, which the
+        # battery's own raise (below) happens to satisfy too, but scanning
+        # placements directly here doesn't depend on that coincidence.
+        cradle_solids = []
+        cradle_keepouts = []
+        for p in self.assembly.placements:
+            if not isinstance(p.component, Battery):
+                continue
+            battery = p.component
+            spec = cradle.CradleSpec(
+                diameter=battery.cell_diameter,
+                # The cell's actual floor raise (config/layouts/clamshell.yaml
+                # sets it to config.wall_thickness, same rib clearance every
+                # other floor part uses) — the groove is cut to match the
+                # cell's true resting height, not an independent guess.
+                rest_height=p.z,
+                height=battery.cradle_height,
+                # Extent along the cell's own axis: tied to the shell's own
+                # wall parameter rather than a bare number.
+                width=wall * 3,
+            )
+            # cradle.build()'s groove runs along local Y, matching Battery's
+            # own cell-axis convention, so the same placement rotation that
+            # orients the cells orients the saddle.
+            saddle = cradle.build(spec)
+            if p.rotation:
+                saddle = saddle.rotate((0, 0, 0), (0, 0, 1), p.rotation)
+            for cx, cy in battery._cell_centers():
+                wx, wy, _ = p.world_offset(cx, cy, 0.0)
+                cradle_solids.append(cq_helpers.translate(saddle, wx, wy, 0.0))
+                cradle_keepouts.append((wx, wy, 2 * spec.block_half_width))
+        features.extend(cradle_solids)
 
         # Stiffening ribs, kept clear of every boss above: a rib crossing a
         # boss's bore would plug the screw hole with rib material once
@@ -228,6 +471,7 @@ class Base:
         rib_solids = ribs.build(rspec, interior_w, interior_d)
         boss_keepouts = [(x, y, spec.outer_diameter) for x, y, spec in mounting_bosses]
         boss_keepouts += [(cx, cy, boss_od) for cx, cy in corner_positions]
+        boss_keepouts += cradle_keepouts
         for bx, by, diameter in boss_keepouts:
             clearance_cyl = cq_helpers.cylinder_centered(diameter + wall, rspec.height)
             clearance_cyl = cq_helpers.translate(clearance_cyl, bx, by, rspec.height / 2.0)
@@ -255,11 +499,14 @@ class Base:
             )
             for c in rear_cutouts
         )
-        vspec = vents.vent_slots(interior_w, dl - wall, keepouts=vent_keepouts)
+        # The rear wall is the wedge's high end, so the slots span its full
+        # (taller) height. The slope tilts about X, so this wall's top edge
+        # stays horizontal at rear_dl and the slot row needs no tilt itself.
+        vspec = vents.vent_slots(interior_w, rear_dl - wall, keepouts=vent_keepouts)
         slots = vents.build(vspec, wall)
         if slots:
             slots = cq_helpers.translate(
-                slots, 0.0, -size.depth / 2 + wall / 2.0, dl / 2.0
+                slots, 0.0, -size.depth / 2 + wall / 2.0, rear_dl / 2.0
             )
             body = body.cut(slots)
 
@@ -272,9 +519,12 @@ class Base:
     def build_top(self):
         """Generate the base top deck solid.
 
-        A flat plate covering the base cavity, with a keyboard cutout and
-        4 corner M2.5 clearance holes. The deck sits on the tray rim at
-        ``deck_level``; its top face is at ``deck_level + wall``.
+        A plate covering the base cavity, with a keyboard cutout and M2.5
+        clearance holes at each deck-mount standoff (see
+        :meth:`_corner_positions`). The deck seats on the tray rim: its underside
+        follows :meth:`deck_level_at`, so with a non-zero
+        ``config.deck.slope`` it is a wedge-tilted slab (rear high) rather
+        than a flat plate, and the keyboard mounted to it gets that tilt.
 
         Returns
         -------
@@ -291,32 +541,55 @@ class Base:
         clearance = config.clearance.shell
         size = self.size()
         dl = self.deck_level()
+        rear_dl = self.deck_rear_level()
+        slope = self.slope()
 
-        # Deck plate: full footprint, wall thick, bottom face on the rim.
-        deck = cq_helpers.box_centered(size.width, size.depth, wall)
-        deck = cq_helpers.translate(deck, 0.0, 0.0, dl + wall / 2.0)
+        # Deck plate: full footprint, sliced to a slab between two
+        # deck-parallel planes (underside at deck_level_at, top one wall
+        # above it). Slicing a tall prism rather than tilting a thin plate
+        # keeps the outer sides vertical and the footprint exactly the case
+        # footprint, so the fillet and the walls below still line up.
+        blank_h = rear_dl + 4 * wall
+        deck = cq_helpers.box_centered(size.width, size.depth, blank_h)
+        deck = cq_helpers.translate(deck, 0.0, 0.0, blank_h / 2.0)
         deck = fillet.fillet_corners(deck, config.corners.radius)
+        # Keep only the material between the two deck-parallel planes. At
+        # slope 0 these tools degenerate to plain half-spaces, reproducing
+        # the original flat plate exactly.
+        deck = deck.cut(self._slope_cut_tool(dl + wall, size, blank_h))
+        deck = deck.intersect(self._slope_cut_tool(dl, size, blank_h))
 
-        # Keyboard cutout centered at the keyboard placement.
+        # Keyboard cutout centered at the keyboard placement. Bored along the
+        # deck normal (tilted with the slab) so the opening keeps its true
+        # width/depth in the deck's own plane instead of being sheared.
         kb_placement = self._keyboard_placement()
         if kb_placement is not None:
             kb_size = kb_placement.component.size()
             cut_w = kb_size.width + 2 * clearance
             cut_d = kb_size.depth + 2 * clearance
-            cutout = cq_helpers.box_centered(cut_w, cut_d, wall + 0.1)
+            cut_h = blank_h
+            cutout = cq_helpers.box_centered(cut_w, cut_d, cut_h)
+            if slope:
+                cutout = cutout.rotate((0, 0, 0), (1, 0, 0), -slope)
             cutout = cq_helpers.translate(
-                cutout, kb_placement.x, kb_placement.y, dl + wall / 2.0
+                cutout,
+                kb_placement.x,
+                kb_placement.y,
+                self.deck_level_at(kb_placement.y) + wall / 2.0,
             )
             deck = deck.cut(cutout)
 
-        # 4 corner M2.5 clearance holes for deck screws.
+        # M2.5 clearance holes for the deck screws, each bored normal to the
+        # (possibly tilted) deck at its own Y.
         screw = fasteners.screw("M2.5")
         for cx, cy in self._corner_positions():
-            hole = cq_helpers.cylinder_centered(
-                screw.clearance, wall + 2 * clearance
-            )
+            # Generously longer than the slab is thick, so a tilted bore still
+            # exits both faces cleanly.
+            hole = cq_helpers.cylinder_centered(screw.clearance, 4 * wall + 2 * clearance)
+            if slope:
+                hole = hole.rotate((0, 0, 0), (1, 0, 0), -slope)
             hole = cq_helpers.translate(
-                hole, cx, cy, dl + wall / 2.0
+                hole, cx, cy, self.deck_level_at(cy) + wall / 2.0
             )
             deck = deck.cut(hole)
 

@@ -19,15 +19,12 @@ Python data — it imports cleanly and is what `--steps data` exercises.
 * **Config loading** (`utilities/config_loader.py`) — YAML → frozen `Config`.
   See [[config-dataclasses]].
 * **Layouts** (`layouts/`) — placement-only definitions. `layouts/base.py`
-  provides the placement frame. Three kinds of layouts:
-  * **Imperative** (`layout_default.py`, `layout_compact.py`) — direct
-    `Placement()` calls with hardcoded arithmetic.
-  * **Constraint-based Python** (`layout_constrained.py`, `layout_default_v2.py`,
-    `layout_compact_v2.py`) — declarative `Constraint` objects resolved by
-    `LayoutComposer`. See [[constraint-system]].
-  * **YAML recipes** (`config/layouts/default.yaml`, `config/layouts/compact.yaml`)
-    — layouts defined entirely in YAML, loaded by `RecipeLayout`. Support
-    `{component.field}` and `{config.path}` references. See [[constraint-system]].
+  provides the placement frame. Layouts are declarative: `ConstraintLayout`
+  (`layout_constrained.py`) resolves `Constraint` objects through
+  `LayoutComposer`, and `RecipeLayout` (`layout_recipe.py`) loads those
+  constraints from a YAML recipe — `config/layouts/clamshell.yaml`, the only
+  one — with `{component.field}` and `{config.path}` references. See
+  [[constraint-system]].
   `make_layout(name, components, config, recipe_path)` is the factory.
 * **Constraint system** (`layouts/constraints.py`, `layouts/composer.py`,
   `layouts/resolvers/`) — 13 constraint types with 13 real resolvers (no stubs).

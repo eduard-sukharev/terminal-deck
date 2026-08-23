@@ -9,6 +9,13 @@ corners:
   edge_radius: 2        # edge_radius: general edge fillet
   cutout_chamfer: 0.5   # lead-in bevel on connector cutout openings
 
+deck:
+  slope: 6.0            # typing slope, degrees; rear (-Y, hinge side) rises,
+                        # front edge stays at the flat-case deck level. Gives
+                        # the keyboard its ergonomic tilt and opens up rear
+                        # interior height for the SBC and battery cells.
+                        # 0 = flat deck (the pre-slope geometry).
+
 clearance:
   shell: 0.35           # air gap between a component and the shell interior
   insert: 0.2           # heat-set insert hole clearance (diameter oversize)

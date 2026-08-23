@@ -35,8 +35,8 @@ make check                                  # py_compile all modules
 ```
 
 Expected output of `make data`: a placement validation report with 9 checks
-(`9 checks: PASS`). Constraint-based layouts (e.g. `--layout default_v2`) also
-print a constraint resolution report. The full run writes
+(`9 checks: PASS`), followed by the constraint resolution report for the
+recipe. The full run writes
 `cyberdeck_{assembly,base,base_bottom,base_top,lid,lid_base,lid_bezel,display,hinge}.step/.stl/.svg`
 into `generated/`.
 
@@ -46,9 +46,9 @@ Selective build via `--targets` (comma-separated): `assembly`, `base`,
 (single component). Makefile convenience targets: `make display`,
 `make base_bottom`, `make base_top`, `make lid_base`, `make lid_bezel`, etc.
 
-Available `--layout` values: `default`, `default_v2`, `compact`, `compact_v2`,
-`constrained`, `recipe_default`, `recipe_compact`. Use `--layout-recipe <path>`
-to override the YAML recipe for `recipe_*` layouts.
+There is one layout, `compact` (the default), defined by
+`config/layouts/clamshell.yaml`. Use `--layout-recipe <path>` to run a
+different recipe file through the same composer.
 
 First files to read:
 

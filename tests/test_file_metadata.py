@@ -18,7 +18,7 @@ def test_apply_writes_comment_tags_creator(monkeypatch):
     monkeypatch.setattr(os, "setxattr", fake_setxattr)
 
     metadata = {
-        "layout": "recipe_compact",
+        "layout": "compact",
         "config": "config/default.yaml",
         "rev": "abc1234",
         "built": "2026-08-07T12:00:00+03:00",
@@ -27,11 +27,11 @@ def test_apply_writes_comment_tags_creator(monkeypatch):
 
     assert ok is True
     comment = written[fm.XATTR_COMMENT].decode()
-    assert "layout=recipe_compact" in comment
+    assert "layout=compact" in comment
     assert "config=config/default.yaml" in comment
     assert "rev=abc1234" in comment
     assert "built=2026-08-07T12:00:00+03:00" in comment
-    assert written[fm.XATTR_TAGS].decode() == "cyberdeck,recipe_compact"
+    assert written[fm.XATTR_TAGS].decode() == "cyberdeck,compact"
     assert written[fm.XATTR_CREATOR].decode() == "cyberdeck"
 
 

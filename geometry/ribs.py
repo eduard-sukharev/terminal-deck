@@ -32,6 +32,19 @@ class RibSpec:
     positions: tuple[float, ...] = field(default_factory=tuple)
 
 
+def rib_height(wall_thickness: float) -> float:
+    """Height of stiffening ribs above the floor (mm).
+
+    One wall thickness: tall enough to stiffen the floor, short enough that
+    a floor-mounted board can rest right on top of the ribs without adding
+    case height. Floor components that need to clear the ribs (e.g. the SBC
+    and USB hub in ``config/layouts/clamshell.yaml``) are raised by exactly
+    this amount, and their mounting bosses (``OrangePiZero2W.set_floor_raise``)
+    are sized to match so they reach the board's underside without a gap.
+    """
+    return wall_thickness * 1.0
+
+
 def rib_layout(
     panel_width: float,
     panel_depth: float,

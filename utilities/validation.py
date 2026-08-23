@@ -36,6 +36,37 @@ def _rotated_footprint(width: float, depth: float, rotation: float) -> tuple[flo
     return eff_w, eff_d
 
 
+def _volume_footprint(placement: Any, box: Any) -> tuple[float, float]:
+    """World-frame XY extent of one sub-volume under a placement's transform.
+
+    Mirrors ``layouts.base.volume_footprint``; kept local because
+    ``utilities`` sits below ``layouts`` in the import graph (see
+    :func:`_rotated_footprint`).
+    """
+    eff_w, eff_d = _rotated_footprint(box.width, box.depth, placement.rotation)
+    tilt = getattr(placement, "tilt_x", 0.0)
+    if tilt:
+        rad = math.radians(tilt)
+        eff_d = abs(eff_d * math.cos(rad)) + abs(box.height * math.sin(rad))
+    return eff_w, eff_d
+
+
+def _volume_z_span(placement: Any, box: Any, center_z: float) -> tuple[float, float]:
+    """World-frame Z range of one sub-volume whose transformed origin sits at
+    ``center_z``. Mirrors ``layouts.base.volume_z_span``.
+    """
+    z0, z1 = (
+        (center_z - box.height, center_z) if placement.flip_x
+        else (center_z, center_z + box.height)
+    )
+    tilt = getattr(placement, "tilt_x", 0.0)
+    if not tilt:
+        return (z0, z1)
+    _, depth = _rotated_footprint(box.width, box.depth, placement.rotation)
+    half = abs(depth / 2.0 * math.sin(math.radians(tilt)))
+    return (z0 - half, z1 + half)
+
+
 class SizedComponent(Protocol):
     """Minimal component surface needed by validation."""
 
@@ -115,11 +146,11 @@ def check_collisions(placements: list[Any], report: ValidationReport) -> None:
                     wx, wy, wz = pa.world_offset(ax, ay, az)
                     vx, vy, vz = pb.world_offset(bx, by, bz)
                     # Flipped components hang below their origin.
-                    a_z0, a_z1 = (wz - abox.height, wz) if pa.flip_x else (wz, wz + abox.height)
-                    b_z0, b_z1 = (vz - bbox.height, vz) if pb.flip_x else (vz, vz + bbox.height)
+                    a_z0, a_z1 = _volume_z_span(pa, abox, wz)
+                    b_z0, b_z1 = _volume_z_span(pb, bbox, vz)
                     z_overlap = not (a_z1 <= b_z0 or b_z1 <= a_z0)
-                    aw, ad = _rotated_footprint(abox.width, abox.depth, pa.rotation)
-                    bw, bd = _rotated_footprint(bbox.width, bbox.depth, pb.rotation)
+                    aw, ad = _volume_footprint(pa, abox)
+                    bw, bd = _volume_footprint(pb, bbox)
                     if z_overlap and _overlap_xy(wx, wy, aw, ad, vx, vy, bw, bd):
                         report.add(
                             "no-collisions",
@@ -128,6 +159,51 @@ def check_collisions(placements: list[Any], report: ValidationReport) -> None:
                         )
                         return
     report.add("no-collisions", True)
+
+
+def check_boss_collisions(
+    bosses: list[tuple[float, float, float, float, Any]],
+    placements: list[Any],
+    report: ValidationReport,
+) -> None:
+    """Fail if a boss overlaps a component it isn't attached to.
+
+    A boss (a component's own mounting boss, or a deck-mount standoff) is
+    case-build-time geometry generated from ``mounting_holes()``/the deck
+    layout — it is never itself a placed component, so ``check_collisions``
+    (which compares placed components against each other) never sees it.
+    Nothing else previously caught one landing inside a part it doesn't
+    support: this was found by hand, once, with an ad hoc script built
+    specifically to check it — this makes that check permanent.
+
+    Parameters
+    ----------
+    bosses : list of (x, y, diameter, height, owner)
+        World-frame boss geometry, e.g. from ``case.base.Base.all_bosses``.
+        ``owner`` is the component the boss supports (skipped in that
+        component's own check — a mounting boss legitimately touches the
+        part it holds up) or ``None`` for a deck-mount standoff, which
+        belongs to no single component and is checked against all of them.
+    """
+    for bx, by, diameter, height, owner in bosses:
+        for placement in placements:
+            component = placement.component
+            if component is owner:
+                continue
+            for ax, ay, az, abox in component.occupied_volumes():
+                wx, wy, wz = placement.world_offset(ax, ay, az)
+                z0, z1 = _volume_z_span(placement, abox, wz)
+                if z1 <= 0.0 or height <= z0:
+                    continue
+                w, d = _volume_footprint(placement, abox)
+                if _overlap_xy(bx, by, diameter, diameter, wx, wy, w, d):
+                    report.add(
+                        "no-boss-collisions",
+                        False,
+                        f"boss at ({bx:.1f}, {by:.1f}) overlaps {component.name}",
+                    )
+                    return
+    report.add("no-boss-collisions", True)
 
 
 def check_floating_bosses(

@@ -34,22 +34,20 @@ make clean   # remove generated files
 ## Run it
 
 ```bash
-python main.py --config config/default.yaml --layout default --steps data
+python main.py --config config/default.yaml --steps data
 python main.py --steps all
-python main.py --layout recipe_default --steps data   # YAML recipe layout
-python main.py --layout recipe_default --layout-recipe my_layout.yaml  # custom recipe
+python main.py --layout-recipe my_layout.yaml --steps data   # custom recipe
 python -m pytest
 python -m py_compile main.py components/*.py geometry/*.py layouts/*.py assemblies/*.py case/*.py routing/*.py exports/*.py utilities/*.py keyboard/*.py keyboard/*/*.py
 ```
 
 * `--steps data` — config → components → layout → validation (9 checks), prints
-  a report. No CadQuery needed. Constraint-based layouts also print a constraint
-  resolution report.
+  a report, followed by the constraint resolution report. No CadQuery needed.
 * `--steps all` — additionally builds the assembly/base/lid/hinge solids and
   exports STEP/STL/SVG to `generated/`. Boolean-heavy base shell takes ~1 min.
-* `--layout` accepts `default`, `default_v2`, `compact`, `compact_v2`,
-  `constrained`, `recipe_default`, `recipe_compact`.
-* `--layout-recipe <path>` overrides the built-in recipe for `recipe_*` layouts.
+* `--layout` accepts `compact` (the only layout, and the default).
+* `--layout-recipe <path>` runs an arbitrary recipe file instead of the
+  built-in `config/layouts/clamshell.yaml`.
 
 ## Expected success output
 

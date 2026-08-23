@@ -7,10 +7,10 @@ from main import BuildPipeline
 
 def _components_and_placements():
     p = BuildPipeline("config/default.yaml")
-    p.load_config()
+    cfg = p.load_config()
     comps = p.load_components()
     from layouts import make_layout
-    layout = make_layout("default", comps)
+    layout = make_layout("compact", comps, config=cfg)
     return comps, layout.placements()
 
 
@@ -80,5 +80,7 @@ def test_set_plate_raise_changes_mounting_holes():
 
 
 def test_switch_bottom_protrusion():
+    """7.0 mm: cube (3.5 below plate top) plus the 3.5 mm pin below that —
+    matches the literals build() actually uses, not just the cube alone."""
     kb = _keyboard_from_pipeline()
-    assert kb.switch_bottom_protrusion == pytest.approx(3.5)
+    assert kb.switch_bottom_protrusion == pytest.approx(7.0)

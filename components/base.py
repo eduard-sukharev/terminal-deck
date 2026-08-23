@@ -148,9 +148,33 @@ class Component(ABC):
     #: Human-readable component name.
     name: str = "Component"
 
+    #: Elevation (mm) this component sits above the case floor, on its own
+    #: mounting bosses. Set via :meth:`set_floor_raise`.
+    _floor_raise: float = 0.0
+
     @abstractmethod
     def size(self) -> BoundingBox:
         """Return the measured overall :class:`BoundingBox` (mm)."""
+
+    def set_floor_raise(self, height: float) -> None:
+        """Set the elevation (mm) this board sits above the case floor.
+
+        A floor-mounted board rests on its own mounting bosses; the layout
+        raises it clear of the base floor's stiffening ribs (see
+        ``geometry.ribs.rib_height``), so the bosses must be exactly this tall
+        to reach the board's underside without leaving a gap or poking into
+        it. Subclasses feed :attr:`_floor_raise` into their
+        :meth:`mounting_holes` via :meth:`boss_height`.
+        """
+        self._floor_raise = height
+
+    def boss_height(self) -> float | None:
+        """Boss height (mm) for this component's mounting holes, or ``None``.
+
+        ``None`` means "use the boss library default"; a real value pins the
+        boss to the elevation :meth:`set_floor_raise` asked for.
+        """
+        return self._floor_raise if self._floor_raise > 0.0 else None
 
     def mounting_holes(self) -> list[Hole]:
         """Return mounting holes relative to the component origin (mm).

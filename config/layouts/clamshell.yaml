@@ -6,30 +6,32 @@
 #
 # Laptop arrangement, front (+Y, toward the user) to rear (-Y, the hinge):
 #
-#   keyboard  |  rear I/O strip (SBC + USB hub)
+#   keyboard (SBC + RP2040 tucked in the wedge under its raised rear)  |  hub + battery
 #
 # There is no palm rest: the whole base group is centered on Y so the
 # symmetric enclosure hugs its contents. The keyboard's switch plate stands
-# on standoffs and the battery lives in that hollow. The SBC does not: its
-# only externally-reachable connector is the USB hub's rear port strip
-# (the SBC's own Power/HDMI/USB-C are all internal — the hub is the deck's
-# one external USB/power surface), so the SBC sits wherever keeps its
-# internal USB-C-OTG cable to the hub short, rather than against a wall.
+# on standoffs, tilted by the sloped deck (config.deck.slope): flat at the
+# front, rising toward the rear. That rise is what makes this arrangement
+# possible — under the front of the plate there is barely 1 mm of headroom
+# below the switch bodies, but under the raised rear there is enough to bury
+# the SBC and the RP2040 controller in the hollow, floor-mounted, instead of
+# giving them their own strip behind the keyboard the way the previous
+# layout did.
 #
-# SBC in the rear-right corner, rotated 270° so its I/O edge (HDMI +
-# USB-C-OTG + Power — all internal, none need a wall) faces west, toward
-# the hub. The microSD slot (west-facing before this rotation) now faces
-# the keyboard instead of a wall and loses its external access — accepted
-# per the current hardware plan; re-flashing means opening the case.
+# Neither the SBC nor the RP2040 needs a wall: the SBC's Power/HDMI/USB-C are
+# all internal (the hub is the deck's one external USB/power surface) and the
+# RP2040's USB-C cables to the SBC inside the case. So both sit wherever the
+# tilted plate gives them room, unrotated (rotation 0 keeps their footprint
+# shallow in Y, which is the tight axis under the wedge) and positioned
+# relative to the keyboard so they track it if the slope or plate size ever
+# changes.
 #
-# Hub in the rear-left corner. Its north edge (3x USB-A + micro-SD + audio
-# + USB-C) must still face rear, and its lone side port must now face left
-# (west) instead of right, to stay on the case's outer edge in the new
-# corner. A plain 180° Z-rotation (no flip) achieves both at once — the
-# same "north+side, 90° apart" board geometry that used to require a flip
-# to reach "rear+right" reaches "rear+left" with rotation alone. Unflipped
-# also means the board sits right-side-up, rather than upside-down for no
-# reason now that flipping isn't needed for the port pairing.
+# The USB hub is the only thing still up against a wall — its port strip is
+# the deck's real, externally-reachable I/O, so it keeps the rear-left corner
+# it had before, plain 180° Z-rotation (no flip): the same "north+side, 90°
+# apart" board geometry that used to need a flip to reach "rear+right" (the
+# old SBC-adjacent corner) reaches "rear+left" with rotation alone, and
+# right-side-up rather than upside-down for no reason.
 #
 # Every value is derived from component sizes and config, so re-measuring a
 # part (the battery and hub are still TODO: measure) moves the layout with
@@ -41,50 +43,55 @@ constraints:
   # Declared first: the wall-relative constraints below align against this
   # rather than guessing from whatever is placed so far.
   #   width = widest of keyboard/display + clearance + walls
-  #   depth = rear strip (SBC) + gap + keyboard + walls (no palm rest —
-  #           the group is centered on Y below so the symmetric enclosure
-  #           hugs the content instead of wasting a front palm rest)
+  #   depth = rear strip (hub + battery, side by side in X, not stacked in
+  #           Y — see below) + gap + keyboard + walls (no palm rest — the
+  #           group is centered on Y below so the symmetric enclosure hugs
+  #           the content instead of wasting a front palm rest). The SBC and
+  #           RP2040 are not in this sum at all: both nest entirely inside
+  #           the keyboard's own depth, in the wedge pocket under the raised
+  #           rear, so they add no depth of their own.
+  #
+  #   The rear strip's own depth is `battery.width` (its rotated Y-extent,
+  #   see below), not `battery.width + usb_breakout.depth`: the battery
+  #   shares the hub's rear-wall-flush band side by side in X (like the SBC
+  #   used to, before this recipe tucked it under the keyboard instead), and
+  #   is deeper than the hub (37.2 mm vs 24 mm for the stock 2-cell pack) —
+  #   so it, not the hub, sets the strip's depth. Assumes the battery stays
+  #   the deeper of the two; true for any `side_by_side` pack of 2+ cells
+  #   (2 * 18.6 mm > hub's 24 mm), the only configuration this has been
+  #   built and measured against.
+  #
+  #   The "- 2.0" lets the keyboard's rear overhang steal back 4 mm of that
+  #   depth (a flat 2 mm safety gap, less the 4 mm nose-in below): a resting
+  #   cylinder's surface curves away from its tangent line, so a cell can
+  #   nose a little way under a ceiling shorter than its own diameter even
+  #   though its centerline never could — see the battery placement's own
+  #   comment for the geometry and how far that actually goes (measured
+  #   against the real, round-aware collision model, not eyeballed).
+  #
+  #   No extra padding for the battery's own forward move: earlier revisions
+  #   of this recipe positioned the battery with an edge_alignment against
+  #   the rear wall, needing this formula (and the keyboard's own offset,
+  #   below) to grow in lockstep every time the battery moved, just to keep
+  #   the two from drifting apart — a fixed, wall-relative gap that had
+  #   nothing to do with where the keyboard actually ended up. The battery
+  #   is now placed relative to the keyboard directly (see the battery
+  #   section below), so this depth only has to contain the keyboard's own
+  #   rear-wall standoff (below) — wherever the battery ends up relative to
+  #   the keyboard, it ends up inside that same standoff, by construction.
   - kind: target_envelope
     width: "{display.width} + 2 * {config.clearance.shell} + 2 * {config.wall_thickness}"
-    depth: "{sbc.depth} + 2.0 + {keyboard.depth} + 2 * {config.clearance.shell} + 2 * {config.wall_thickness}"
+    depth: "{battery.width} - 2.0 + {keyboard.depth} + 2 * {config.clearance.shell} + 2 * {config.wall_thickness}"
     description: >-
-      Display-limited in X; in Y the rear I/O strip plus the 40% keyboard,
-      centered so the symmetric enclosure is as small as the content allows.
+      Display-limited in X; in Y the rear strip (hub + battery) plus the
+      40% keyboard, centered so the symmetric enclosure is as small as the
+      content allows.
 
-  # ── Rear I/O strip ────────────────────────────────────────────────────
-  # SBC hard against the rear wall and the right (east) wall. Rotated 270°
-  # about Z so its I/O edge (HDMI + USB-C-OTG + Power, all internal — see
-  # header) faces west, toward the hub, instead of its unmodified-recipe
-  # rear-facing orientation. `edge_alignment` below is rotation-aware (it
-  # reads the rotation already set here and aligns the true rotated
-  # footprint), so "right"/"rear" below place the SBC's actual world-space
-  # edges, not its unrotated local ones — a 65x30 mm board rotated 90°
-  # occupies 30 mm in X and 65 mm in Y.
-  #
-  # Raised one wall-thickness off the floor, onto its own mounting bosses,
-  # so it clears the base floor's stiffening ribs (geometry.ribs.rib_height;
-  # OrangePiZero2W.set_floor_raise sizes the bosses to match). Set here
-  # rather than left to z_stack below, so that resolver doesn't reset it
-  # back to z=0.
-  - kind: fixed_position
-    subject: sbc
-    rotation: 270.0
-    z: "{config.wall_thickness}"
-  - kind: edge_alignment
-    subject: sbc
-    subject_edge: rear
-    target: enclosure
-    target_edge: rear
-  - kind: edge_alignment
-    subject: sbc
-    subject_edge: right
-    target: enclosure
-    target_edge: right
-
-  # Hub: plain 180° Z-rotation, no flip (see header for why this reaches
-  # "rear+left" the same way the old flip reached "rear+right"). Right-side
-  # up, so it sits flat on the floor exactly like the SBC — raised the same
-  # one wall-thickness, same reason.
+  # ── USB hub: the deck's one wall-facing rear component ────────────────
+  # Plain 180° Z-rotation, no flip (see header for why this reaches
+  # "rear+left" the way a flip used to reach "rear+right"). Right-side up.
+  # Raised one wall-thickness off the floor onto its own mounting bosses, so
+  # it clears the base floor's stiffening ribs (geometry.ribs.rib_height).
   - kind: fixed_position
     subject: usb_breakout
     rotation: 180.0
@@ -102,49 +109,234 @@ constraints:
     target_edge: left
 
   # ── Keyboard ──────────────────────────────────────────────────────────
-  # Centered on X; on Y it clears the rear strip by 2 mm, which leaves the
-  # palm rest as the remainder of the envelope.
+  # Centered on X; on Y its rear edge stands off the rear wall by the rear
+  # strip's depth, minus the 4 mm the battery's rounded cells let the
+  # keyboard's overhang steal back (see target_envelope above — same
+  # expression, so the two cannot drift apart).
   - kind: centered_on
     subject: keyboard
     axes: ["x"]
   - kind: edge_alignment
     subject: keyboard
     subject_edge: rear
-    target: sbc
-    target_edge: front
-    offset: 2.0
+    target: enclosure
+    target_edge: rear
+    offset: "{battery.width} - 2.0"
 
-  # ── Battery, in the hollow under the switch plate ─────────────────────
-  # Left of the RP2040 controller, which occupies the middle of that space.
-  - kind: relative_placement
+  # ── Battery: sized/rotated here, positioned relative to the keyboard
+  #    after it (see the section below centered_group) ────────────────────
+  # 18650 cells lying flat. A cell's own diameter (18.6 mm) is too tall to
+  # fit *under* the keyboard plate outright — even at the plate's highest
+  # (rear) point the plate structure itself (not just the switches) sits at
+  # ~12.75 mm — so unlike the SBC and controller the battery isn't tucked
+  # under the plate; it stays in the rear strip, sharing it with the hub
+  # side by side in X (both in the same Y band, so together they cost only
+  # the deeper one's depth rather than the sum).
+  #
+  # Rotated 90° so the pack's long axis (65.2 mm, `side_by_side`) runs along
+  # X, where there is ~100 mm free east of the hub — not along Y, where it
+  # would eat far more of the scarce rear-strip depth. Cells rest flat on
+  # the floor (tilt 0); a holder sits on the floor and the sloped deck above
+  # provides the clearance.
+  #
+  # z is wall_thickness, not 0: the cells used to rest flush on the floor,
+  # which put them straight through the floor's stiffening ribs
+  # (geometry.ribs.rib_height) — the ribs run the full interior depth and
+  # nothing was keeping this corner clear the way boss keepouts do for
+  # fastened parts. Same expression the hub/SBC/controller already use to
+  # clear the same ribs (rib_height(wall_thickness) == wall_thickness), not
+  # `battery.cradle_height` — that's the *cradle's own* block height (how
+  # far it wraps the cell's curve, see geometry/cradle.py), a taller,
+  # independent number; using it here as the raise put the cell's bottom
+  # exactly level with the cradle block's top edge instead of nested down
+  # into it, and made the cell sit needlessly higher against the keyboard's
+  # sloped overhang above.
+  - kind: fixed_position
     subject: battery
-    target: keyboard
-    offset_x: -50.0
+    rotation: 90.0
+    z: "{config.wall_thickness}"
+    tilt: 0.0
+
+  # ── Typing slope ──────────────────────────────────────────────────────
+  # The base deck is a wedge (config.deck.slope): flat at the front, rising
+  # toward the rear. The keyboard rides it, pivoting about its front-bottom
+  # edge so the front of the case keeps its height and the rise all goes to
+  # the rear — which is what opens up the pocket the SBC and RP2040 sit in
+  # below. Placed before those so they resolve against the keyboard's
+  # final, tilted pose.
+  - kind: deck_mount
+    subject: keyboard
 
   # ── Compactness: center the base content on Y ─────────────────────────
   # The enclosure is symmetric about the origin, so its depth is set by the
-  # larger of the rear (SBC) and front (keyboard) extents. Centering the
-  # whole base group makes those two extents equal, shrinking the depth to
-  # the minimum the content allows instead of wasting a front palm rest.
+  # larger of the rear (hub/battery strip) and front (keyboard) extents.
+  # Centering the whole base group makes those two extents equal, shrinking
+  # the depth to the minimum the content allows instead of wasting a front
+  # palm rest. The SBC, controller, and battery are deliberately not
+  # subjects: each is placed relative to the keyboard's position *after*
+  # this runs (below), so they track its final Y directly and must not also
+  # be shifted by this.
   - kind: centered_group
-    subjects: ["sbc", "keyboard", "battery", "usb_breakout"]
+    subjects: ["keyboard", "usb_breakout"]
     axes: ["y"]
 
+  # ── Battery, positioned relative to the keyboard's rear edge ──────────
+  # Nosed in as close to the keyboard as the clearance model allows,
+  # bisected directly against the resolver — not against the rear wall:
+  # earlier revisions pinned the battery to the wall with an edge_alignment
+  # offset, which meant every time the offset was tuned, the enclosure
+  # depth and the keyboard's own wall standoff (above) had to grow in
+  # lockstep just to avoid the two drifting apart, even though the thing
+  # that actually mattered — the keyboard↔battery gap — was never expressed
+  # directly. Placing the battery relative to the keyboard instead means
+  # there's exactly one relationship to tune, and the enclosure only has to
+  # contain the keyboard's own (unpadded) rear-wall standoff — the battery
+  # ends up inside it by construction, wherever the keyboard's final tilted
+  # position turns out to be.
+  #
+  # A resting cylinder's surface curves away from the floor tangent line,
+  # so near the plate's rear edge — where the ceiling is close to the
+  # cylinder's own radius rather than its full diameter — the cell's
+  # rounded shoulder clears it while its centerline still could not. This
+  # is what `Battery.occupied_volumes()` slicing each cylinder along its
+  # round axis (not just Z) exposes to the collision system, instead of the
+  # cell's full-diameter bounding box, which would forbid any overlap at
+  # all. The "+ 3.5" (the correction term below) is bisected against the
+  # real resolver, not derived: +3.5 passes (gap=1.61); +3.7 fails
+  # (gap=1.47) — left with the same small safety margin every other tuned
+  # value in this recipe keeps rather than sitting exactly on the boundary.
+  # Two real bugs in occupied_volumes() got fixed along the way (see
+  # components/rp2040_keyboard.py and components/battery.py) — the switch
+  # band used to be one full-row-width slab per Y-slice (as if every switch
+  # merged into a wall the whole grid width) and then used the switch
+  # cube's wide 13 mm footprint for the pin's narrower lower band too. A
+  # real boolean intersection of the built solids (not occupied_volumes,
+  # the actual CAD geometry) clears by well over a millimetre at this
+  # position, but the resolver's own boxes (13x13/4x4 mm switch boxes, the
+  # battery's 64-slice cylinder approximation) can't chase that last
+  # stretch — an axis-aligned box always reaches slightly past a round pin
+  # or cell, and the separating-axis test only checks X/Y/Z, not the
+  # shorter true diagonal the real curved surfaces achieve.
+  #
+  # offset_x is 0 here — the battery's actual X (right/east wall, packing
+  # it into the corner the hub does not reach and leaving the rear-centre
+  # free for the SBC's plug, which needs a clear 25 mm run behind the
+  # board) comes from the edge_alignment right after, which only touches X
+  # and preserves the Y this sets.
+  - kind: relative_placement
+    subject: battery
+    target: keyboard
+    offset_x: 0.0
+    offset_y: "0.0 - ({keyboard.depth} / 2) - ({battery.width} / 2) + 3.5"
+  - kind: edge_alignment
+    subject: battery
+    subject_edge: right
+    target: enclosure
+    target_edge: right
+  # relative_placement sets z from the keyboard's own (tilted, raised) z —
+  # fine for a part riding the deck, wrong for the battery, which sits on
+  # its own floor cradles regardless of where the keyboard's origin ends up.
+  # Restore the floor z (same rib_height every other floor part clears by)
+  # and flat tilt, same pattern the SBC below uses for the same reason.
+  - kind: fixed_position
+    subject: battery
+    z: "{config.wall_thickness}"
+    tilt: 0.0
+
+  # ── SBC, tucked in the wedge pocket under the keyboard's raised rear ──
+  # Unrotated: a 65x30 mm board is far easier to fit than its 270°-rotated
+  # 30x65 mm footprint would be, because Y is the tight axis here — the
+  # pocket is only as deep as the plate's own rear overhang, while X has the
+  # keyboard's full ~230 mm width to spare. Unrotated also means its I/O
+  # edge (HDMI + USB-C-OTG + Power, all internal — see header) faces -Y,
+  # i.e. rearward, so the plugged cable runs out into the rear strip rather
+  # than deeper under the keyboard where there is no room for it.
+  #
+  # Rear-flush with the plate: pushed as far back as it goes, which is both
+  # the highest-clearance spot under the wedge and the assumption
+  # `Rp2040Keyboard.plate_raise_for_buried` makes when sizing the plate
+  # standoffs to clear this board (main.py). The keyboard's plate_raise is
+  # derived from the SBC sitting exactly here, so moving it forward without
+  # re-deriving that would put it back into the switch bodies.
+  #
+  # offset_x threads the plugged cable (below) through the gap between the
+  # hub's east edge and the battery's west edge — the only clear run to the
+  # rear wall. Enforced by the plug's own clearance checks, not by this
+  # number alone.
+  - kind: relative_placement
+    subject: sbc
+    target: keyboard
+    offset_x: 12.4
+    offset_y: "({sbc.depth} - {keyboard.depth}) / 2"
+    rotation: 0.0
+  # x/y come from the relative_placement above; z is set separately because
+  # it must be an absolute floor height (the SBC sits on its own bosses on
+  # the case floor, not on anything tilted), not an offset from the
+  # keyboard's tilted origin. tilt 0: the SBC itself stays flat.
+  - kind: fixed_position
+    subject: sbc
+    z: "{config.wall_thickness}"
+    tilt: 0.0
+
+  # ── The cable plugged into the SBC ────────────────────────────────────
+  # A real solid, not a reserved margin: 25 mm of plug body standing off the
+  # chosen USB-C port (config/hardware.yaml `usb_c_plug.port_index` picks
+  # OTG or power), so the ordinary collision checks catch it fouling the hub
+  # or the cells instead of a hand-picked clearance number having to be
+  # generous enough. Offsets come from the plug's own reference_origin(),
+  # which reads the SBC's measured connector positions — the recipe never
+  # restates a port coordinate. Unrotated: the plug's length runs along its
+  # local Y, which is already the axis the SBC's ports face — an X-facing
+  # port would need rotation 90 here instead.
+  - kind: relative_placement
+    subject: sbc_plug
+    target: sbc
+    use_reference_origin: true
+    rotation: 0.0
+
+  # ── RP2040 controller, under the keyboard's rearmost row of keys ──────
+  # Also unrotated and floor-mounted, same reasoning as the SBC. Positioned
+  # at the very rear of the plate (offset_y matches the rearmost switch row,
+  # keyboard.depth / 2 in from the edge) — the highest-clearance point under
+  # the wedge — and off in X from the SBC so their footprints do not
+  # collide despite both spanning similar Y (see the `clearance` checks).
+  #
+  # offset_x is -75, not -80: the keyboard plate's own NW mounting boss sits
+  # at local (-90.49, -19.05), which a -80 offset (controller half-width 9)
+  # runs 1.2 mm into — the boss is a full-height standoff (floor to the
+  # underside of the plate it holds up), so this was a real collision, not
+  # just a tight fit. -75 clears it with a few mm to spare.
+  - kind: relative_placement
+    subject: controller
+    target: keyboard
+    offset_x: -75.0
+    offset_y: -24.6
+    rotation: 0.0
+  - kind: fixed_position
+    subject: controller
+    z: "{config.wall_thickness}"
+    tilt: 0.0
+
   # ── Base floor ────────────────────────────────────────────────────────
-  # usb_breakout is flipped and gets its z set explicitly above, since this
-  # resolver would otherwise overwrite it with a flip-unaware z=0. sbc is
-  # likewise set explicitly above (raised onto its mounting bosses, off the
-  # floor ribs), so it's left out of this layer too.
-  - kind: z_stack
-    layers: [["keyboard", "battery"]]
+  # Every base-floor part gets an explicit z above (usb_breakout, sbc,
+  # controller, battery all set it directly; keyboard's comes from
+  # deck_mount), so there is nothing left for a z_stack layer to assign — it
+  # is gone entirely.
 
   # ── Lid ───────────────────────────────────────────────────────────────
   # The lid closes onto the base rim, so the display sits one keyboard-height
   # up, plus the lid's bottom wall and the driver board behind the panel:
   #   keyboard + clearance + wall + clearance + driver
-  - kind: fixed_position
+  # Measured from the keyboard's placed top rather than its nominal height:
+  # the deck slope tilts the keyboard, so its highest point (rear keycaps)
+  # rises above `keyboard.height`. Taking the real top keeps the lid clear
+  # of it automatically as `config.deck.slope` changes; a fixed formula in
+  # `keyboard.height` would silently let the rear caps into the display.
+  - kind: relative_placement
     subject: display
-    z: "{keyboard.height} + 2 * {config.clearance.shell} + {config.wall_thickness} + {driver.height}"
+    target: keyboard
+    from_top: true
+    offset_z: "2 * {config.clearance.shell} + {config.wall_thickness} + {driver.height}"
   - kind: centered_on
     subject: display
     axes: ["x", "y"]
@@ -177,21 +369,54 @@ constraints:
     connector_type: USB-A
     wall: rear
 
-  # The battery has to fit the hollow under the plate without fouling the
-  # plate above it or the controller beside it.
+  # The battery shares the rear strip with the hub (side by side in X) and
+  # noses forward under the keyboard's overhang (see the battery placement
+  # comment) — this is the check that actually enforces how far, using the
+  # real round-profile collision model rather than the offset number alone.
   - kind: clearance
     subject: battery
     target: keyboard
-    gap: 1.0
+    gap: 1.5
+  - kind: clearance
+    subject: battery
+    target: usb_breakout
+    gap: 2.0
+    axis: x
 
-  # Rear strip parts must not run into each other — and, now that the SBC's
-  # I/O edge faces the hub, must leave room for the USB-C-OTG-to-hub cable
-  # to plug in and bend clear (measured requirement, not a guess).
+  # The SBC and the RP2040 are both tucked in the wedge pocket under the
+  # plate: each must clear the plate above it, and the two must not collide
+  # with each other despite both spanning similar Y (they're separated in X
+  # instead — see the recipe comments above).
   - kind: clearance
     subject: sbc
+    target: keyboard
+    gap: 1.5
+  - kind: clearance
+    subject: controller
+    target: keyboard
+    gap: 1.5
+  - kind: clearance
+    subject: sbc
+    target: controller
+    gap: 2.0
+
+  # The plugged cable is modelled as a real body (see above), so what used
+  # to be an abstract 30 mm "leave room for the plug" margin between the SBC
+  # and the hub is now these three checks on the plug itself: it must thread
+  # between the hub and the cells without touching either, and clear the
+  # switch bodies overhead.
+  - kind: clearance
+    subject: sbc_plug
     target: usb_breakout
-    gap: 30.0
-    axis: x
+    gap: 1.0
+  - kind: clearance
+    subject: sbc_plug
+    target: battery
+    gap: 1.0
+  - kind: clearance
+    subject: sbc_plug
+    target: keyboard
+    gap: 1.0
 
   # Nothing in the base may touch the lid when it closes.
   - kind: clearance
@@ -208,7 +433,7 @@ constraints:
     to_connector_type: HDMI
     via_point:
       - 0.0
-      - "0 - ({sbc.depth} + 2.0 + {keyboard.depth} + 2 * {config.clearance.shell} + 2 * {config.wall_thickness}) / 2 - {config.wall_thickness}"
+      - "0 - ({battery.width} - 2.0 + {keyboard.depth} + 2 * {config.clearance.shell} + 2 * {config.wall_thickness}) / 2 - {config.wall_thickness}"
       - "{keyboard.height} + {config.clearance.shell}"
     clearance_diameter: "{config.hinge.wire_tunnel}"
     bend_radius: 30.0

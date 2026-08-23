@@ -54,7 +54,6 @@ class OrangePiZero2W(Component):
         self.pcb_thickness = float(sbc.get("pcb_thickness", 1.4))
         self.hole_diameter = float(sbc.get("mounting_hole_diameter", 3.0))
         self.hole_inset = float(sbc.get("mounting_hole_inset", 3.5))
-
     def size(self) -> BoundingBox:
         return BoundingBox(self.width, self.depth, self.height)
 
@@ -63,11 +62,12 @@ class OrangePiZero2W(Component):
         # from board-corner coordinates to the component-center frame.
         inset = self.hole_inset
         half_w, half_d = self.width / 2, self.depth / 2
+        height = self.boss_height()
         return [
-            Hole(-half_w + inset, -half_d + inset, self.hole_diameter),
-            Hole(half_w - inset, -half_d + inset, self.hole_diameter),
-            Hole(half_w - inset, half_d - inset, self.hole_diameter),
-            Hole(-half_w + inset, half_d - inset, self.hole_diameter),
+            Hole(-half_w + inset, -half_d + inset, self.hole_diameter, height=height),
+            Hole(half_w - inset, -half_d + inset, self.hole_diameter, height=height),
+            Hole(half_w - inset, half_d - inset, self.hole_diameter, height=height),
+            Hole(-half_w + inset, half_d - inset, self.hole_diameter, height=height),
         ]
 
     def connectors(self) -> list[Connector]:

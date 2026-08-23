@@ -85,8 +85,10 @@ class BuildPipeline:
         # stiffening ribs (geometry.ribs.rib_height); the layout recipe
         # raises the SBC's placement by the same amount.
         sbc.set_floor_raise(rib_height(cfg.wall_thickness))
+        # No set_floor_raise call: the real board has no mounting holes (it
+        # sits loose in its pocket under the plate, not screwed down), so
+        # there are no mounting bosses to size — see components/rp2040_zero.py.
         controller = Rp2040Zero(cfg.keyboard.controller or {})
-        controller.set_floor_raise(rib_height(cfg.wall_thickness))
 
         # The SBC is buried under the keyboard plate, so the plate has to
         # stand tall enough for its switch bodies to clear the board — not

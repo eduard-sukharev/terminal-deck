@@ -6,8 +6,11 @@ Dimensions sourced from the Waveshare RP2040-Zero product page / wiki:
 * RP2040 chip: 7.0 x 7.0 x 1.0 mm on the underside
 * USB-C connector: 9.0 x 7.5 x 3.3 mm on the top side, protruding 1.4 mm
   past the shorter (18 mm) edge
-* Four corner mounting holes, ~2.0 mm diameter
 * Castellated pads at 2.54 mm pitch
+* No mounting holes on the real board — it is small and light enough to
+  sit loose in its pocket under the keyboard plate rather than being
+  screwed down; it gets no mounting bosses (see ``mounting_holes`` on the
+  base ``Component`` class, left at its no-holes default).
 
 This is the QMK/Vial controller for the 40% keyboard. Board frame: origin at
 board center, +X along the 18 mm length, +Y along the 23.5 mm width, +Z
@@ -19,7 +22,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from components.base import BoundingBox, Component, Connector, Hole
+from components.base import BoundingBox, Component, Connector
 from utilities.constants import CONNECTOR_USB_C, DIR_POS_X
 
 
@@ -46,22 +49,9 @@ class Rp2040Zero(Component):
         self.width = float(data.get("width", 18.0))
         self.depth = float(data.get("depth", 23.5))
         self.height = float(data.get("height", 5.3))
-        self.hole_diameter = float(data.get("hole_diameter", 2.0))
 
     def size(self) -> BoundingBox:
         return BoundingBox(self.width, self.depth, self.height)
-
-    def mounting_holes(self) -> list[Hole]:
-        # Four corner mounting holes, ~2.0 mm, inset from the board edges.
-        inset = 2.0
-        half_w, half_d = self.width / 2, self.depth / 2
-        h = self.boss_height()
-        return [
-            Hole(-half_w + inset, -half_d + inset, self.hole_diameter, height=h),
-            Hole(half_w - inset, -half_d + inset, self.hole_diameter, height=h),
-            Hole(half_w - inset, half_d - inset, self.hole_diameter, height=h),
-            Hole(-half_w + inset, half_d - inset, self.hole_diameter, height=h),
-        ]
 
     def connectors(self) -> list[Connector]:
         # USB-C on the short edge (+X), protruding 1.4 mm past it. The

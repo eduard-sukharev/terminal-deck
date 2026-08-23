@@ -218,10 +218,22 @@ class Component(ABC):
         """
         return [(0.0, 0.0, 0.0, self.size())]
 
-    def reference_origin(self) -> tuple[float, float, float]:
+    def reference_origin(self, flip: bool = False) -> tuple[float, float, float]:
         """Return the component origin offset in the world frame (mm).
 
         The global origin is the center of the base. Default: no offset.
+
+        ``flip`` is whether the *target* this offset is measured from (not
+        this component itself) will be placed with ``flip: true`` —
+        ``layouts.resolvers.relative_placement.RelativePlacementResolver``
+        passes the target's own resolved ``flip_x`` through so an override
+        that biases one axis to center a symmetric body on a connector (see
+        ``UsbCPlug``/``MiniHdmiPlug``) can flip that bias's sign to match: a
+        flipped target's local Z gets negated by the same transform that
+        carries this offset into world space, so a bias computed assuming a
+        normal (non-flipped) mount would land the body mirrored across the
+        connector instead of centered on it. Most overrides have no
+        direction-sensitive bias and can ignore the parameter.
         """
         return (0.0, 0.0, 0.0)
 

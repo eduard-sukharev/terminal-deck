@@ -90,7 +90,7 @@ class UsbCPlug(Component):
             )
         return ports[self.port_index]
 
-    def reference_origin(self) -> tuple[float, float, float]:
+    def reference_origin(self, flip: bool = False) -> tuple[float, float, float]:
         """Offset from the host board's origin to this plug's origin (mm).
 
         Places the plug's mating face on the chosen port's opening, so the
@@ -101,15 +101,20 @@ class UsbCPlug(Component):
         conn = self.host_connector()
         # Step out from the connector centre to the port face (half the
         # connector's depth), then out again to the plug's own centre (half
-        # its length). Z is biased down by half the plug height so the body —
+        # its length). Z is biased by half the plug height so the body —
         # which occupies ``[z, z + height]`` — ends up centered on the
-        # opening rather than sitting on top of it.
+        # opening rather than sitting on top of it: down (``-``) for a
+        # normally-mounted host, but the host's own placement transform
+        # (``Placement.world_offset``) negates a flipped host's Z component,
+        # so a flipped host needs the bias pre-negated (``+``) to still land
+        # centered once that transform is applied — see ``flip`` above.
         dx, dy, _ = conn.direction
         standoff = conn.depth / 2.0 + self.protrusion / 2.0
+        z_bias = self.height / 2.0 if flip else -self.height / 2.0
         return (
             conn.x + dx * standoff,
             conn.y + dy * standoff,
-            conn.z - self.height / 2.0,
+            conn.z + z_bias,
         )
 
     def build(self):

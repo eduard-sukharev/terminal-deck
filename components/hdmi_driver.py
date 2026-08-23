@@ -112,9 +112,12 @@ class HdmiDriver(Component):
             ),
         ]
 
-    def reference_origin(self) -> tuple[float, float, float]:
+    def reference_origin(self, flip: bool = False) -> tuple[float, float, float]:
         # Driver board offset from the display center: along X to sit beside
         # the panel, along Y to line its FPC slot up with the panel's FPC.
+        # No direction-sensitive bias here (unlike UsbCPlug/MiniHdmiPlug) —
+        # the display (this offset's target) is never flipped — so `flip`
+        # is accepted (matching the base signature) but unused.
         return (self.offset_x, self.offset_y, 0.0)
 
     def build(self):

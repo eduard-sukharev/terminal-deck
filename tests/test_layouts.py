@@ -36,8 +36,9 @@ def test_compact_placements():
     p = BuildPipeline("config/default.yaml")
     cfg = p.load_config()
     placements = _layout(p.load_components(), cfg).placements()
-    # keyboard, sbc, sbc_plug, controller, battery, hub, display, driver
-    assert len(placements) == 8
+    # keyboard, sbc, sbc_plug, hdmi_plug_sbc, controller, battery, hub,
+    # display, driver, hdmi_plug_driver
+    assert len(placements) == 10
 
 
 def test_compact_no_collisions():

@@ -24,6 +24,7 @@ from pathlib import Path
 from components.battery import Battery
 from components.display_88 import Display88
 from components.hdmi_driver import HdmiDriver
+from components.hdmi_plug import MiniHdmiPlug
 from components.orange_pi_zero2w import OrangePiZero2W
 from components.rp2040_keyboard import Rp2040Keyboard
 from components.rp2040_zero import Rp2040Zero
@@ -107,9 +108,11 @@ class BuildPipeline:
                 gap=2.5,
             )
         )
+        driver = HdmiDriver(display_cfg)
+        mini_hdmi_cfg = cfg.hardware.get("mini_hdmi_plug", {})
         return {
             "display": Display88(display_cfg),
-            "driver": HdmiDriver(display_cfg),
+            "driver": driver,
             "keyboard": keyboard,
             # The controller is its own placed component, not a sub-part of
             # the keyboard: the switch bodies hang 7 mm below the plate, so it
@@ -120,6 +123,14 @@ class BuildPipeline:
             # The cable plugged into the SBC is a solid obstruction in its
             # own right; which port it occupies is config, not geometry.
             "sbc_plug": UsbCPlug(cfg.hardware.get("usb_c_plug", {}), host=sbc),
+            # The mini-HDMI ribbon between the SBC and the driver board is a
+            # real cable, with a real connector shell at each end — modelled
+            # the same way as the USB-C plug above, one instance per host so
+            # each gets its own placement.
+            "hdmi_plug_sbc": MiniHdmiPlug(mini_hdmi_cfg, host=sbc, label="SBC"),
+            "hdmi_plug_driver": MiniHdmiPlug(
+                mini_hdmi_cfg, host=driver, label="Driver"
+            ),
             "battery": Battery(cfg.hardware),
             "usb_breakout": UsbBreakout(cfg.hardware),
         }
@@ -351,7 +362,10 @@ class BuildPipeline:
             from assemblies.assembly import select_placements
 
             base_subset_roles = {components["keyboard"]}
-            for role in ("sbc", "sbc_plug", "controller", "battery", "usb_breakout"):
+            for role in (
+                "sbc", "sbc_plug", "hdmi_plug_sbc", "controller", "battery",
+                "usb_breakout",
+            ):
                 if role in components:
                     base_subset_roles.add(components[role])
             subset_placements = select_placements(placements, base_subset_roles)
@@ -395,7 +409,11 @@ class BuildPipeline:
             from assemblies.assembly import select_placements
 
             display_placements = select_placements(
-                placements, {components["display"], components["driver"]}
+                placements,
+                {
+                    components["display"], components["driver"],
+                    components["hdmi_plug_driver"],
+                }
             )
             if display_placements:
                 display_assembly_solid = assembly.build_subset(display_placements)
@@ -475,7 +493,10 @@ class BuildPipeline:
             base_solid = base_obj.build_bottom()
             if "keyboard" in components:
                 base_subset_roles = {components["keyboard"]}
-                for role in ("sbc", "sbc_plug", "controller", "battery", "usb_breakout"):
+                for role in (
+                "sbc", "sbc_plug", "hdmi_plug_sbc", "controller", "battery",
+                "usb_breakout",
+            ):
                     if role in components:
                         base_subset_roles.add(components[role])
                 subset = select_placements(placements, base_subset_roles)
@@ -488,7 +509,11 @@ class BuildPipeline:
             # Build lid solid (closed position).
             lid_solid = lid.build_base()
             display_placements = select_placements(
-                placements, {components["display"], components["driver"]}
+                placements,
+                {
+                    components["display"], components["driver"],
+                    components["hdmi_plug_driver"],
+                }
             )
             if display_placements:
                 lid_solid = lid_solid.union(

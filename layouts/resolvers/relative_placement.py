@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from typing import Any
 
 from layouts.base import Placement
@@ -41,23 +42,50 @@ class RelativePlacementResolver:
         )
         source = "recipe offsets"
         if constraint.use_reference_origin:
-            ref_x, ref_y, ref_z = subj.reference_origin()
+            # Pass the target's own flip through: an override with a
+            # direction-sensitive bias (UsbCPlug/MiniHdmiPlug centering a
+            # symmetric body on a connector) needs to know, since the
+            # world_offset transform below negates a flipped target's Z
+            # component — see Component.reference_origin's docstring.
+            ref_x, ref_y, ref_z = subj.reference_origin(flip=target_placement.flip_x)
             # The recipe still owns Z: reference_origin() describes the in-plane
             # mounting offset, not which side of the partner the board sits on.
             offset_x, offset_y = ref_x, ref_y
             offset_z = constraint.offset_z or ref_z
             source = "reference_origin()"
 
-        x = target_placement.x + offset_x
-        y = target_placement.y + offset_y
+        # Route the offset through the target's own rotation/flip
+        # (Placement.world_offset), not a flat addition: offset_x/offset_y/
+        # offset_z (and reference_origin()) describe the offset in the
+        # target's own local frame, the same as a connector position does.
+        # A flat add only happens to agree with that for an unrotated,
+        # unflipped target (every target this has been used against, until
+        # a mated cable plug on the HDMI driver board needed one that is
+        # rotated 180° *and* flipped) — for any other target it silently
+        # places the subject off by the rotation/flip that never got
+        # applied.
+        #
+        # tilt_x is deliberately stripped from the target before the
+        # transform, not just from the subject's own state below: an offset
+        # is measured from the target's origin along its *untilted* local
+        # axes ("positioned relative to X" does not imply "mounted on X",
+        # same reasoning as the subject's own tilt never being inherited,
+        # below) — battery is placed this way relative to the keyboard,
+        # which is genuinely tilted (deck_mount runs first), and swinging
+        # its large horizontal offset through that tilt silently moved it
+        # by over a millimetre with no rotation or flip involved at all.
+        #
         # from_top measures the gap from the target's highest occupied point
         # rather than its origin, so a tilted or otherwise grown target
-        # pushes the subject up with it.
-        z_datum = (
-            target_placement.z_bounds()[1] if constraint.from_top
-            else target_placement.z
+        # pushes the subject up with it; swap in that datum before the
+        # transform (rather than adding offset_z separately afterward) so
+        # rotation/flip still apply consistently to reach it.
+        untilted = dataclasses.replace(target_placement, tilt_x=0.0)
+        datum_placement = (
+            dataclasses.replace(untilted, z=target_placement.z_bounds()[1])
+            if constraint.from_top else untilted
         )
-        z = z_datum + offset_z
+        x, y, z = datum_placement.world_offset(offset_x, offset_y, offset_z)
         existing = current.get(constraint.subject)
         rotation = (
             constraint.rotation

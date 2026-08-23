@@ -67,6 +67,14 @@ usb_c_plug:
   port_index: 0      # which SBC USB-C port carries the cable: 0 = OTG (the
                      # hub link), 1 = power. Assembly-time choice.
 
+# Mated mini-HDMI cable connector, one placed at each end of the ribbon that
+# runs from the SBC to the display driver board — see
+# components/hdmi_plug.py. Same dimensions both ends (it's the same cable).
+mini_hdmi_plug:
+  protrusion: 21.0   # how far the plug body stands off the board's port face
+  width: 17.5
+  height: 4.5
+
 battery:
   present: true            # sealed deck: internal power source (USB hub is the
                            # only external connectivity)

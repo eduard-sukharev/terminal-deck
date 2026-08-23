@@ -252,22 +252,28 @@ constraints:
   # i.e. rearward, so the plugged cable runs out into the rear strip rather
   # than deeper under the keyboard where there is no room for it.
   #
-  # Rear-flush with the plate: pushed as far back as it goes, which is both
-  # the highest-clearance spot under the wedge and the assumption
-  # `Rp2040Keyboard.plate_raise_for_buried` makes when sizing the plate
-  # standoffs to clear this board (main.py). The keyboard's plate_raise is
-  # derived from the SBC sitting exactly here, so moving it forward without
-  # re-deriving that would put it back into the switch bodies.
+  # Rear-flush, plus 13 mm forward: `Rp2040Keyboard.plate_raise_for_buried`
+  # (main.py) sizes the plate standoffs assuming the SBC sits exactly
+  # rear-flush (offset 0) — that assumption is what makes rear-flush the
+  # *safest* spot under the wedge, not the only usable one, since the wedge
+  # only gets shallower moving forward. The +13 was added so the SBC's
+  # mini-HDMI plug (below) — a rigid 21 mm connector shell, not flexible
+  # cable — clears the USB hub's east edge instead of running straight
+  # through it; sbc↔keyboard clearance was checked to confirm the extra
+  # 13 mm doesn't eat back into the margin plate_raise_for_buried leaves
+  # (it doesn't — gap stays 2.87, unchanged from offset 0 — apparently not
+  # the binding pair/axis in this range, not derived to be safe by
+  # construction the way rear-flush is).
   #
-  # offset_x threads the plugged cable (below) through the gap between the
-  # hub's east edge and the battery's west edge — the only clear run to the
-  # rear wall. Enforced by the plug's own clearance checks, not by this
+  # offset_x threads the plugged USB-C cable (below) through the gap between
+  # the hub's east edge and the battery's west edge — the only clear run to
+  # the rear wall. Enforced by the plug's own clearance checks, not by this
   # number alone.
   - kind: relative_placement
     subject: sbc
     target: keyboard
     offset_x: 12.4
-    offset_y: "({sbc.depth} - {keyboard.depth}) / 2"
+    offset_y: "({sbc.depth} - {keyboard.depth}) / 2 + 13.0"
     rotation: 0.0
   # x/y come from the relative_placement above; z is set separately because
   # it must be an absolute floor height (the SBC sits on its own bosses on
@@ -290,6 +296,19 @@ constraints:
   # port would need rotation 90 here instead.
   - kind: relative_placement
     subject: sbc_plug
+    target: sbc
+    use_reference_origin: true
+    rotation: 0.0
+
+  # ── The mini-HDMI cable plugged into the SBC ──────────────────────────
+  # Same reasoning as the USB-C plug above, for the other cable leaving the
+  # SBC: a real 21 mm plug body (config/hardware.yaml `mini_hdmi_plug`), not
+  # a margin. Unrotated for the same reason as sbc_plug — the SBC's
+  # mini-HDMI port also faces local -Y. This is the SBC-side end only; the
+  # driver-board end is placed after `driver` below (mating a different,
+  # X-facing port on a rotated+flipped board needs its own rotation).
+  - kind: relative_placement
+    subject: hdmi_plug_sbc
     target: sbc
     use_reference_origin: true
     rotation: 0.0
@@ -355,6 +374,25 @@ constraints:
     rotation: 180.0
     flip: true
 
+  # ── The mini-HDMI cable plugged into the driver board ─────────────────
+  # The other end of the same ribbon as hdmi_plug_sbc above, mated to the
+  # driver board's own mini-HDMI input instead. use_reference_origin reads
+  # the offset in the driver's own local frame (i.e. as if the driver had
+  # rotation 0 / no flip) and RelativePlacementResolver carries it through
+  # the driver's actual placement (rotation 180, flipped) to land in the
+  # right world position — the same transform the driver's own geometry
+  # goes through, so this doesn't have to re-derive it.
+  #
+  # rotation: 90, not 0 like hdmi_plug_sbc: the driver's port faces local
+  # +X (an edge connector, not a south-facing one like the SBC's), so the
+  # plug's local-Y protrusion axis needs a quarter turn to run along it —
+  # verified against the resolved placement, not just this reasoning alone.
+  - kind: relative_placement
+    subject: hdmi_plug_driver
+    target: driver
+    use_reference_origin: true
+    rotation: 90.0
+
   # ── Checks ────────────────────────────────────────────────────────────
   # These produce no placements; they fail the build when the arrangement
   # above stops being physically buildable.
@@ -416,6 +454,32 @@ constraints:
   - kind: clearance
     subject: sbc_plug
     target: keyboard
+    gap: 1.0
+
+  # The mini-HDMI plug leaving the SBC runs north, right past the hub's
+  # east edge (see the SBC placement comment: pushed forward specifically
+  # to clear it) — same reasoning as the USB-C plug's checks above, an
+  # enforced number instead of trusting the offset that was tuned for it
+  # not to silently regress.
+  - kind: clearance
+    subject: hdmi_plug_sbc
+    target: usb_breakout
+    gap: 1.0
+  - kind: clearance
+    subject: hdmi_plug_sbc
+    target: battery
+    gap: 1.0
+  - kind: clearance
+    subject: hdmi_plug_sbc
+    target: keyboard
+    gap: 1.0
+
+  # The driver-side plug lives in the lid, mated to the driver board with
+  # no shell cutout (see components/hdmi_driver.py) — its only real
+  # neighbour is the display it sits behind.
+  - kind: clearance
+    subject: hdmi_plug_driver
+    target: display
     gap: 1.0
 
   # Nothing in the base may touch the lid when it closes.

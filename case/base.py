@@ -515,7 +515,6 @@ class Base:
         # battery's own raise (below) happens to satisfy too, but scanning
         # placements directly here doesn't depend on that coincidence.
         cradle_solids = []
-        cradle_keepouts = []
         for p in self.assembly.placements:
             if not isinstance(p.component, Battery):
                 continue
@@ -538,22 +537,41 @@ class Base:
             saddle = cradle.build(spec)
             if p.rotation:
                 saddle = saddle.rotate((0, 0, 0), (0, 0, 1), p.rotation)
+            # Two saddles per cell, offset toward each end along the cell's
+            # own axis (local Y), not one centred on the cell's midpoint: a
+            # cylinder resting on a single narrow saddle (width = wall * 3,
+            # a fraction of the cell's 65+ mm length) has no resistance to
+            # rocking about that one line of contact, the same way a pencil
+            # balanced on one finger tips either way. Two contact points near
+            # the ends is how a resting cylinder is actually kept steady.
+            # Inset by the saddle's own half-width so the block sits fully
+            # under the cell rather than overhanging its end; clamped to 0 so
+            # a cell shorter than the saddle degenerates to the old single
+            # centred saddle instead of an inverted (crossed-over) offset.
+            end_offset = max(0.0, battery.cell_length / 2.0 - spec.width / 2.0)
             for cx, cy in battery._cell_centers():
-                wx, wy, _ = p.world_offset(cx, cy, 0.0)
-                cradle_solids.append(cq_helpers.translate(saddle, wx, wy, 0.0))
-                cradle_keepouts.append((wx, wy, 2 * spec.block_half_width))
+                for cy_end in (cy - end_offset, cy + end_offset):
+                    wx, wy, _ = p.world_offset(cx, cy_end, 0.0)
+                    cradle_solids.append(cq_helpers.translate(saddle, wx, wy, 0.0))
         features.extend(cradle_solids)
 
         # Stiffening ribs, kept clear of every boss above: a rib crossing a
         # boss's bore would plug the screw hole with rib material once
-        # unioned into the shell.
+        # unioned into the shell. Cradles are deliberately not included here
+        # (unlike component mounting bosses and the corner standoffs): a
+        # cradle has no bore for rib material to plug — it's a solid block
+        # resting at the same floor-raise convention as the ribs themselves
+        # (rest_height above, same as every other floor part's rib
+        # clearance) — so a rib crossing under one simply becomes part of
+        # the same solid once unioned, no clearance cut needed. Cutting one
+        # anyway just perforates the (thin) rib wall it crosses into an
+        # unnecessary, oddly-shaped remnant for no structural benefit.
         rspec = ribs.rib_layout(
             interior_w, interior_d, wall, rib_height=ribs.rib_height(wall)
         )
         rib_solids = ribs.build(rspec, interior_w, interior_d)
         boss_keepouts = [(x, y, spec.outer_diameter) for x, y, spec in mounting_bosses]
         boss_keepouts += [(cx, cy, boss_od) for cx, cy in corner_positions]
-        boss_keepouts += cradle_keepouts
         for bx, by, diameter in boss_keepouts:
             clearance_cyl = cq_helpers.cylinder_centered(diameter + wall, rspec.height)
             clearance_cyl = cq_helpers.translate(clearance_cyl, bx, by, rspec.height / 2.0)
@@ -580,6 +598,17 @@ class Base:
                 c["x"] + c["width"] / 2 + config.corners.cutout_chamfer,
             )
             for c in rear_cutouts
+        )
+        # Same reasoning for a deck-mount standoff boss (above) that happens
+        # to land near the rear wall: a vent slat cutting through it would
+        # perforate the very thing holding the deck up. X-only, whatever the
+        # boss's Y — a slot this far off in Y from a corner near the front
+        # wouldn't be in the rear-wall vent row's Y-band to begin with, so
+        # the extra keepout there is harmless, not just unnecessary.
+        vent_keepouts += tuple(
+            (cx - boss_od / 2 - config.corners.cutout_chamfer,
+             cx + boss_od / 2 + config.corners.cutout_chamfer)
+            for cx, _cy in corner_positions
         )
         # The rear wall is the wedge's high end, so the slots span its full
         # (taller) height. The slope tilts about X, so this wall's top edge

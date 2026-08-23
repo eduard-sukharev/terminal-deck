@@ -127,22 +127,45 @@ def _base():
     return Base(Assembly(placements, cfg), cfg, keyboard=comps.get("keyboard")), cfg
 
 
-def test_deck_rises_toward_the_rear():
-    """The wedge is flat at the front and higher at the rear, by slope."""
+def test_deck_rises_toward_the_rear_then_flattens():
+    """The wedge is flat at the front, rises to the keyboard's rear edge
+    (the knee), then holds flat the rest of the way to the actual rear
+    wall — not a full-depth plane; see Base._deck_knee_y."""
     import math
     base, cfg = _base()
     depth = base.size().depth
-    front, rear = base.deck_level_at(depth / 2), base.deck_level_at(-depth / 2)
-    assert rear > front
-    assert rear - front == pytest.approx(depth * math.tan(math.radians(cfg.deck.slope)))
+    front_y = depth / 2
+    knee_y = base._deck_knee_y()
+    assert knee_y is not None
+    front, knee, rear = (
+        base.deck_level_at(front_y), base.deck_level_at(knee_y),
+        base.deck_level_at(-front_y),
+    )
+    assert front < knee
+    assert knee == pytest.approx(rear)  # flat behind the knee
+    assert knee - front == pytest.approx(
+        (front_y - knee_y) * math.tan(math.radians(cfg.deck.slope))
+    )
     assert base.deck_rear_level() == pytest.approx(rear)
 
 
-def test_deck_level_at_is_linear_in_y():
-    """deck_level_at is a plane, not a piecewise fudge."""
+def test_deck_level_at_is_linear_in_front_of_the_knee():
+    """deck_level_at is a plane in front of the knee, not a fudge — and
+    constant (not still rising) behind it."""
     base, _ = _base()
-    a, b, c = (base.deck_level_at(y) for y in (-40.0, -20.0, 0.0))
+    knee_y = base._deck_knee_y()
+    assert knee_y is not None
+    # Three points strictly in front of the knee: linear.
+    front_y = base.size().depth / 2
+    step = (front_y - knee_y) / 3.0
+    a, b, c = (
+        base.deck_level_at(y)
+        for y in (knee_y + 2 * step, knee_y + step, knee_y)
+    )
     assert (a - b) == pytest.approx(b - c)
+    # Behind the knee: flat, not still rising.
+    assert base.deck_level_at(knee_y - 5.0) == pytest.approx(base.deck_level_at(knee_y))
+    assert base.deck_level_at(-front_y) == pytest.approx(base.deck_level_at(knee_y))
 
 
 def test_keyboard_is_tilted_onto_the_deck():

@@ -130,21 +130,48 @@ class Base:
         deck = getattr(self.config, "deck", None)
         return deck.slope if deck is not None else 0.0
 
+    def _deck_knee_y(self) -> float | None:
+        """World Y of the keyboard's rear edge (mm), or ``None`` without one.
+
+        Where the deck's slope ends: only the keyboard needs a rising floor
+        (the typing tilt, and the pocket it opens up for the buried SBC) —
+        the rear strip behind it holds ordinary floor-mounted parts (hub,
+        battery, the SBC's own cable stubs) that get nothing from a sloped
+        floor and would otherwise sit under a needlessly tall, tapering
+        rear wall. :meth:`deck_level_at` flattens out at this Y; without a
+        keyboard there is nothing to hinge a knee off, so the whole deck
+        slopes for its full depth as it always did.
+        """
+        kb_placement = self._keyboard_placement()
+        if kb_placement is None:
+            return None
+        return kb_placement.y - kb_placement.component.size().depth / 2.0
+
     def deck_level_at(self, y: float) -> float:
         """Deck bottom-face height at world ``y`` (mm).
 
         The deck is a plane tilted about X: it stays at :meth:`deck_level`
-        along the front edge and rises toward the rear (-Y), so the base is
-        a wedge. This is the single source of the slope — every other piece
-        of deck geometry (tray rim, corner standoffs, the deck slab, the
-        hinge datum) asks this rather than re-deriving the tilt, so changing
-        ``config.deck.slope`` moves all of them together.
+        along the front edge and rises toward the rear (-Y) — but only as
+        far back as the keyboard's own rear edge (:meth:`_deck_knee_y`);
+        behind that it holds at the height the slope reached there, flat
+        and parallel to the floor, rather than continuing to rise all the
+        way to the actual rear wall. This is the single source of the
+        slope (and the knee) — every other piece of deck geometry (tray
+        rim, corner standoffs, the deck slab, the hinge datum) asks this
+        rather than re-deriving the tilt, so changing ``config.deck.slope``
+        moves all of them together.
         """
         front_y = self.size().depth / 2.0
+        knee_y = self._deck_knee_y()
+        if knee_y is not None and y < knee_y:
+            y = knee_y
         return self.deck_level() + (front_y - y) * math.tan(math.radians(self.slope()))
 
     def deck_rear_level(self) -> float:
-        """Deck bottom-face height at the rear wall (mm) — the wedge's high end."""
+        """Deck bottom-face height at the rear wall (mm) — the wedge's high
+        end, i.e. the flattened height behind the keyboard's rear edge if
+        there is a keyboard (see :meth:`_deck_knee_y`), or the true rear
+        wall's own height on the old, unkneed slope otherwise."""
         return self.deck_level_at(-self.size().depth / 2.0)
 
     def _slope_cut_tool(self, z_at_front: float, size, height: float):
@@ -175,6 +202,61 @@ class Base:
             tool, 0.0, 0.0,
             z_at_front + front_y * math.tan(math.radians(slope)),
         )
+
+    def _deck_surface_tool(self, z_at_front: float, size, height: float):
+        """Solid lying above the deck's actual underside surface, for
+        cutting a solid down to that profile.
+
+        Generalizes :meth:`_slope_cut_tool` for a deck that stops sloping
+        behind the keyboard (:meth:`_deck_knee_y`) and continues flat from
+        there back to the rear wall, at whatever height the slope reached
+        at the knee: the union of the existing tilted half-space (clipped
+        to the region at/in front of the knee, with a plain untilted box —
+        the clip boundary is itself untilted, so it does not need to
+        follow the slope) and a plain flat half-space behind it. The two
+        clips are given a deliberate small overlap across the knee (not an
+        exactly coincident face) — a union of solids that only touch along
+        a zero-thickness face is a well-known OCC boolean-kernel crash
+        (verified the hard way: base_bottom and base_top each built fine
+        alone, but unioning them into the combined "base" target segfaulted
+        the whole process, silently — no Python exception, nothing to
+        catch, just gone). The overlap is provably inert: on the sloped
+        side of the seam the flat clip's "above knee_z" volume is a subset
+        of the sloped clip's own (lower there) volume, and vice versa on
+        the flat side, so which one "wins" in the sliver never changes the
+        actual boundary. Falls back to the plain :meth:`_slope_cut_tool`
+        when there is no keyboard to hinge a knee off, or the deck is flat
+        to begin with.
+        """
+        from utilities import cq_helpers
+
+        knee_y = self._deck_knee_y()
+        if knee_y is None or not self.slope():
+            return self._slope_cut_tool(z_at_front, size, height)
+
+        front_y = size.depth / 2.0
+        # Matches deck_level_at's own sign: height rises toward the rear
+        # (-Y), so a knee further back (more negative knee_y, larger
+        # front_y - knee_y) means a *higher* knee_z, not lower.
+        knee_z = z_at_front + (front_y - knee_y) * math.tan(math.radians(self.slope()))
+
+        pad = 4.0 * (size.width + size.depth)
+        reach = 1.0e3  # generous Z/Y reach without the numerical fragility of 1e5
+        overlap = 1.0  # mm of deliberate overlap across the knee seam, see above
+
+        sloped = self._slope_cut_tool(z_at_front, size, height)
+        front_clip = cq_helpers.box_centered(size.width + pad, reach, reach)
+        front_clip = cq_helpers.translate(
+            front_clip, 0.0, knee_y - overlap + reach / 2.0, 0.0
+        )
+        sloped = sloped.intersect(front_clip)
+
+        flat = cq_helpers.box_centered(size.width + pad, reach, height)
+        flat = cq_helpers.translate(
+            flat, 0.0, knee_y + overlap - reach / 2.0, knee_z + height / 2.0
+        )
+
+        return sloped.union(flat)
 
     def _corner_standoff_outer_diameter(self) -> float:
         """Outer diameter of a corner deck-mount standoff boss (mm, M2.5)."""
@@ -394,7 +476,7 @@ class Base:
             # deck's own underside plane goes, leaving walls whose top edge
             # is the seat the deck lies on.
             body = body.cut(
-                self._slope_cut_tool(dl, size, rear_dl + 2 * wall)
+                self._deck_surface_tool(dl, size, rear_dl + 2 * wall)
             )
 
         # Mounting bosses for base-floor components.
@@ -421,7 +503,7 @@ class Base:
             # meets the deck flush instead of poking a cylinder through it.
             if self.slope():
                 standoff = standoff.cut(
-                    self._slope_cut_tool(dl, size, rear_dl + 2 * wall)
+                    self._deck_surface_tool(dl, size, rear_dl + 2 * wall)
                 )
             features.append(standoff.cut(bore))
 
@@ -556,8 +638,8 @@ class Base:
         # Keep only the material between the two deck-parallel planes. At
         # slope 0 these tools degenerate to plain half-spaces, reproducing
         # the original flat plate exactly.
-        deck = deck.cut(self._slope_cut_tool(dl + wall, size, blank_h))
-        deck = deck.intersect(self._slope_cut_tool(dl, size, blank_h))
+        deck = deck.cut(self._deck_surface_tool(dl + wall, size, blank_h))
+        deck = deck.intersect(self._deck_surface_tool(dl, size, blank_h))
 
         # Keyboard cutout centered at the keyboard placement. Bored along the
         # deck normal (tilted with the slab) so the opening keeps its true
@@ -580,13 +662,18 @@ class Base:
             deck = deck.cut(cutout)
 
         # M2.5 clearance holes for the deck screws, each bored normal to the
-        # (possibly tilted) deck at its own Y.
+        # deck surface at its own Y — tilted with the slab in front of the
+        # knee, vertical behind it where the deck has flattened out (see
+        # _deck_knee_y): a hole there still tilted by the keyboard's slope
+        # would bore in at an angle through a surface that isn't tilted at
+        # all, missing the flat deck's own normal.
         screw = fasteners.screw("M2.5")
+        knee_y = self._deck_knee_y()
         for cx, cy in self._corner_positions():
             # Generously longer than the slab is thick, so a tilted bore still
             # exits both faces cleanly.
             hole = cq_helpers.cylinder_centered(screw.clearance, 4 * wall + 2 * clearance)
-            if slope:
+            if slope and (knee_y is None or cy >= knee_y):
                 hole = hole.rotate((0, 0, 0), (1, 0, 0), -slope)
             hole = cq_helpers.translate(
                 hole, cx, cy, self.deck_level_at(cy) + wall / 2.0

@@ -384,14 +384,26 @@ class BuildPipeline:
             base_solid = base_bottom_solid
             if base_subset_solid is not None:
                 base_solid = base_solid.union(base_subset_solid)
-            base_solid = base_solid.union(base_top_solid)
+            # .clean() (OCC shape healing): the deck's underside is now a
+            # crease (sloped in front of the keyboard, flat behind it — see
+            # case.base.Base._deck_knee_y), and base_bottom's walls follow
+            # the same profile to seat against it. Unioning the two without
+            # cleaning up afterward left sliver/degenerate topology right at
+            # that seam that STEP/STL export tolerated but the SVG exporter's
+            # hidden-line removal did not — it segfaulted the whole process,
+            # silently, no Python exception to catch. Reproduced by bisecting
+            # against git history: the prior (unkneed, single-plane) deck
+            # never needed this.
+            base_solid = base_solid.union(base_top_solid).clean()
             parts["base"] = base_solid
 
             if subset_placements:
                 gltf_parts["base"] = assembly.build_colored(
                     placements=subset_placements,
                     role_map=role_map,
-                    extra_parts=[("case", base_bottom_solid.union(base_top_solid))],
+                    extra_parts=[
+                        ("case", base_bottom_solid.union(base_top_solid).clean())
+                    ],
                 )
 
         # Display placement is needed for lid and hinge.
@@ -593,6 +605,13 @@ class BuildPipeline:
                 # GltfExporter wraps in a single default color.
                 export_obj = gltf_parts.get(name, solid) if fmt == "gltf" else solid
                 exporter.export(export_obj, path)
+                # SvgExporter can skip writing the file on a subprocess crash
+                # (see exports/export_svg.py) rather than take the build
+                # down with it — its own warning already explains why, so
+                # this only needs to avoid claiming a nonexistent file was
+                # exported and attempting metadata on it.
+                if not path.exists():
+                    continue
                 if not apply_fs_metadata(provenance, path):
                     print(f"[pipeline] warning: could not write fs metadata for {path}")
                 print(f"[pipeline] exported {name} -> {path}")

@@ -6,11 +6,21 @@ templates and documentation views.
 
 from __future__ import annotations
 
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 from utilities import cq_helpers
 from utilities.constants import FORMAT_SVG
 from exports.export_base import Exporter
+
+# The actual SVG conversion, run in a subprocess (see SvgExporter.export).
+_SVG_WORKER = (
+    "import sys, cadquery as cq\n"
+    "shape = cq.importers.importStep(sys.argv[1])\n"
+    "cq.exporters.export(shape, sys.argv[2], exportType='SVG')\n"
+)
 
 
 class SvgExporter(Exporter):
@@ -21,8 +31,41 @@ class SvgExporter(Exporter):
     def export(self, shape, path: Path | str) -> Path:
         cq = cq_helpers.require_cq()
         path = Path(path)
-        # CadQuery's SVG export expects a 2D shape (Workplane with faces/edges).
-        cq.exporters.export(shape, str(path), exportType="SVG")
+        # OCC's HLR (hidden-line removal) algorithm, which SVG export goes
+        # through, is the least robust part of the kernel we touch: it has
+        # segfaulted — not raised, *segfaulted*, killing the whole build with
+        # no Python exception to catch — on a solid that STEP and STL export
+        # (and CadQuery's own .clean()) both accepted without complaint. That
+        # first happened once the base deck's underside became a crease
+        # (sloped in front of the keyboard, flat behind it — see
+        # case.base.Base._deck_knee_y) unioned together with the keyboard and
+        # the rest of the base floor; narrowed down by bisecting which
+        # sub-union actually triggered it, not fixed by cleaning harder.
+        #
+        # Rather than chase a specific OCC HLR bug (this kernel has had many,
+        # across many shapes, for years), run the conversion in a throwaway
+        # subprocess: crash it in there and this exporter can still report a
+        # clean warning and move on instead of taking the whole build down.
+        # The shape itself goes through a STEP round-trip first (STEP export
+        # already proved reliable for exactly this geometry) rather than
+        # trying to pickle a live CadQuery/OCC object across the process
+        # boundary, which its C++ backing doesn't support anyway.
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            step_path = Path(tmp_dir) / "shape.step"
+            cq.exporters.export(shape, str(step_path), exportType="STEP")
+            result = subprocess.run(
+                [sys.executable, "-c", _SVG_WORKER, str(step_path), str(path)],
+                capture_output=True,
+                text=True,
+            )
+        if result.returncode != 0:
+            print(
+                f"[export] WARNING: SVG export of {path.name} crashed "
+                f"(exit {result.returncode}) in OCC's hidden-line removal — "
+                "skipping this file, the rest of the build is unaffected."
+            )
+            return path
+
         comment = self._metadata_comment()
         if comment:
             text = path.read_text()

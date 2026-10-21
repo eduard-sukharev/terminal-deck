@@ -420,7 +420,7 @@ class BuildPipeline:
 
         # Display placement is needed for lid and hinge.
         needs_display_placement = (
-            "lid" in buckets or "lid_base" in buckets or "lid_bezel" in buckets
+            "lid" in buckets or "lid_shell" in buckets or "lid_bezel" in buckets
             or "hinge" in buckets
         )
         if needs_display_placement:
@@ -445,7 +445,7 @@ class BuildPipeline:
                     parts["display"] = display_assembly_solid
 
         # Lid base, bezel, and combined lid assembly.
-        if "lid_base" in buckets or "lid_bezel" in buckets or "lid" in buckets:
+        if "lid_shell" in buckets or "lid_bezel" in buckets or "lid" in buckets:
             lid = Lid(
                 display.component,
                 config,
@@ -454,16 +454,16 @@ class BuildPipeline:
                 footprint=(size.width, size.depth),
             )
 
-        if "lid_base" in buckets:
-            parts["lid_base"] = lid.build_base()
+        if "lid_shell" in buckets:
+            parts["lid_shell"] = lid.build_shell()
 
         if "lid_bezel" in buckets:
             parts["lid_bezel"] = lid.build_bezel()
 
         if "lid" in buckets:
-            lid_base_solid = lid.build_base()
+            lid_shell_solid = lid.build_shell()
             lid_bezel_solid = lid.build_bezel()
-            lid_solid = lid_base_solid
+            lid_solid = lid_shell_solid
             if display_assembly_solid is not None:
                 lid_solid = cad_helpers.union(lid_solid, display_assembly_solid)
             lid_solid = cad_helpers.union(lid_solid, lid_bezel_solid)
@@ -473,7 +473,7 @@ class BuildPipeline:
                 gltf_parts["lid"] = assembly.build_colored(
                     placements=display_placements,
                     role_map=role_map,
-                    extra_parts=[("case", cad_helpers.union(lid_base_solid, lid_bezel_solid))],
+                    extra_parts=[("case", cad_helpers.union(lid_shell_solid, lid_bezel_solid))],
                 )
 
         if "hinge" in buckets:
@@ -531,7 +531,7 @@ class BuildPipeline:
             base_solid = cad_helpers.union(base_solid, base_obj.build_top())
 
             # Build lid solid (closed position).
-            lid_solid = lid.build_base()
+            lid_solid = lid.build_shell()
             display_placements = select_placements(
                 placements,
                 {
@@ -603,6 +603,54 @@ class BuildPipeline:
             lid_f = cad_helpers.translate(lid_f, 0, 0, -dist_to_plus_z)
 
             parts["assembly_opened"] = cad_helpers.union(base_f, lid_f, hinge_f)
+
+        # --- Halves (ADR 0001) ----------------------------------------------
+        # Every wide printable part is split into left/right Halves along its
+        # configured Seam; the Halves, not the whole part, are what must fit
+        # the printer, so they are validated here and exported with the rest.
+        from geometry.split import SeamSpec, check_build_volume, check_halves, split_halves
+
+        split_sources = {
+            "base_bottom": "tray",
+            "base_top": "deck",
+            "lid_shell": "lid_shell",
+            "lid_bezel": "bezel",
+        }
+        printable: dict[str, object] = {}
+        for part_name, seam_key in split_sources.items():
+            if part_name not in parts:
+                continue
+            seam_cfg = config.split.get(seam_key)
+            if seam_cfg is None:
+                printable[part_name] = parts[part_name]
+                continue
+            seam = SeamSpec(x=seam_cfg.x, step=seam_cfg.step, steps=seam_cfg.steps)
+            left, right = split_halves(parts[part_name], seam, size.depth)
+            for side, half in (("left", left), ("right", right)):
+                parts[f"{part_name}_{side}"] = half
+                printable[f"{part_name}_{side}"] = half
+            half_errors = check_halves(parts[part_name], left, right)
+            if half_errors:
+                print(f"[pipeline] {part_name} halves: FAIL")
+                for error in half_errors:
+                    print(f"  [x ] {error}")
+                if not ignore_validation:
+                    raise SystemExit(
+                        f"[pipeline] aborted: {part_name} Halves are invalid "
+                        "(pass --ignore-validation to build anyway)"
+                    )
+        fit_errors = check_build_volume(printable)
+        print(
+            f"[pipeline] build volume: {len(printable)} printable part(s): "
+            f"{'PASS' if not fit_errors else 'FAIL'}"
+        )
+        for error in fit_errors:
+            print(f"  [x ] {error}")
+        if fit_errors and not ignore_validation:
+            raise SystemExit(
+                "[pipeline] aborted: a printable part exceeds the build volume "
+                "(pass --ignore-validation to build anyway)"
+            )
 
         # Export all built parts.
         provenance = self._provenance()
@@ -721,7 +769,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         default="all",
         help="comma-separated build targets (default: all). "
              "Buckets: all, assembly, base, base_bottom, base_top, "
-             "lid, lid_base, lid_bezel, hinge, display, components. "
+             "lid, lid_shell, lid_bezel, hinge, display, components. "
              "Per-component: comp:<role> (e.g. comp:driver).",
     )
     parser.add_argument(

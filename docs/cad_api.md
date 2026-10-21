@@ -32,7 +32,7 @@ load configuration -> load components -> place layout -> validate placement
 | Method | Consumes | Produces |
 |--------|----------|----------|
 | `Base.build()` | placements, config | base shell + walls/bosses/ribs/vents/cutouts |
-| `Lid.build_base()` | display, config | Lid shell (to be renamed, see CONTEXT.md) |
+| `Lid.build_shell()` | display, config | Lid shell (to be renamed, see CONTEXT.md) |
 | `Lid.build_bezel()` | display, config | Bezel + glass opening |
 
 ### Components (`components/`)

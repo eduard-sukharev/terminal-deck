@@ -83,3 +83,8 @@ def test_base_bottom_and_top_together():
     )
     assert buckets == {"base_bottom", "base_top"}
     assert comp_roles == set()
+
+
+def test_half_target_resolves_to_its_part():
+    buckets, _ = resolve_targets(["lid_shell_left", "base_top_right"], set())
+    assert buckets == {"lid_shell", "base_top"}

@@ -61,9 +61,14 @@ YAML recipe file through the same composer instead of the built-in one.
 - `base` — combined base assembly: base_bottom + keyboard + base_top
 - `base_bottom` — base bottom tray (floor, walls, bosses, ribs, vents, cutouts)
 - `base_top` — base top deck with keyboard cutout
-- `lid` — combined lid assembly: lid_base + display + lid_bezel
-- `lid_base` — lid rear shell tray
+- `lid` — combined lid assembly: lid_shell + display + lid_bezel
+- `lid_shell` — lid rear shell tray
 - `lid_bezel` — lid front plate with glass cutout
+- `<part>_left` / `<part>_right` — one Half of `base_bottom`, `base_top`,
+  `lid_shell`, `lid_bezel`. Every wide part is always split and exported as
+  Halves alongside the whole part (ADR 0001); seams come from the `split:`
+  section of `config/default.yaml` and the run fails if a Half is
+  disconnected, doesn't rejoin, or exceeds the build volume.
 - `hinge` — hinge barrels + pin + wire tunnel
 - `display` — LCD panel + HDMI driver combined (the sub-assembly, fast)
 - `components` — all per-component debug STLs
@@ -71,7 +76,7 @@ YAML recipe file through the same composer instead of the built-in one.
 - `all` — every target above (default)
 
 Makefile convenience targets: `make display`, `make base`, `make base_bottom`,
-`make base_top`, `make lid`, `make lid_base`, `make lid_bezel`, `make hinge`,
+`make base_top`, `make lid`, `make lid_shell`, `make lid_bezel`, `make hinge`,
 `make assembly`, `make components`, `make build TARGETS=...`.
 
 ## Architecture
@@ -91,7 +96,7 @@ intuition. Wire-up for the full pipeline lives in `main.py` (`BuildPipeline`,
 - **CAD generation (implemented, requires build123d):** `Assembly.build()`
   unions component solids at their placements; `case.Base.build_bottom()` and
   `case.Base.build_top()` produce the base bottom tray (bosses/ribs/vents/
-  cutouts) and the top deck with keyboard cutout; `case.Lid.build_base()` and
+  cutouts) and the top deck with keyboard cutout; `case.Lid.build_shell()` and
   `case.Lid.build_bezel()` produce the lid rear tray and front bezel (glass
   opening); `components/hinge.py` builds the barrels, pin, and wire tunnel;
   `geometry/*` hold the primitives.

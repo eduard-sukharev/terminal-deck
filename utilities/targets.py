@@ -10,7 +10,12 @@ Buckets
 * ``all`` — every bucket below (convenience alias)
 * ``assembly`` — full union of all placements
 * ``base`` — base shell
-* ``lid`` — lid shell
+* ``lid`` — combined lid assembly (lid_shell + display + lid_bezel)
+* ``lid_shell`` — the Lid shell (rear tray); ``lid_bezel`` — the Bezel
+* ``<part>_left`` / ``<part>_right`` — one Half of ``base_bottom``,
+  ``base_top``, ``lid_shell`` or ``lid_bezel`` (see :data:`SPLIT_PARTS`).
+  Halves are always exported together with their part, so these resolve to
+  the part's bucket.
 * ``hinge`` — hinge barrels + pin + wire tunnel
 * ``display`` — LCD panel + HDMI driver combined (the sub-assembly)
 * ``components`` — all per-component debug STLs
@@ -26,9 +31,19 @@ from __future__ import annotations
 #: All recognised bucket names.
 BUCKETS: frozenset[str] = frozenset({
     "all", "assembly", "assembly_opened", "base", "base_bottom", "base_top",
-    "lid", "lid_base", "lid_bezel",
+    "lid", "lid_shell", "lid_bezel",
     "hinge", "display", "components",
 })
+
+
+#: Parts printed as left/right Halves (ADR 0001).
+SPLIT_PARTS: frozenset[str] = frozenset({
+    "base_bottom", "base_top", "lid_shell", "lid_bezel",
+})
+
+_HALF_ALIASES: dict[str, str] = {
+    f"{part}_{side}": part for part in SPLIT_PARTS for side in ("left", "right")
+}
 
 
 def resolve_targets(
@@ -59,7 +74,9 @@ def resolve_targets(
     comp_roles: set[str] = set()
 
     for token in tokens:
-        if token in BUCKETS:
+        if token in _HALF_ALIASES:
+            buckets.add(_HALF_ALIASES[token])
+        elif token in BUCKETS:
             if token == "all":
                 buckets.update(BUCKETS - {"all"})
             else:
@@ -82,4 +99,4 @@ def resolve_targets(
     return buckets, comp_roles
 
 
-__all__ = ["BUCKETS", "resolve_targets"]
+__all__ = ["BUCKETS", "SPLIT_PARTS", "resolve_targets"]

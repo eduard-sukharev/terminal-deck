@@ -147,6 +147,15 @@ class Material:
 
 
 @dataclass(frozen=True)
+class Seam:
+    """Left/right Half split of one part (see ``geometry.split.SeamSpec``)."""
+
+    x: float = 0.0
+    step: float = 0.0
+    steps: int = 1
+
+
+@dataclass(frozen=True)
 class Config:
     """Fully-resolved build configuration."""
 
@@ -162,6 +171,7 @@ class Config:
     screws: Screws
     material: Material
     hardware: dict[str, Any] = field(default_factory=dict)
+    split: dict[str, Seam] = field(default_factory=dict)
     topics: tuple[str, ...] = field(default_factory=tuple)
 
     @property
@@ -246,6 +256,11 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
             minimum_feature=float(material["minimum_feature"]),
         ),
         hardware=hardware,
+        split={
+            part: Seam(x=float(v.get("x", 0.0)), step=float(v.get("step", 0.0)),
+                       steps=int(v.get("steps", 1)))
+            for part, v in (raw.get("split") or {}).items()
+        },
         topics=topics,
     )
     return config

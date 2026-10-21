@@ -86,12 +86,39 @@ def baseline_metrics() -> dict:
     return json.loads(BASELINE_PATH.read_text())
 
 
+SPLIT_PARTS = ("base_bottom", "base_top", "lid_shell", "lid_bezel")
+BUILD_BED = (220.0, 220.0)
+BUILD_HEIGHT = 256.0
+
+
+def test_every_split_part_has_two_connected_halves(rebuilt_metrics):
+    for part in SPLIT_PARTS:
+        for side in ("left", "right"):
+            half = rebuilt_metrics[f"{part}_{side}"]
+            assert half["n_solids"] == 1, f"{part}_{side} is {half['n_solids']} solids"
+
+
+def test_every_half_fits_the_build_volume(rebuilt_metrics):
+    for part in SPLIT_PARTS:
+        for side in ("left", "right"):
+            x, y, z = rebuilt_metrics[f"{part}_{side}"]["bbox"]
+            assert sorted((x, y)) <= sorted(BUILD_BED), f"{part}_{side} footprint {x} x {y}"
+            assert z <= BUILD_HEIGHT
+
+
+def test_halves_rejoin_to_their_part(rebuilt_metrics):
+    for part in SPLIT_PARTS:
+        whole = rebuilt_metrics[part]["volume"]
+        halves = sum(rebuilt_metrics[f"{part}_{s}"]["volume"] for s in ("left", "right"))
+        assert _rel_close(whole, halves), f"{part}: {whole} != {halves}"
+
+
 def test_baseline_covers_expected_targets(baseline_metrics):
     # A quick canary: the baseline should at minimum cover every top-level
     # case/lid/assembly target. If this shrinks, the baseline is stale.
     expected = {
         "assembly", "assembly_opened", "base", "base_bottom", "base_top",
-        "display", "hinge", "lid", "lid_base", "lid_bezel",
+        "display", "hinge", "lid", "lid_shell", "lid_bezel",
     }
     missing = expected - set(baseline_metrics)
     assert not missing, f"baseline is missing targets: {sorted(missing)}"

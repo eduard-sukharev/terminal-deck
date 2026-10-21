@@ -34,3 +34,13 @@ material:
   name: PLA
   layer_height: 0.2
   minimum_feature: 0.6  # printable minimum wall/feature thickness
+
+# Left/right Halves (ADR 0001). Every wide part prints as two Halves split
+# along X. Seam positions are staggered between parts so no single line runs
+# through the closed device; each Seam is stepped in plan view (__--__--__):
+# `step` is the jog in X, `steps` the number of segments along Y.
+split:
+  tray:      {x: 0.0,   step: 4.0, steps: 6}
+  deck:      {x: 20.0,  step: 4.0, steps: 6}
+  lid_shell: {x: -20.0, step: 4.0, steps: 6}
+  bezel:     {x: 0.0,   step: 0.0, steps: 1}   # inside the display opening

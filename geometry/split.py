@@ -1,0 +1,115 @@
+"""Left/right Half splitting along X (ADR 0001).
+
+A part too wide for the build volume is cut into two Halves along a Seam. The
+Seam is a stepped line in plan view (``__--__--__``): walking along Y it jogs
+by ``step`` in X on alternate segments, and the jogs are plain butt joints
+(no tongue-and-groove, no dowels). The cut is a boolean partition, so the two
+Halves rejoin to the original with no gap and no overlap by construction.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from utilities import cad_helpers
+
+#: Printer build volume (X, Y, Z) in mm — see AGENTS.md "Build volume".
+#: Slack (mm) added around a part so the splitting region always overhangs it.
+_MARGIN: float = 1.0
+
+BUILD_VOLUME: tuple[float, float, float] = (220.0, 220.0, 256.0)
+
+
+@dataclass(frozen=True)
+class SeamSpec:
+    """Where a part splits and how its Seam is stepped.
+
+    ``x`` is the Seam's base X position; ``step`` the jog size and ``steps``
+    the number of segments along Y (``step == 0`` is a straight cut).
+    """
+
+    x: float = 0.0
+    step: float = 0.0
+    steps: int = 1
+
+    def __post_init__(self) -> None:
+        if self.steps < 1:
+            raise ValueError("seam steps must be >= 1")
+        if self.step < 0:
+            raise ValueError("seam step must be >= 0")
+
+    def segments(self, depth: float) -> list[tuple[float, float, float]]:
+        """``(y0, y1, x)`` per segment, front-to-back across ``depth``."""
+        seg = depth / self.steps
+        return [
+            (-depth / 2 + i * seg, -depth / 2 + (i + 1) * seg,
+             self.x + (self.step if i % 2 else 0.0))
+            for i in range(self.steps)
+        ]
+
+
+def _left_region(seam: SeamSpec, depth: float, x_extent: float, z_extent: float):
+    """Solid covering everything left of the Seam (oversized in X/Z)."""
+    pad = 2.0 * x_extent
+    pieces = []
+    for y0, y1, sx in seam.segments(depth):
+        width = sx + pad
+        box = cad_helpers.box_centered(width, y1 - y0, 2.0 * z_extent)
+        pieces.append(cad_helpers.translate(box, sx - width / 2.0, (y0 + y1) / 2.0, 0.0))
+    return cad_helpers.union(pieces[0], *pieces[1:])
+
+
+def split_halves(shape, seam: SeamSpec, depth: float):
+    """Split ``shape`` into ``(left, right)`` along ``seam``.
+
+    ``depth`` is the part's extent in Y (centered on the origin).
+    """
+    box = cad_helpers.bounding_box(shape)
+    x_extent = max(abs(box.xmin), abs(box.xmax), abs(seam.x) + seam.step) + _MARGIN
+    z_extent = max(abs(box.zmin), abs(box.zmax)) + _MARGIN
+    # Pad Y so Halves of a part slightly off-center are still fully covered.
+    y_depth = max(depth, 2.0 * max(abs(box.ymin), abs(box.ymax))) + 2.0 * _MARGIN
+    left_region = _left_region(seam, y_depth, x_extent, z_extent)
+    left = cad_helpers.intersect(shape, left_region)
+    right = cad_helpers.cut(shape, left_region)
+    return left, right
+
+
+def check_build_volume(
+    parts: dict[str, object],
+    volume: tuple[float, float, float] = BUILD_VOLUME,
+) -> list[str]:
+    """Return a violation message per part that does not fit as modelled.
+
+    Parts are modelled flat in their print orientation (ADR 0001 rejects
+    printing on end), so Z must fit the build height and X/Y the bed, with
+    the bed's X and Y interchangeable.
+    """
+    errors = []
+    bed = sorted(volume[:2])
+    for name, shape in parts.items():
+        x, y, z = cad_helpers.bounding_box_mm(shape)
+        footprint = sorted((x, y))
+        if z > volume[2] + 1e-6 or any(d > l + 1e-6 for d, l in zip(footprint, bed)):
+            errors.append(
+                f"{name}: {x:.1f} x {y:.1f} x {z:.1f} mm exceeds "
+                f"build volume {volume[0]:g} x {volume[1]:g} x {volume[2]:g} mm"
+            )
+    return errors
+
+
+def check_halves(whole, left, right, tol: float = 1e-6) -> list[str]:
+    """Violations of the Half contract: connected, and a lossless split."""
+    errors = []
+    whole_volume = cad_helpers.volume_mm3(whole)
+    for side, half in (("left", left), ("right", right)):
+        n = cad_helpers.solid_count(half)
+        if n != 1:
+            errors.append(f"{side} Half is {n} solids, expected 1 connected solid")
+    overlap = cad_helpers.volume_mm3(cad_helpers.intersect(left, right))
+    if overlap > tol * max(1.0, whole_volume):
+        errors.append(f"Halves overlap by {overlap:.3f} mm^3")
+    gap = whole_volume - cad_helpers.volume_mm3(left) - cad_helpers.volume_mm3(right)
+    if abs(gap) > tol * max(1.0, whole_volume):
+        errors.append(f"Halves do not rejoin: {gap:.3f} mm^3 missing")
+    return errors

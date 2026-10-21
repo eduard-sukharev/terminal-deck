@@ -6,8 +6,8 @@
 #   make base       # combined base assembly (base_bottom + keyboard + base_top)
 #   make base_bottom # base bottom tray only
 #   make base_top   # base top deck with keyboard cutout only
-#   make lid        # combined lid assembly (lid_base + display + lid_bezel)
-#   make lid_base   # lid rear shell tray only
+#   make lid        # combined lid assembly (lid_shell + display + lid_bezel)
+#   make lid_shell   # lid rear shell tray only
 #   make lid_bezel  # lid front plate with glass cutout only
 #   make hinge      # hinge only
 #   make assembly   # full assembly union only
@@ -31,7 +31,7 @@ GENERATED ?= generated
 TARGETS  ?= all
 IGNORE_VALIDATION ?=
 
-.PHONY: data all build test check clean display base base_bottom base_top lid lid_base lid_bezel hinge assembly assembly_opened components
+.PHONY: data all build test check clean display base base_bottom base_top lid lid_shell lid_bezel hinge assembly assembly_opened components
 
 ifneq ($(strip $(IGNORE_VALIDATION)),)
 IGNORE_VALIDATION_FLAG := --ignore-validation
@@ -63,8 +63,8 @@ base_top: build
 lid: TARGETS = lid
 lid: build
 
-lid_base: TARGETS = lid_base
-lid_base: build
+lid_shell: TARGETS = lid_shell
+lid_shell: build
 
 lid_bezel: TARGETS = lid_bezel
 lid_bezel: build

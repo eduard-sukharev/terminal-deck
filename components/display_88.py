@@ -79,24 +79,24 @@ class Display88(Component):
         ``thickness``), matching every other component and the data-layer
         convention that ``Placement.z`` is the component bottom.
         """
-        from utilities import cq_helpers
+        from utilities import cad_helpers
 
-        cq_helpers.require_cq()
-        box = cq_helpers.box_centered(self.width, self.height, self.thickness)
-        body = cq_helpers.translate(box, 0.0, 0.0, self.thickness / 2.0)
+        cad_helpers.require_cad()
+        box = cad_helpers.box_centered(self.width, self.height, self.thickness)
+        body = cad_helpers.translate(box, 0.0, 0.0, self.thickness / 2.0)
 
         # Ribbon stub standing proud of the east short edge, toward the driver
         # board's FPC slot. Centered on the short edge at mid-thickness, the
         # same height as the panel FPC connector it continues.
         if self._flex_edge_protrusion > 0.0:
-            ribbon = cq_helpers.box_centered(
+            ribbon = cad_helpers.box_centered(
                 self._flex_edge_protrusion, self._flex_width, self._flex_thickness
             )
-            ribbon = cq_helpers.translate(
+            ribbon = cad_helpers.translate(
                 ribbon,
                 self.width / 2 + self._flex_edge_protrusion / 2,
                 0.0,
                 self.thickness / 2,
             )
-            body = body.union(ribbon)
+            body = cad_helpers.union(body, ribbon)
         return body

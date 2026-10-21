@@ -23,7 +23,7 @@ Two modes:
     ``Component.build()`` places its connector socket) so you can see how
     the physical part's slot lines up with the shell opening.
 
-Requires CadQuery (source the miniforge env first).
+Requires build123d (activate the cyberdeck conda env first).
 
 Usage::
 
@@ -123,14 +123,14 @@ def _mean_direction(directions: list[tuple[float, float, float]]) -> tuple[float
 
 def _component_solid(placement):
     """Return a component's solid transformed to its world placement."""
-    from utilities import cq_helpers
+    from utilities import cad_helpers
 
     solid = placement.component.build()
     if placement.rotation:
-        solid = cq_helpers.rotate_z(solid, placement.rotation)
+        solid = cad_helpers.rotate_z(solid, placement.rotation)
     if placement.flip_x:
-        solid = cq_helpers.rotate_x(solid, 180.0)
-    return cq_helpers.translate(solid, placement.x, placement.y, placement.z)
+        solid = cad_helpers.rotate_x(solid, 180.0)
+    return cad_helpers.translate(solid, placement.x, placement.y, placement.z)
 
 
 def _connector_slot_solid(placement, connector):
@@ -143,15 +143,15 @@ def _connector_slot_solid(placement, connector):
     ``OrangePiZero2W.build()``'s socket list) — then carries it through the
     placement's rotation/flip/translate, exactly like ``_component_solid``.
     """
-    from utilities import cq_helpers
+    from utilities import cad_helpers
 
-    box = cq_helpers.box_centered(connector.width, connector.depth, connector.height)
-    box = cq_helpers.translate(box, connector.x, connector.y, connector.z)
+    box = cad_helpers.box_centered(connector.width, connector.depth, connector.height)
+    box = cad_helpers.translate(box, connector.x, connector.y, connector.z)
     if placement.rotation:
-        box = cq_helpers.rotate_z(box, placement.rotation)
+        box = cad_helpers.rotate_z(box, placement.rotation)
     if placement.flip_x:
-        box = cq_helpers.rotate_x(box, 180.0)
-    return cq_helpers.translate(box, placement.x, placement.y, placement.z)
+        box = cad_helpers.rotate_x(box, 180.0)
+    return cad_helpers.translate(box, placement.x, placement.y, placement.z)
 
 
 def _keep_box(bbox, cx: float, cy: float, window_half: float, z_pad: float = 5.0):
@@ -161,13 +161,13 @@ def _keep_box(bbox, cx: float, cy: float, window_half: float, z_pad: float = 5.0
     floor) rather than one half of the whole case, so the cutout dominates
     the frame instead of getting lost in the full tray.
     """
-    from utilities import cq_helpers
+    from utilities import cad_helpers
 
     x0, x1 = cx - window_half, cx + window_half
     y0, y1 = cy - window_half, cy + window_half
     z0, z1 = bbox.zmin - z_pad, bbox.zmax + z_pad
-    box = cq_helpers.box_centered(x1 - x0, y1 - y0, z1 - z0)
-    return cq_helpers.translate(box, (x0 + x1) / 2.0, (y0 + y1) / 2.0, (z0 + z1) / 2.0)
+    box = cad_helpers.box_centered(x1 - x0, y1 - y0, z1 - z0)
+    return cad_helpers.translate(box, (x0 + x1) / 2.0, (y0 + y1) / 2.0, (z0 + z1) / 2.0)
 
 
 def _keep_box_multi(bbox, xs: list[float], ys: list[float], margin: float, z_pad: float = 5.0):
@@ -177,13 +177,13 @@ def _keep_box_multi(bbox, xs: list[float], ys: list[float], margin: float, z_pad
     port on this component") — kept region is their combined footprint, not
     a fixed radius around one point.
     """
-    from utilities import cq_helpers
+    from utilities import cad_helpers
 
     x0, x1 = min(xs) - margin, max(xs) + margin
     y0, y1 = min(ys) - margin, max(ys) + margin
     z0, z1 = bbox.zmin - z_pad, bbox.zmax + z_pad
-    box = cq_helpers.box_centered(x1 - x0, y1 - y0, z1 - z0)
-    return cq_helpers.translate(box, (x0 + x1) / 2.0, (y0 + y1) / 2.0, (z0 + z1) / 2.0)
+    box = cad_helpers.box_centered(x1 - x0, y1 - y0, z1 - z0)
+    return cad_helpers.translate(box, (x0 + x1) / 2.0, (y0 + y1) / 2.0, (z0 + z1) / 2.0)
 
 
 def _default_view(direction: tuple[float, float, float], twist: float = 35.0) -> tuple[float, float]:
@@ -202,10 +202,9 @@ def _default_view(direction: tuple[float, float, float], twist: float = 35.0) ->
 
 
 def _export_stl(shape, path: Path) -> Path:
-    from utilities import cq_helpers
+    from utilities import cad_helpers
 
-    cq = cq_helpers.require_cq()
-    cq.exporters.export(shape, str(path), exportType="STL")
+    cad_helpers.export_shape(shape, str(path), "STL")
     return path
 
 
@@ -334,7 +333,7 @@ def render_case_cutout(
     from assemblies.assembly import Assembly
     from case.base import Base
     from geometry.cutouts import cutout_tool
-    from utilities import cq_helpers
+    from utilities import cad_helpers
 
     cfg, components, placements = _build_pipeline(config_path, layout_name)
     assy = Assembly(placements, cfg)
@@ -350,15 +349,15 @@ def render_case_cutout(
         cutout_tool(c, cfg.wall_thickness, chamfer=cfg.corners.cutout_chamfer) for c in cutouts
     ]
 
-    bbox = shell.val().BoundingBox()
+    bbox = cad_helpers.bounding_box(shell)
     xs, ys = [c["x"] for c in cutouts], [c["y"] for c in cutouts]
     keep_box = (
         _keep_box(bbox, xs[0], ys[0], _WINDOW_HALF)
         if len(cutouts) == 1
         else _keep_box_multi(bbox, xs, ys, _WINDOW_HALF)
     )
-    shell_cut = shell.intersect(keep_box)
-    highlight_cut = cq_helpers.make_compound([h.intersect(keep_box) for h in highlights])
+    shell_cut = cad_helpers.intersect(shell, keep_box)
+    highlight_cut = cad_helpers.make_compound([cad_helpers.intersect(h, keep_box) for h in highlights])
     if elev is None or azim is None:
         default_elev, default_azim = _default_view(_mean_direction([c["direction"] for c in cutouts]))
         elev = default_elev if elev is None else elev
@@ -391,7 +390,7 @@ def render_component_slot(
     """
     from assemblies.assembly import Assembly
     from case.base import Base
-    from utilities import cq_helpers
+    from utilities import cad_helpers
 
     cfg, components, placements = _build_pipeline(config_path, layout_name)
     assy = Assembly(placements, cfg)
@@ -406,16 +405,16 @@ def render_component_slot(
     component_solid = _component_solid(placement)
     highlights = [_connector_slot_solid(placement, connector) for connector, _c in pairs]
 
-    bbox = shell.val().BoundingBox()
+    bbox = cad_helpers.bounding_box(shell)
     xs, ys = [c["x"] for c in cutouts], [c["y"] for c in cutouts]
     keep_box = (
         _keep_box(bbox, xs[0], ys[0], _WINDOW_HALF)
         if len(cutouts) == 1
         else _keep_box_multi(bbox, xs, ys, _WINDOW_HALF)
     )
-    shell_cut = shell.intersect(keep_box)
-    component_cut = component_solid.intersect(keep_box)
-    highlight_cut = cq_helpers.make_compound([h.intersect(keep_box) for h in highlights])
+    shell_cut = cad_helpers.intersect(shell, keep_box)
+    component_cut = cad_helpers.intersect(component_solid, keep_box)
+    highlight_cut = cad_helpers.make_compound([cad_helpers.intersect(h, keep_box) for h in highlights])
     if elev is None or azim is None:
         default_elev, default_azim = _default_view(_mean_direction([c["direction"] for c in cutouts]))
         elev = default_elev if elev is None else elev

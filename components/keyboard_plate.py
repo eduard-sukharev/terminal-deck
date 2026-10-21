@@ -1,8 +1,8 @@
 """Keyboard switch plate — cyberdeck adapter for the keyboard geometry model.
 
 This is the cyberdeck-side adapter that converts the pure-data
-:class:`~keyboard.metadata.KeyboardGeometryModel` into a CadQuery solid
-via :mod:`utilities.cq_helpers`.
+:class:`~keyboard.metadata.KeyboardGeometryModel` into a solid
+via :mod:`utilities.cad_helpers`.
 
 The plate is independent of the enclosure — it can be cut on FR4 or printed
 alone.
@@ -24,7 +24,7 @@ class KeyboardPlate(Component):
     """Cherry-MX switch plate for the 40% layout.
 
     Reads a KLE layout file and plate configuration, generates the geometry
-    model, and builds the CadQuery solid via cq_helpers.
+    model, and builds the solid via cad_helpers.
 
     Mounting hole positions can be overridden by the constraint system via
     :meth:`set_mounting_holes`. When set, the override takes precedence over
@@ -132,34 +132,34 @@ class KeyboardPlate(Component):
 
     def build(self):
         """Build the plate solid from the geometry model."""
-        from utilities import cq_helpers
+        from utilities import cad_helpers
 
-        cq_helpers.require_cq()
+        cad_helpers.require_cad()
         self._ensure_model()
 
-        plate = cq_helpers.extrude_polygon(
+        plate = cad_helpers.extrude_polygon(
             self._model.plate_outline,
             self._plate_thickness,
             z=self._plate_thickness / 2.0,
         )
 
         for cut in self._model.switch_cutouts:
-            solid = cq_helpers.extrude_polygon(
+            solid = cad_helpers.extrude_polygon(
                 cut.vertices, self._plate_thickness + 1.0, cut.x, cut.y,
                 z=self._plate_thickness / 2.0,
             )
-            plate = plate.cut(solid)
+            plate = cad_helpers.cut(plate, solid)
 
         for cut in self._model.stabilizer_cutouts:
-            solid = cq_helpers.extrude_polygon(
+            solid = cad_helpers.extrude_polygon(
                 cut.vertices, self._plate_thickness + 1.0, cut.x, cut.y,
                 z=self._plate_thickness / 2.0,
             )
-            plate = plate.cut(solid)
+            plate = cad_helpers.cut(plate, solid)
 
         for x, y, d in self._get_mounting_holes():
-            bore = cq_helpers.cylinder_centered(d, self._plate_thickness + 1.0)
-            bore = cq_helpers.translate(bore, x, y, self._plate_thickness / 2.0)
-            plate = plate.cut(bore)
+            bore = cad_helpers.cylinder_centered(d, self._plate_thickness + 1.0)
+            bore = cad_helpers.translate(bore, x, y, self._plate_thickness / 2.0)
+            plate = cad_helpers.cut(plate, bore)
 
         return plate

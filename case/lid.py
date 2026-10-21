@@ -113,13 +113,13 @@ class Lid:
 
         Returns
         -------
-        cadquery.Workplane
+        Shape
             The lid base solid.
         """
         from geometry import fillet, shell
-        from utilities import cq_helpers
+        from utilities import cad_helpers
 
-        cq_helpers.require_cq()
+        cad_helpers.require_cad()
         config = self.config
         wall = config.wall_thickness
         clearance = config.clearance.shell
@@ -129,25 +129,25 @@ class Lid:
         # (toward the base).  The +Z face stays solid; a pocket is cut into
         # it below for the bezel.
         total_height = outer_top - outer_bottom
-        outer = cq_helpers.box_centered(width, depth, total_height)
-        outer = cq_helpers.translate(outer, 0.0, 0.0, (outer_top + outer_bottom) / 2.0)
+        outer = cad_helpers.box_centered(width, depth, total_height)
+        outer = cad_helpers.translate(outer, 0.0, 0.0, (outer_top + outer_bottom) / 2.0)
         outer = fillet.fillet_corners(outer, config.corners.radius)
         # Chamfer the bottom perimeter edges (before shelling so the rim
         # stays full thickness).
-        outer = outer.faces("<Z").edges().chamfer(2.0)
-        body = shell.offset_shell(outer, wall, open_face="<Z")
+        outer = cad_helpers.chamfer_face_edges(outer, cad_helpers.FaceRef.BOTTOM, 2.0)
+        body = shell.offset_shell(outer, wall, open_face=cad_helpers.FaceRef.BOTTOM)
 
         # Rectangular pocket on the +Z face for the bezel.
         # The pocket is bezel_thickness deep; the bezel fills it flush.
         pocket_w = width - 2 * wall
         pocket_d = depth - 2 * wall
-        pocket = cq_helpers.box_centered(
+        pocket = cad_helpers.box_centered(
             pocket_w, pocket_d, self.bezel_thickness + 2 * clearance
         )
-        pocket = cq_helpers.translate(
+        pocket = cad_helpers.translate(
             pocket, 0.0, 0.0, outer_top - self.bezel_thickness / 2.0
         )
-        body = body.cut(pocket)
+        body = cad_helpers.cut(body, pocket)
 
         # Bosses at the 4 corners for bezel mounting.
         # Each boss is a cylinder with a pilot hole, sitting at the bottom
@@ -159,11 +159,11 @@ class Lid:
         boss_z = outer_top - self.bezel_thickness - boss_h / 2.0
 
         for cx, cy in self._corner_positions():
-            boss = cq_helpers.cylinder_centered(boss_od, boss_h)
-            boss = cq_helpers.translate(boss, cx, cy, boss_z)
-            bore = cq_helpers.cylinder_centered(screw.pilot_hole, boss_h + 1.0)
-            bore = cq_helpers.translate(bore, cx, cy, boss_z)
-            body = body.union(boss.cut(bore))
+            boss = cad_helpers.cylinder_centered(boss_od, boss_h)
+            boss = cad_helpers.translate(boss, cx, cy, boss_z)
+            bore = cad_helpers.cylinder_centered(screw.pilot_hole, boss_h + 1.0)
+            bore = cad_helpers.translate(bore, cx, cy, boss_z)
+            body = cad_helpers.union(body, cad_helpers.cut(boss, bore))
 
         return body
 
@@ -177,13 +177,13 @@ class Lid:
 
         Returns
         -------
-        cadquery.Workplane
+        Shape
             The lid bezel solid.
         """
         from geometry import fillet
-        from utilities import cq_helpers
+        from utilities import cad_helpers
 
-        cq_helpers.require_cq()
+        cad_helpers.require_cad()
         config = self.config
         wall = config.wall_thickness
         clearance = config.clearance.shell
@@ -193,8 +193,8 @@ class Lid:
         bezel_w = width - 2 * wall
         bezel_d = depth - 2 * wall
 
-        bezel = cq_helpers.box_centered(bezel_w, bezel_d, self.bezel_thickness)
-        bezel = cq_helpers.translate(
+        bezel = cad_helpers.box_centered(bezel_w, bezel_d, self.bezel_thickness)
+        bezel = cad_helpers.translate(
             bezel, 0.0, 0.0, outer_top - self.bezel_thickness / 2.0
         )
         bezel = fillet.fillet_corners(bezel, config.corners.radius)
@@ -205,24 +205,24 @@ class Lid:
         # 2 mm bevel on the inner front edge of the hole.
         recess = self.glass_recess()
         cut_h = self.bezel_thickness + 0.1
-        cutout = cq_helpers.box_centered(
+        cutout = cad_helpers.box_centered(
             recess["width"], recess["height"], cut_h
         )
-        cutout = cq_helpers.translate(
+        cutout = cad_helpers.translate(
             cutout, 0.0, 0.0, outer_top - cut_h / 2.0
         )
-        cutout = cutout.faces("<Z").edges().chamfer(2.0)
-        bezel = bezel.cut(cutout)
+        cutout = cad_helpers.chamfer_face_edges(cutout, cad_helpers.FaceRef.BOTTOM, 2.0)
+        bezel = cad_helpers.cut(bezel, cutout)
 
         # M2.5 clearance holes at the 4 corners.
         screw = fasteners.screw("M2.5")
         for cx, cy in self._corner_positions():
-            hole = cq_helpers.cylinder_centered(
+            hole = cad_helpers.cylinder_centered(
                 screw.clearance, self.bezel_thickness + 2 * clearance
             )
-            hole = cq_helpers.translate(
+            hole = cad_helpers.translate(
                 hole, cx, cy, outer_top - self.bezel_thickness / 2.0
             )
-            bezel = bezel.cut(hole)
+            bezel = cad_helpers.cut(bezel, hole)
 
         return bezel

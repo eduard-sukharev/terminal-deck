@@ -1,8 +1,8 @@
 """Exporter interface.
 
-All exporters write a CadQuery shape to the ``generated/`` directory in a
+All exporters write a shape to the ``generated/`` directory in a
 specific format. The base class validates the output path; format-specific
-exporters delegate to CadQuery's exporters.
+exporters delegate to build123d's exporters.
 """
 
 from __future__ import annotations
@@ -62,7 +62,7 @@ class Exporter(ABC):
 
         Parameters
         ----------
-        shape : cadquery.Shape
+        shape : Shape
             The solid to export.
         path : Path or str
             Destination file path.

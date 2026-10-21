@@ -79,7 +79,7 @@ def generate(connectors: list[Connector], clearance: float) -> list[Cutout]:
 
 
 def _chamfered_cut(
-    cq_helpers,
+    cad_helpers,
     width: float,
     height: float,
     length: float,
@@ -123,12 +123,12 @@ def _chamfered_cut(
     # which assumes a centered shape — the same convention as the plain-box
     # cut path below. ``loft_between`` otherwise puts the bottom face at
     # z=0, which would leave the inner half of the bore uncut.
-    cut = cq_helpers.loft_between(bottom, top, length, z=-length / 2.0)
+    cut = cad_helpers.loft_between(bottom, top, length, z=-length / 2.0)
     # Rotate the loft's Z axis to align with the (axis-aligned) direction.
     if y_facing:
-        cut = cut.rotate((0, 0, 0), (1, 0, 0), 90.0 if dy > 0 else -90.0)
+        cut = cad_helpers.rotate_x(cut, 90.0 if dy > 0 else -90.0)
     else:
-        cut = cut.rotate((0, 0, 0), (0, 1, 0), 90.0 if dx > 0 else -90.0)
+        cut = cad_helpers.rotate_y(cut, 90.0 if dx > 0 else -90.0)
     return cut
 
 
@@ -153,12 +153,12 @@ def cutout_tool(cutout: Any, wall_thickness: float, chamfer: float = 0.0) -> Any
 
     Returns
     -------
-    cadquery.Workplane
+    Shape
         The cut solid, spanning from the connector origin through the wall.
     """
-    from utilities import cq_helpers
+    from utilities import cad_helpers
 
-    cq_helpers.require_cq()
+    cad_helpers.require_cad()
     if isinstance(cutout, dict):
         x, y, z = cutout["x"], cutout["y"], cutout["z"]
         width, height = cutout["width"], cutout["height"]
@@ -179,14 +179,14 @@ def cutout_tool(cutout: Any, wall_thickness: float, chamfer: float = 0.0) -> Any
     # align with ``direction``; width/height map so the opening stays
     # horizontal-along-wall / vertical.
     if chamfer > 0.0:
-        cut = _chamfered_cut(cq_helpers, width, height, length, chamfer, direction)
+        cut = _chamfered_cut(cad_helpers, width, height, length, chamfer, direction)
     elif abs(dy) >= abs(dx):
-        cut = cq_helpers.box_centered(width, height, length)
-        cut = cut.rotate((0, 0, 0), (1, 0, 0), 90)
+        cut = cad_helpers.box_centered(width, height, length)
+        cut = cad_helpers.rotate_x(cut, 90)
     else:
-        cut = cq_helpers.box_centered(height, width, length)
-        cut = cut.rotate((0, 0, 0), (0, 1, 0), 90)
-    return cq_helpers.translate(cut, x + dx * length / 2.0, y + dy * length / 2.0, z + dz * length / 2.0)
+        cut = cad_helpers.box_centered(height, width, length)
+        cut = cad_helpers.rotate_y(cut, 90)
+    return cad_helpers.translate(cut, x + dx * length / 2.0, y + dy * length / 2.0, z + dz * length / 2.0)
 
 
 def build(cutouts: list, shell, wall_thickness: float, chamfer: float = 0.0):
@@ -196,7 +196,7 @@ def build(cutouts: list, shell, wall_thickness: float, chamfer: float = 0.0):
     ----------
     cutouts : list of dict or Cutout
         Shell openings (as produced by ``Assembly.connector_cutouts``).
-    shell : cadquery.Workplane
+    shell : Shape
         Shell solid to cut, in the same (world) frame as the cutouts.
     wall_thickness : float
         Shell wall thickness (mm).
@@ -206,10 +206,12 @@ def build(cutouts: list, shell, wall_thickness: float, chamfer: float = 0.0):
 
     Returns
     -------
-    cadquery.Workplane
+    Shape
         The shell with all openings removed.
     """
+    from utilities import cad_helpers
+
     result = shell
     for cutout in cutouts:
-        result = result.cut(cutout_tool(cutout, wall_thickness, chamfer))
+        result = cad_helpers.cut(result, cutout_tool(cutout, wall_thickness, chamfer))
     return result

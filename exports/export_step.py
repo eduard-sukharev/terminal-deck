@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from utilities import cq_helpers
+from utilities import cad_helpers
 from utilities.constants import FORMAT_STEP
 from exports.export_base import Exporter
 
@@ -15,9 +15,8 @@ class StepExporter(Exporter):
     format = FORMAT_STEP
 
     def export(self, shape, path: Path | str) -> Path:
-        cq = cq_helpers.require_cq()
         path = Path(path)
-        cq.exporters.export(shape, str(path), exportType="STEP")
+        cad_helpers.export_shape(shape, str(path), "STEP")
         comment = self._metadata_comment()
         if comment:
             text = path.read_text()

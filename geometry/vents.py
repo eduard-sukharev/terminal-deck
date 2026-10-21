@@ -109,22 +109,14 @@ def build(spec: VentSpec, wall_thickness: float):
 
     Returns
     -------
-    cadquery.Workplane
+    Shape
         Compound of all slot solids (centered on the wall midplane at z=0),
         to subtract from the shell as a single cut.
     """
-    from utilities import cq_helpers
+    from utilities import cad_helpers
 
-    cq = cq_helpers.require_cq()
     # Slot cut boxes are centered on the wall midplane (z=0); each spans the
     # wall plus the slot width top and bottom so it always crosses through.
     depth = wall_thickness + 2 * spec.slot_width
     points = [(pos, 0.0) for pos in spec.positions]
-    if not points:
-        return cq.Workplane("XY")
-    return (
-        cq.Workplane("XY")
-        .pushPoints(points)
-        .rect(spec.slot_width, spec.slot_length)
-        .extrude(depth)
-    )
+    return cad_helpers.sketch_slots(points, spec.slot_width, spec.slot_length, depth)

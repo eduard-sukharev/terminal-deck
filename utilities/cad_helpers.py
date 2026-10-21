@@ -1,0 +1,458 @@
+"""CAD helpers — the single adapter between this codebase and build123d.
+
+build123d is imported lazily so that data-layer modules (component specs,
+config loading, validation) remain importable and testable without a CAD
+installation. Only modules that actually generate geometry should depend on
+this helper, and they must call :func:`require_cad` before use.
+
+Shapes are opaque to callers: every operation goes through a function here,
+so geometry modules never touch the CAD library directly.
+
+All coordinates in this codebase follow the global convention:
++X right, +Y forward, +Z upward, origin at center of the base.
+"""
+
+from __future__ import annotations
+
+import importlib
+from dataclasses import dataclass, field
+from enum import Enum
+from itertools import chain
+from typing import Any
+
+# SVG projection: front-left, above (+Z up). Presentation choices, not
+# dimensions — tune freely.
+SVG_VIEW_DIRECTION = (-50.0, -80.0, 60.0)
+SVG_SCALE = 1.0
+SVG_HIDDEN_LINE_WEIGHT = 0.15  # mm
+
+_b3d_module: Any | None = None
+_import_error: ImportError | None = None
+
+
+class FaceRef(Enum):
+    """The only two face selectors this codebase needs: top or bottom."""
+
+    TOP = "top"
+    BOTTOM = "bottom"
+
+
+@dataclass(frozen=True)
+class BBox:
+    """Axis-aligned bounding box (mm) with the min/max/length accessors the
+    debug renderers use."""
+
+    xmin: float
+    xmax: float
+    ymin: float
+    ymax: float
+    zmin: float
+    zmax: float
+
+    @property
+    def xlen(self) -> float:
+        return self.xmax - self.xmin
+
+    @property
+    def ylen(self) -> float:
+        return self.ymax - self.ymin
+
+    @property
+    def zlen(self) -> float:
+        return self.zmax - self.zmin
+
+
+@dataclass
+class ColoredAssembly:
+    """Named, RGBA-colored shapes kept separate (not fused), for glTF export."""
+
+    parts: list[tuple[str, Any, tuple[float, float, float, float]]] = field(default_factory=list)
+
+
+def require_cad() -> Any:
+    """Return the build123d module, importing it lazily.
+
+    Raises
+    ------
+    ImportError
+        If build123d is not installed.
+    """
+    global _b3d_module, _import_error
+    if _b3d_module is None:
+        try:
+            _b3d_module = importlib.import_module("build123d")
+        except ImportError as exc:  # pragma: no cover - depends on env
+            _import_error = exc
+            raise
+    return _b3d_module
+
+
+def cad_available() -> bool:
+    """True if build123d can be imported in this environment."""
+    if _b3d_module is None and _import_error is None:
+        try:
+            require_cad()
+        except ImportError:
+            return False
+    return _import_error is None
+
+
+def _is_empty(shape: Any) -> bool:
+    return shape is None or not shape.faces()
+
+
+def _top_or_bottom_face(shape: Any, face_ref: FaceRef) -> Any:
+    b3d = require_cad()
+    faces = shape.faces().sort_by(b3d.Axis.Z)
+    return faces[-1] if face_ref is FaceRef.TOP else faces[0]
+
+
+def box_centered(width: float, depth: float, height: float) -> Any:
+    """Return a solid box centered on the local origin (extents in mm)."""
+    return require_cad().Box(width, depth, height)
+
+
+def cylinder_centered(diameter: float, height: float) -> Any:
+    """Return a solid cylinder centered on the local origin, axis along Z."""
+    return require_cad().Cylinder(diameter / 2.0, height)
+
+
+def frustum_centered(bottom_diameter: float, top_diameter: float, height: float) -> Any:
+    """Return a solid frustum centered on the local origin, axis along Z.
+
+    Bottom face (``bottom_diameter``) at local ``z = -height / 2``, top face
+    (``top_diameter``) at ``z = +height / 2`` — the same Z convention as
+    :func:`cylinder_centered`, so callers translate it up by ``height / 2``
+    to seat the bottom face at ``z = 0``. Equal diameters degenerate to a
+    plain cylinder.
+    """
+    b3d = require_cad()
+    if bottom_diameter == top_diameter:
+        return b3d.Cylinder(bottom_diameter / 2.0, height)
+    return b3d.Cone(bottom_diameter / 2.0, top_diameter / 2.0, height)
+
+
+def translate(shape: Any, x: float, y: float, z: float) -> Any:
+    """Translate a shape by an absolute (x, y, z) offset in mm."""
+    return require_cad().Pos(x, y, z) * shape
+
+
+def rotate_about(
+    shape: Any,
+    p0: tuple[float, float, float],
+    p1: tuple[float, float, float],
+    angle_deg: float,
+) -> Any:
+    """Rotate a shape ``angle_deg`` degrees about the axis through ``p0``/``p1``.
+
+    Right-handed about the ``p0 -> p1`` direction. Needed where the axis
+    doesn't pass through the origin (e.g. the clamshell "open" transform in
+    ``main.py``, which rotates about the hinge line).
+    """
+    b3d = require_cad()
+    direction = tuple(b - a for a, b in zip(p0, p1))
+    return shape.rotate(b3d.Axis(origin=p0, direction=direction), angle_deg)
+
+
+def rotate_x(shape: Any, angle_deg: float) -> Any:
+    """Rotate a shape about the X axis through the origin."""
+    return rotate_about(shape, (0, 0, 0), (1, 0, 0), angle_deg)
+
+
+def rotate_y(shape: Any, angle_deg: float) -> Any:
+    """Rotate a shape about the Y axis through the origin."""
+    return rotate_about(shape, (0, 0, 0), (0, 1, 0), angle_deg)
+
+
+def rotate_z(shape: Any, angle_deg: float) -> Any:
+    """Rotate a shape about the Z axis through the origin."""
+    return rotate_about(shape, (0, 0, 0), (0, 0, 1), angle_deg)
+
+
+def union(shape: Any, *others: Any) -> Any:
+    """Boolean-union ``shape`` with one or more other shapes (empties skipped)."""
+    parts = [s for s in (shape, *others) if not _is_empty(s)]
+    if not parts:
+        return empty_solid()
+    if len(parts) == 1:
+        return parts[0]
+    return parts[0].fuse(*parts[1:])
+
+
+def cut(shape: Any, *tools: Any) -> Any:
+    """Boolean-subtract one or more ``tools`` from ``shape`` (empties skipped)."""
+    tools = [t for t in tools if not _is_empty(t)]
+    if not tools or _is_empty(shape):
+        return shape
+    return shape.cut(*tools)
+
+
+def intersect(shape: Any, other: Any) -> Any:
+    """Boolean-intersect ``shape`` with ``other``."""
+    if _is_empty(shape) or _is_empty(other):
+        return empty_solid()
+    # build123d's ``intersect`` returns a list of shapes (or ``None``).
+    found = shape.intersect(other)
+    if not found:
+        return empty_solid()
+    return found[0] if len(found) == 1 else make_compound(list(found))
+
+
+def clean(shape: Any) -> Any:
+    """Run OCC shape healing on ``shape``.
+
+    Needed after a union/cut whose result has sliver or degenerate topology
+    at a seam (harmless for STEP/STL export, but can crash the SVG
+    exporter's hidden-line removal) — see ``main.py``'s base+deck union for
+    the concrete case this guards against.
+    """
+    return shape.clean()
+
+
+def fillet_all_edges(shape: Any, radius: float) -> Any:
+    """Fillet every edge of ``shape`` with ``radius`` (mm)."""
+    return require_cad().fillet(shape.edges(), radius)
+
+
+def fillet_vertical_edges(shape: Any, radius: float) -> Any:
+    """Fillet only the Z-parallel (vertical) edges of ``shape``.
+
+    Used to round the four vertical corners of a base/lid shell without
+    touching its horizontal edges.
+    """
+    b3d = require_cad()
+    return b3d.fillet(shape.edges().filter_by(b3d.Axis.Z), radius)
+
+
+def chamfer_face_edges(shape: Any, face_ref: FaceRef, length: float) -> Any:
+    """Chamfer the perimeter edges of ``shape``'s top or bottom face."""
+    face = _top_or_bottom_face(shape, face_ref)
+    return require_cad().chamfer(face.edges(), length)
+
+
+def shell_open_face(shape: Any, wall_thickness: float, face_ref: FaceRef) -> Any:
+    """Hollow ``shape``, leaving ``wall_thickness`` mm of material, open at ``face_ref``.
+
+    The outer boundary stays fixed while hollowing inward; ``face_ref``
+    selects which face (top or bottom) is removed to open the shell.
+    """
+    b3d = require_cad()
+    face = _top_or_bottom_face(shape, face_ref)
+    return b3d.offset(shape, amount=-wall_thickness, openings=face)
+
+
+def shell_closed(shape: Any, wall_thickness: float) -> Any:
+    """Hollow ``shape`` into a *closed* shell of ``wall_thickness`` mm walls.
+
+    No face is opened: the result is the outer solid minus its inward
+    offset. This is what ``geometry.shell.offset_shell`` (used by the lid)
+    has always produced — the CadQuery chain it replaced silently dropped
+    the open face — and it is kept bit-for-bit so the geometry baseline
+    (``tests/test_geometry_regression.py``) still holds. The rebuilt Lid
+    shell is meant to be open; this helper goes away with the old one.
+    """
+    b3d = require_cad()
+    inner = b3d.offset(shape, amount=-wall_thickness)
+    return shape.cut(inner)
+
+
+def sketch_slots(
+    points: list[tuple[float, float]], width: float, length: float, depth: float
+) -> Any:
+    """Return a compound of rectangular slot solids, one per XY point.
+
+    Each slot is ``width`` (X) by ``length`` (Y), extruded ``depth`` along Z
+    from the XY plane. Used for vent slot cutters. Returns an empty solid if
+    ``points`` is empty.
+    """
+    if not points:
+        return empty_solid()
+    slots = [
+        translate(box_centered(width, length, depth), x, y, depth / 2.0) for x, y in points
+    ]
+    return make_compound(slots)
+
+
+def empty_solid() -> Any:
+    """Return an empty shape — a sentinel for "nothing to build here"."""
+    return require_cad().Compound()
+
+
+def new_assembly() -> ColoredAssembly:
+    """Return a new, empty colored assembly."""
+    return ColoredAssembly()
+
+
+def assembly_add(
+    assembly: ColoredAssembly,
+    shape: Any,
+    name: str,
+    rgba: tuple[float, float, float, float],
+) -> None:
+    """Add ``shape`` to ``assembly`` as a named child with an RGBA color."""
+    assembly.parts.append((name, shape, rgba))
+
+
+def is_assembly(obj: Any) -> bool:
+    """True if ``obj`` is a colored assembly (vs. a bare shape/solid)."""
+    return isinstance(obj, ColoredAssembly)
+
+
+def export_shape(shape: Any, path: str, fmt: str) -> None:
+    """Export ``shape`` to ``path`` in ``fmt`` (``"STEP"`` or ``"STL"``).
+
+    SVG goes through :func:`export_svg` instead; it is a 2D projection with
+    its own options.
+    """
+    b3d = require_cad()
+    fmt = fmt.upper()
+    if fmt == "STEP":
+        b3d.export_step(shape, str(path))
+    elif fmt == "STL":
+        b3d.export_stl(shape, str(path))
+    else:
+        raise ValueError(f"unsupported export format {fmt!r}")
+
+
+def export_svg(shape: Any, path: str) -> None:
+    """Export a hidden-line-removed isometric projection of ``shape`` as SVG."""
+    b3d = require_cad()
+    # Look from a fixed world-space direction at the world origin, so every
+    # part (base, lid, hinge, ...) is projected from the same angle rather
+    # than from one relative to its own center.
+    visible, hidden = shape.project_to_viewport(SVG_VIEW_DIRECTION, look_at=(0.0, 0.0, 0.0))
+    exporter = b3d.ExportSVG(scale=SVG_SCALE)
+    exporter.add_layer("Visible")
+    exporter.add_layer("Hidden", line_type=b3d.LineType.ISO_DOT, line_weight=SVG_HIDDEN_LINE_WEIGHT)
+    exporter.add_shape(visible, layer="Visible")
+    exporter.add_shape(hidden, layer="Hidden")
+    exporter.write(str(path))
+
+
+def export_assembly(assembly: ColoredAssembly, path: str, fmt: str) -> None:
+    """Export a colored assembly (see :func:`new_assembly`) to ``path``.
+
+    Only glTF is supported; binary ``.glb`` vs. text ``.gltf`` follows the
+    file extension.
+    """
+    b3d = require_cad()
+    if fmt.upper() != "GLTF":
+        raise ValueError(f"unsupported assembly export format {fmt!r}")
+    children = []
+    for name, shape, rgba in assembly.parts:
+        part = shape.moved(b3d.Location())  # copy: don't tint the caller's shape
+        part.label = name
+        part.color = b3d.Color(*rgba)
+        children.append(part)
+    root = b3d.Compound(children=children, label="assembly")
+    b3d.export_gltf(root, str(path), binary=str(path).lower().endswith(".glb"))
+
+
+def import_step(path: str) -> Any:
+    """Import a STEP file as a shape."""
+    return require_cad().import_step(str(path))
+
+
+def _ccw(vertices: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """Return ``vertices`` wound counter-clockwise (positive signed area)."""
+    area = sum(
+        x0 * y1 - x1 * y0
+        for (x0, y0), (x1, y1) in zip(vertices, vertices[1:] + vertices[:1])
+    )
+    return list(vertices) if area >= 0 else list(reversed(vertices))
+
+
+def extrude_polygon(
+    vertices: list[tuple[float, float]],
+    height: float,
+    x: float = 0.0,
+    y: float = 0.0,
+    z: float = 0.0,
+) -> Any:
+    """Extrude a closed polygon into a solid, centered at (x, y, z).
+
+    Parameters
+    ----------
+    vertices : list[tuple[float, float]]
+        Closed polygon vertices in XY, centered on origin.
+    height : float
+        Extrusion height along Z (mm).
+    x, y, z : float
+        Center position in the world frame (mm).
+    """
+    b3d = require_cad()
+    wire = b3d.Wire.make_polygon([(vx, vy, 0.0) for vx, vy in _ccw(vertices)], close=True)
+    solid = b3d.extrude(b3d.Face(wire), amount=height)
+    return translate(solid, x, y, z - height / 2.0)
+
+
+def loft_between(
+    bottom_verts: list[tuple[float, float]],
+    top_verts: list[tuple[float, float]],
+    height: float,
+    x: float = 0.0,
+    y: float = 0.0,
+    z: float = 0.0,
+) -> Any:
+    """Loft a solid between two closed polygon wires.
+
+    The bottom wire lies on the XY plane; the top wire is offset by *height*
+    along Z. Both wires must have the **same number of vertices** in the
+    **same angular order** (CCW from +X) to produce an untwisted ruled loft.
+
+    The resulting solid is translated so its **bottom** face sits at *z*.
+    """
+    b3d = require_cad()
+    bottom = b3d.Wire.make_polygon([(vx, vy, 0.0) for vx, vy in bottom_verts], close=True)
+    top = b3d.Wire.make_polygon([(vx, vy, height) for vx, vy in top_verts], close=True)
+    solid = b3d.Solid.make_loft([bottom, top], ruled=True)
+    return translate(solid, x, y, z)
+
+
+def make_compound(shapes: list[Any]) -> Any:
+    """Return one unfused compound containing the solids of *shapes*.
+
+    Use this to batch many solids before a single :func:`union` — far faster
+    than N sequential unions because OCC processes the whole compound in one
+    boolean operation.
+    """
+    b3d = require_cad()
+    solids = list(chain.from_iterable(s.solids() for s in shapes if not _is_empty(s)))
+    return b3d.Compound(solids) if solids else empty_solid()
+
+
+def bounding_box(shape: Any) -> BBox:
+    """Return the bounding box of ``shape`` with min/max/length accessors.
+
+    Prefer :func:`bounding_box_mm` where only the extents are needed; this
+    is for callers (debug renderers) that need the min/max corners too.
+    """
+    box = shape.bounding_box()
+    return BBox(box.min.X, box.max.X, box.min.Y, box.max.Y, box.min.Z, box.max.Z)
+
+
+def bounding_box_mm(shape: Any) -> tuple[float, float, float]:
+    """Return (width, depth, height) in mm of a shape."""
+    box = bounding_box(shape)
+    return (box.xlen, box.ylen, box.zlen)
+
+
+def volume_mm3(shape: Any) -> float:
+    """Return the solid volume in mm^3 — used for geometry regression checks."""
+    return shape.volume
+
+
+def center_of_mass_mm(shape: Any) -> tuple[float, float, float]:
+    """Return the (x, y, z) center of mass in mm."""
+    center = shape.center()
+    return (center.X, center.Y, center.Z)
+
+
+def face_count(shape: Any) -> int:
+    """Return the number of faces in the shape."""
+    return len(shape.faces())
+
+
+def solid_count(shape: Any) -> int:
+    """Return the number of solids in the shape."""
+    return len(shape.solids())

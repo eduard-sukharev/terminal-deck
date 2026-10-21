@@ -177,7 +177,11 @@ class BuildPipeline:
         return prov
 
     def run(
-        self, steps: str = "all", targets: str = "all", ignore_validation: bool = False
+        self,
+        steps: str = "all",
+        targets: str = "all",
+        ignore_validation: bool = False,
+        metrics_path: str | None = None,
     ) -> None:
         """Execute the pipeline up to ``steps``.
 
@@ -199,6 +203,12 @@ class BuildPipeline:
             fix, not for shipping the result. The violation is still printed
             and still fails ``placement validation``/``constraint
             resolution`` above — this only skips the ``SystemExit``.
+        metrics_path : str, optional
+            If set, write a JSON dump of ``utilities.metrics.shape_metrics``
+            for every built target (and, when the ``components`` bucket is
+            selected, every component solid) to this path. Used to record or
+            check a golden-master geometry baseline across refactors; has no
+            effect on the exported files themselves.
         """
         config = self.load_config()
         print(f"[pipeline] config: {self.config_path} ({self.topics})")
@@ -290,10 +300,10 @@ class BuildPipeline:
         from case.lid import Lid
         from components.hinge import Hinge as HingePart
         from exports import EXPORTERS
-        from utilities import cq_helpers
+        from utilities import cad_helpers
         from utilities.targets import resolve_targets
 
-        cq_helpers.require_cq()
+        cad_helpers.require_cad()
 
         # Resolve build targets.
         target_tokens = [t.strip() for t in targets.split(",") if t.strip()]
@@ -308,7 +318,7 @@ class BuildPipeline:
 
         # Build requested solids.
         parts: dict[str, object] = {}
-        # Per-bucket colored `cadquery.Assembly` for glTF export only — a
+        # Per-bucket colored `ColoredAssembly` for glTF export only — a
         # bucket without an entry here falls back to a single-color glTF
         # wrapping its fused `parts[name]` solid (see the export loop below).
         gltf_parts: dict[str, object] = {}
@@ -385,7 +395,7 @@ class BuildPipeline:
             base_top_solid = base_obj.build_top()
             base_solid = base_bottom_solid
             if base_subset_solid is not None:
-                base_solid = base_solid.union(base_subset_solid)
+                base_solid = cad_helpers.union(base_solid, base_subset_solid)
             # .clean() (OCC shape healing): the deck's underside is now a
             # crease (sloped in front of the keyboard, flat behind it — see
             # case.base.Base._deck_knee_y), and base_bottom's walls follow
@@ -396,7 +406,7 @@ class BuildPipeline:
             # silently, no Python exception to catch. Reproduced by bisecting
             # against git history: the prior (unkneed, single-plane) deck
             # never needed this.
-            base_solid = base_solid.union(base_top_solid).clean()
+            base_solid = cad_helpers.clean(cad_helpers.union(base_solid, base_top_solid))
             parts["base"] = base_solid
 
             if subset_placements:
@@ -404,7 +414,7 @@ class BuildPipeline:
                     placements=subset_placements,
                     role_map=role_map,
                     extra_parts=[
-                        ("case", base_bottom_solid.union(base_top_solid).clean())
+                        ("case", cad_helpers.clean(cad_helpers.union(base_bottom_solid, base_top_solid)))
                     ],
                 )
 
@@ -455,15 +465,15 @@ class BuildPipeline:
             lid_bezel_solid = lid.build_bezel()
             lid_solid = lid_base_solid
             if display_assembly_solid is not None:
-                lid_solid = lid_solid.union(display_assembly_solid)
-            lid_solid = lid_solid.union(lid_bezel_solid)
+                lid_solid = cad_helpers.union(lid_solid, display_assembly_solid)
+            lid_solid = cad_helpers.union(lid_solid, lid_bezel_solid)
             parts["lid"] = lid_solid
 
             if display_placements:
                 gltf_parts["lid"] = assembly.build_colored(
                     placements=display_placements,
                     role_map=role_map,
-                    extra_parts=[("case", lid_base_solid.union(lid_bezel_solid))],
+                    extra_parts=[("case", cad_helpers.union(lid_base_solid, lid_bezel_solid))],
                 )
 
         if "hinge" in buckets:
@@ -479,7 +489,7 @@ class BuildPipeline:
             lid_outer_bottom = display.z - driver_height - config.clearance.shell - config.wall_thickness
             hinge_z = (base_outer_top + lid_outer_bottom) / 2.0
             hinge_solid = hinge.build(case_depth=size.width)
-            hinge_solid = cq_helpers.translate(hinge_solid, 0.0, -size.depth / 2.0, hinge_z)
+            hinge_solid = cad_helpers.translate(hinge_solid, 0.0, -size.depth / 2.0, hinge_z)
             parts["hinge"] = hinge_solid
 
         # ── Opened assembly: base in ZX plane, lid upward, LCD faces +Z ──
@@ -515,10 +525,10 @@ class BuildPipeline:
                         base_subset_roles.add(components[role])
                 subset = select_placements(placements, base_subset_roles)
                 if subset:
-                    base_solid = base_solid.union(
-                        assembly.build_subset(subset)
+                    base_solid = cad_helpers.union(
+                        base_solid, assembly.build_subset(subset)
                     )
-            base_solid = base_solid.union(base_obj.build_top())
+            base_solid = cad_helpers.union(base_solid, base_obj.build_top())
 
             # Build lid solid (closed position).
             lid_solid = lid.build_base()
@@ -530,10 +540,10 @@ class BuildPipeline:
                 }
             )
             if display_placements:
-                lid_solid = lid_solid.union(
-                    assembly.build_subset(display_placements)
+                lid_solid = cad_helpers.union(
+                    lid_solid, assembly.build_subset(display_placements)
                 )
-            lid_solid = lid_solid.union(lid.build_bezel())
+            lid_solid = cad_helpers.union(lid_solid, lid.build_bezel())
 
             # Hinge axis in the original frame.
             depth = size.depth
@@ -553,34 +563,34 @@ class BuildPipeline:
             # the ZX plane (vertical), keyboard facing +Y.
             #   -90° about X: (x,y,z) → (x, z, -y)
             #   Hinge at (0, -depth/2, hinge_z) → (0, hinge_z, depth/2)
-            base_u = base_solid.rotate((0, 0, 0), (1, 0, 0), -90)
-            lid_u = lid_solid.rotate((0, 0, 0), (1, 0, 0), -90)
+            base_u = cad_helpers.rotate_x(base_solid, -90)
+            lid_u = cad_helpers.rotate_x(lid_solid, -90)
             hinge_u = hinge.build(case_depth=size.width)
-            hinge_u = cq_helpers.translate(
+            hinge_u = cad_helpers.translate(
                 hinge_u, 0.0, -depth / 2.0, hinge_z
             )
-            hinge_u = hinge_u.rotate((0, 0, 0), (1, 0, 0), -90)
+            hinge_u = cad_helpers.rotate_x(hinge_u, -90)
 
             # Step 2: open the lid +90° about the hinge axis so it extends
             # in +Y (upward from the base) with the LCD facing +Z.
             ax_y = hinge_z
             ax_z = depth / 2.0
-            lid_open = lid_u.rotate(
-                (0.0, ax_y, ax_z), (1.0, ax_y, ax_z), 90
+            lid_open = cad_helpers.rotate_about(
+                lid_u, (0.0, ax_y, ax_z), (1.0, ax_y, ax_z), 90
             )
 
             # Step 3: flip the whole assembly 180° about Y so the base rear
             # faces -Z instead of +Z.
-            base_f = base_u.rotate((0, 0, 0), (0, 1, 0), 180)
-            lid_f = lid_open.rotate((0, 0, 0), (0, 1, 0), 180)
-            hinge_f = hinge_u.rotate((0, 0, 0), (0, 1, 0), 180)
+            base_f = cad_helpers.rotate_y(base_u, 180)
+            lid_f = cad_helpers.rotate_y(lid_open, 180)
+            hinge_f = cad_helpers.rotate_y(hinge_u, 180)
 
             # Step 4: rotate the lid 180° about the Y axis through the hinge
             # center so the LCD faces +Z again (the Y flip flipped it to -Z).
             # Hinge after step 3: (0, hinge_z, -depth/2) along X.
             hy = hinge_z
             hz = -depth / 2.0
-            lid_f = lid_f.rotate((0, hy, hz), (0, hy + 1, hz), 180)
+            lid_f = cad_helpers.rotate_about(lid_f, (0, hy, hz), (0, hy + 1, hz), 180)
 
             # Step 5: translate the lid in -Z so its +Z face (LCD side) sits
             # at the hinge, making the lid extend behind the hinge in -Z.
@@ -590,19 +600,24 @@ class BuildPipeline:
             )
             z_offset = display_placement.z - hinge_z
             dist_to_plus_z = z_offset + lid_total_h / 2.0
-            lid_f = cq_helpers.translate(lid_f, 0, 0, -dist_to_plus_z)
+            lid_f = cad_helpers.translate(lid_f, 0, 0, -dist_to_plus_z)
 
-            parts["assembly_opened"] = base_f.union(lid_f).union(hinge_f)
+            parts["assembly_opened"] = cad_helpers.union(base_f, lid_f, hinge_f)
 
         # Export all built parts.
         provenance = self._provenance()
+        metrics: dict[str, object] = {}
+        if metrics_path is not None:
+            from utilities.metrics import shape_metrics
         for name, solid in parts.items():
+            if metrics_path is not None:
+                metrics[name] = shape_metrics(solid)
             for fmt, exporter_cls in EXPORTERS.items():
                 exporter = exporter_cls()
                 exporter.metadata = provenance
                 path = exporter.output_path(f"cyberdeck_{name}")
                 # glTF prefers the colored per-component/sub-assembly
-                # `cadquery.Assembly` built above; buckets without one (e.g.
+                # `ColoredAssembly` built above; buckets without one (e.g.
                 # hinge, a single part) fall back to the fused solid, which
                 # GltfExporter wraps in a single default color.
                 export_obj = gltf_parts.get(name, solid) if fmt == "gltf" else solid
@@ -631,6 +646,8 @@ class BuildPipeline:
                         continue
                     path = stl_exporter.output_path(f"component_{comp_name}")
                     stl_exporter.export(comp_solid, path)
+                    if metrics_path is not None:
+                        metrics[f"component_{comp_name}"] = shape_metrics(comp_solid)
                     if not apply_fs_metadata(provenance, path):
                         print(f"[pipeline] warning: could not write fs metadata for {path}")
                     print(f"[pipeline] exported component {comp_name} -> {path}")
@@ -643,9 +660,17 @@ class BuildPipeline:
                         continue
                     path = stl_exporter.output_path(f"component_{role}")
                     stl_exporter.export(comp_solid, path)
+                    if metrics_path is not None:
+                        metrics[f"component_{role}"] = shape_metrics(comp_solid)
                     if not apply_fs_metadata(provenance, path):
                         print(f"[pipeline] warning: could not write fs metadata for {path}")
                     print(f"[pipeline] exported component {role} -> {path}")
+
+        if metrics_path is not None:
+            import json
+
+            Path(metrics_path).write_text(json.dumps(metrics, indent=2, sort_keys=True))
+            print(f"[pipeline] wrote metrics -> {metrics_path}")
 
 
 def _git_rev() -> str | None:
@@ -707,6 +732,14 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
              "still printed. For inspecting a known-bad layout while "
              "iterating on a fix, not for shipping the result.",
     )
+    parser.add_argument(
+        "--metrics",
+        default=None,
+        metavar="PATH",
+        help="write a JSON geometry-metrics dump (volume/bbox/center of "
+             "mass per target) to PATH. Used for golden-master regression "
+             "checks, e.g. across the CadQuery -> build123d port.",
+    )
     return parser.parse_args(argv)
 
 
@@ -722,6 +755,7 @@ def main(argv: list[str] | None = None) -> int:
             steps=args.steps,
             targets=args.targets,
             ignore_validation=args.ignore_validation,
+            metrics_path=args.metrics,
         )
     except NotImplementedError as exc:
         print(f"[pipeline] CAD stage not yet implemented: {exc}", file=sys.stderr)

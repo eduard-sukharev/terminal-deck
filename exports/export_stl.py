@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from utilities import cq_helpers
+from utilities import cad_helpers
 from utilities.constants import FORMAT_STL
 from exports.export_base import Exporter
 
@@ -15,9 +15,8 @@ class StlExporter(Exporter):
     format = FORMAT_STL
 
     def export(self, shape, path: Path | str) -> Path:
-        cq = cq_helpers.require_cq()
         path = Path(path)
-        cq.exporters.export(shape, str(path), exportType="STL")
+        cad_helpers.export_shape(shape, str(path), "STL")
         comment = self._metadata_comment()
         if comment:
             data = bytearray(path.read_bytes())

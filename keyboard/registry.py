@@ -52,6 +52,10 @@ class KeycapProtocol(Protocol):
     def segments(self) -> int:
         """Number of sample points per wire for lofting."""
 
+    def base_chamfer(self) -> float:
+        """Corner cut (leg length, mm) on the cap's base outline, for the
+        simplified low-poly cap."""
+
     def metadata(self) -> dict[str, Any]:
         """Arbitrary metadata dict."""
 

@@ -2,19 +2,34 @@
 
 This file provides guidance to AI coding agents (Claude Code, etc.) when working with code in this repository.
 
-Parametric clamshell cyberdeck CAD generator (CadQuery), for field debugging of
+Parametric clamshell cyberdeck CAD generator (build123d), for field debugging of
 3D printers. Target hardware: Orange Pi Zero 2W SBC, 8.8" 1920x480 HDMI
 display, 40% Cherry-MX-compatible RP2040/QMK keyboard. This is **not** a maker
 platform — no GPIO, sensors, LEDs, or decorative elements. Priorities:
 robustness, serviceability, printability, parametricity, reusability.
 
+## Build volume
+
+Target printer build volume: **220 × 220 × 256 mm** (X × Y × Z). Every
+printable part (base bottom/top, lid base/bezel, hinge, keyboard plate,
+etc.) must fit this envelope in its intended print orientation; if a part
+would exceed it in every viable orientation, split it into joined printable
+pieces (alignment features + fasteners) rather than silently exceeding the
+limit. See `.agents/skills/cad/references/fdm-printing.md` for the full
+FDM manufacturability ruleset (wall thickness, clearances, overhangs, boss
+design, build-volume checks).
+
 ## Environment (critical)
 
-- **Must activate miniforge first** — the base conda env is Python 3.7 and
-  fails to import (`typing.Final` missing). CadQuery 2.8 lives in miniforge.
+- **Use the `cyberdeck` conda env** — the base conda env is Python 3.7 and
+  fails to import (`typing.Final` missing). Create it once, then activate:
   ```bash
-  source $HOME/miniforge/bin/activate
+  conda create -n cyberdeck python=3.12 && conda activate cyberdeck
+  pip install -r requirements.txt
   ```
+- **Backend:** build123d (CadQuery was removed, `docs/adr/0002`). The Core
+  components are ported and match the geometry baseline; the case parts are
+  still the pre-migration design and are rebuilt per `docs/form_factor.md`.
 
 ## Commands
 
@@ -35,7 +50,7 @@ python -m pytest tests/test_layouts.py::test_name -v   # single test
 ```
 
 `--steps data` runs config → components → layout → validation (8 checks) and
-prints the report; no CadQuery needed. `--steps all` additionally sizes the
+prints the report; no CAD library needed. `--steps all` additionally sizes the
 enclosure/bosses/cutouts and builds+exports the assembly/base/lid/hinge
 solids. Full run takes ~1 min (boolean-heavy base shell). There is one
 layout, `compact` (the default); `--layout-recipe <path>` runs an arbitrary
@@ -67,27 +82,34 @@ configuration, a measured component, or calculated geometry — never
 intuition. Wire-up for the full pipeline lives in `main.py` (`BuildPipeline`,
 `run()`).
 
-- **Data layer (implemented, no CadQuery needed):** `components/base.py`
+- **Data layer (implemented, no CAD library needed):** `components/base.py`
   (`BoundingBox`/`Hole`/`Connector`/`Keepout` + `Component` ABC),
   `utilities/config_loader.py`, `utilities/fasteners.py`,
   `utilities/validation.py`, `layouts/*`, `assemblies/assembly.py`,
   `routing/cable_routing.py`, and the `keyboard/` package (KLE → layout →
   switch/stabilizer libraries → plate geometry model + its own validation).
-- **CAD generation (implemented, requires CadQuery):** `Assembly.build()`
+- **CAD generation (implemented, requires build123d):** `Assembly.build()`
   unions component solids at their placements; `case.Base.build_bottom()` and
   `case.Base.build_top()` produce the base bottom tray (bosses/ribs/vents/
   cutouts) and the top deck with keyboard cutout; `case.Lid.build_base()` and
   `case.Lid.build_bezel()` produce the lid rear tray and front bezel (glass
   opening); `components/hinge.py` builds the barrels, pin, and wire tunnel;
   `geometry/*` hold the primitives.
-- `utilities/cq_helpers.py` is the **only** CadQuery adapter; it imports
-  lazily so the data layer stays importable without CadQuery. Geometry
-  modules must go through it, not `import cadquery` directly.
-- `exports/` exporters delegate to CadQuery exporters (STEP/STL/SVG/glTF). The
+- `utilities/cad_helpers.py` is the **only** CAD adapter (build123d); it imports
+  lazily so the data layer stays importable without a CAD library. Geometry
+  modules must go through it, not `import build123d` directly.
+- `exports/` exporters delegate to build123d exporters (STEP/STL/SVG/glTF). The
   glTF exporter (`exports/export_gltf.py`) is the odd one out: it takes a
-  colored `cadquery.Assembly` (built by `Assembly.build_colored()`, colors
+  `cad_helpers.ColoredAssembly` (built by `Assembly.build_colored()`, colors
   from `utilities/colors.py`), not a single fused solid, so components and
   the case shell keep distinct colors in the viewer.
+- **Assemblies are always also rendered to glTF with one color per
+  component** so parts are easy to tell apart. Every component role needs its
+  own opaque entry in `utilities/colors.py` (`tests/test_colors.py` fails
+  otherwise); use transparency only where it helps you see inside — currently
+  the case shell (`"case"`, alpha 0.55). Any new assembly or build target that
+  groups parts must go through `Assembly.build_colored()` and export glTF too,
+  not just STEP/STL.
 
 ### Layout system
 
@@ -125,7 +147,7 @@ adapter that runs a recipe through the composer and returns placements;
 
 `keyboard/` is a self-contained geometry generator (see
 `docs/keyboard_architecture.md`) with **no dependency on cyberdeck code** —
-it must stay importable without CadQuery. The cyberdeck adapters
+it must stay importable without a CAD library. The cyberdeck adapters
 (`components/keyboard_plate.py`, `components/rp2040_keyboard.py`) extrude its
 model during the CAD pass.
 
@@ -135,7 +157,7 @@ Data flow: KLE JSON → `keyboard/layout/kle_parser.py` → internal
 (geometry libraries behind a common interface — the plate generator never
 knows which switch/stabilizer family it's using) →
 `keyboard/geometry/plate.py` (subtracts cutouts, adds mounting holes) →
-CadQuery solid, consumed by the cyberdeck assembly. Physical dimensions live
+solid, consumed by the cyberdeck assembly. Physical dimensions live
 in `keyboard/reference/*.yaml`, never hardcoded in source. Every generated
 plate is checked by `keyboard/validation.py` (no overlapping cutouts, switch
 inside outline, mounting holes inside plate, valid stabilizer spacing, etc.)
@@ -225,6 +247,9 @@ footprint with something above/below them:
 
 ## Docs
 
+`CONTEXT.md` (domain glossary), `docs/form_factor.md` (agreed shape),
+`docs/adr/` (decision records), `docs/reference/` (reference images).
+
 `docs/design_spec.md` (conventions/philosophy), `docs/coordinate_system.md`,
 `docs/component_spec.md` (datasheet-verified dimensions), `docs/cad_api.md`,
 `docs/keyboard_architecture.md` (full keyboard subsystem spec).
@@ -233,3 +258,13 @@ footprint with something above/below them:
 
 Use fff and codegraph MCPs for navigating the codebase.
 Use ripgrep's `rg` instead of regular `grep`.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on `eduard-sukharev/terminal-deck`, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` plus `docs/adr/` at the repo root. See `docs/agents/domain.md`.

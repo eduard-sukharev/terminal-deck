@@ -82,20 +82,20 @@ class Rp2040Zero(Component):
         it (z from -chip_thickness to 0) and the connector rises above the PCB
         top, protruding 1.4 mm past the +X edge.
         """
-        from utilities import cq_helpers
+        from utilities import cad_helpers
 
-        cq_helpers.require_cq()
+        cad_helpers.require_cad()
 
         # PCB: bottom on the mounting plane (z=0).
-        board = cq_helpers.box_centered(self.width, self.depth, self.pcb_thickness)
-        board = cq_helpers.translate(board, 0.0, 0.0, self.pcb_thickness / 2.0)
+        board = cad_helpers.box_centered(self.width, self.depth, self.pcb_thickness)
+        board = cad_helpers.translate(board, 0.0, 0.0, self.pcb_thickness / 2.0)
 
         # RP2040 chip on the underside, centred on the board.
-        chip = cq_helpers.box_centered(self.chip_size, self.chip_size, self.chip_thickness)
-        chip = cq_helpers.translate(chip, 0.0, 0.0, -self.chip_thickness / 2.0)
+        chip = cad_helpers.box_centered(self.chip_size, self.chip_size, self.chip_thickness)
+        chip = cad_helpers.translate(chip, 0.0, 0.0, -self.chip_thickness / 2.0)
 
         conn = self.connectors()[0]
-        block = cq_helpers.box_centered(conn.depth, conn.width, conn.height)
-        block = cq_helpers.translate(block, conn.x, 0.0, conn.z)
+        block = cad_helpers.box_centered(conn.depth, conn.width, conn.height)
+        block = cad_helpers.translate(block, conn.x, 0.0, conn.z)
 
-        return board.union(chip).union(block)
+        return cad_helpers.union(board, chip, block)

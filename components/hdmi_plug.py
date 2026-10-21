@@ -49,7 +49,7 @@ class MiniHdmiPlug(Component):
         self.height = float(data.get("height", 4.5))
         self.host = host
         # Both ends of the same ribbon are separate placements of this same
-        # class — a colored glTF export (cadquery.Assembly) requires every
+        # class — a colored glTF export (ColoredAssembly) requires every
         # part to have a unique name, so the two need to be told apart. The
         # class default still works for a build with only one instance.
         if label is not None:
@@ -120,8 +120,8 @@ class MiniHdmiPlug(Component):
         degrees, same as any other component whose local frame does not
         happen to match its world orientation.
         """
-        from utilities import cq_helpers
+        from utilities import cad_helpers
 
-        cq_helpers.require_cq()
-        body = cq_helpers.box_centered(self.width, self.protrusion, self.height)
-        return cq_helpers.translate(body, 0.0, 0.0, self.height / 2.0)
+        cad_helpers.require_cad()
+        body = cad_helpers.box_centered(self.width, self.protrusion, self.height)
+        return cad_helpers.translate(body, 0.0, 0.0, self.height / 2.0)

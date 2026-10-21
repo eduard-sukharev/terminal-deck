@@ -208,34 +208,31 @@ class UsbBreakout(Component):
         mid-plane; the micro-SD reader sits on the PCB's top surface instead.
         All ports overhang their PCB edge by ``port_protrusion``.
         """
-        from utilities import cq_helpers
+        from utilities import cad_helpers
 
-        cq_helpers.require_cq()
+        cad_helpers.require_cad()
         pcb_z = self._pcb_center_z()
-        board = cq_helpers.box_centered(self.width, self.depth, self.pcb_thickness)
-        board = cq_helpers.translate(board, 0.0, 0.0, pcb_z)
+        board = cad_helpers.box_centered(self.width, self.depth, self.pcb_thickness)
+        board = cad_helpers.translate(board, 0.0, 0.0, pcb_z)
 
         parts = [board]
         for (kind, w, h, d), x in zip(self._north_port_specs(), self._north_port_x_positions()):
             y = self.depth / 2.0 - d / 2.0 + self.protrusion
             if kind == "audio":
-                jack = cq_helpers.cylinder_centered(self.audio_diameter, d)
-                jack = cq_helpers.rotate_x(jack, 90.0)
-                parts.append(cq_helpers.translate(jack, x, y, pcb_z))
+                jack = cad_helpers.cylinder_centered(self.audio_diameter, d)
+                jack = cad_helpers.rotate_x(jack, 90.0)
+                parts.append(cad_helpers.translate(jack, x, y, pcb_z))
             elif kind == "microsd":
                 z = pcb_z + self.pcb_thickness / 2.0 + self.microsd_thickness / 2.0
-                reader = cq_helpers.box_centered(w, d, self.microsd_thickness)
-                parts.append(cq_helpers.translate(reader, x, y, z))
+                reader = cad_helpers.box_centered(w, d, self.microsd_thickness)
+                parts.append(cad_helpers.translate(reader, x, y, z))
             else:
-                port = cq_helpers.box_centered(w, d, h)
-                parts.append(cq_helpers.translate(port, x, y, pcb_z))
+                port = cad_helpers.box_centered(w, d, h)
+                parts.append(cad_helpers.translate(port, x, y, pcb_z))
 
         east_d = self.usb_a_depth
         east_x = self.width / 2.0 - east_d / 2.0 + self.protrusion
-        east_port = cq_helpers.box_centered(east_d, self.usb_a_width, self.usb_a_height)
-        parts.append(cq_helpers.translate(east_port, east_x, 0.0, pcb_z))
+        east_port = cad_helpers.box_centered(east_d, self.usb_a_width, self.usb_a_height)
+        parts.append(cad_helpers.translate(east_port, east_x, 0.0, pcb_z))
 
-        result = parts[0]
-        for part in parts[1:]:
-            result = result.union(part)
-        return result
+        return cad_helpers.union(parts[0], *parts[1:])

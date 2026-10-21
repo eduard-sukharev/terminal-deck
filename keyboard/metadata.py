@@ -50,9 +50,9 @@ class MountingHole:
 class KeyboardGeometryModel:
     """Complete intermediate representation of the keyboard plate.
 
-    Pure 2D/2.5D data — no CadQuery objects. The cyberdeck adapter
+    Pure 2D/2.5D data — no CAD objects. The cyberdeck adapter
     (:class:`~components.keyboard_plate.KeyboardPlate`) extrudes these
-    polygons into CadQuery solids.
+    polygons into solids.
     """
 
     plate_outline: list[tuple[float, float]]

@@ -57,7 +57,7 @@ class Assembly:
         wall thickness — never guessed.
 
         The XY envelope is sized symmetrically about the origin. Both shells
-        are built with :func:`cq_helpers.box_centered` at the world origin,
+        are built with :func:`cad_helpers.box_centered` at the world origin,
         which is the center of the base by definition
         (``docs/coordinate_system.md``), so a raw min-to-max span would let an
         off-center layout report a case that does not actually contain it —
@@ -239,7 +239,7 @@ class Assembly:
 
         Returns
         -------
-        cadquery.Workplane
+        Shape
             The union of all component solids.
         """
         return self.build_subset(self.placements)
@@ -256,7 +256,7 @@ class Assembly:
 
         Returns
         -------
-        cadquery.Workplane
+        Shape
             The union of the selected component solids.
 
         Raises
@@ -264,26 +264,22 @@ class Assembly:
         ValueError
             ``placements`` is empty.
         """
-        from utilities import cq_helpers
+        from utilities import cad_helpers
 
-        cq_helpers.require_cq()
         parts = []
         for placement in placements:
             solid = placement.component.build()
             if placement.rotation:
-                solid = cq_helpers.rotate_z(solid, placement.rotation)
+                solid = cad_helpers.rotate_z(solid, placement.rotation)
             if placement.flip_x:
-                solid = cq_helpers.rotate_x(solid, 180.0)
+                solid = cad_helpers.rotate_x(solid, 180.0)
             if placement.tilt_x:
-                solid = cq_helpers.rotate_x(solid, placement.tilt_x)
-            solid = cq_helpers.translate(solid, placement.x, placement.y, placement.z)
+                solid = cad_helpers.rotate_x(solid, placement.tilt_x)
+            solid = cad_helpers.translate(solid, placement.x, placement.y, placement.z)
             parts.append(solid)
         if not parts:
             raise ValueError("no placements to assemble")
-        result = parts[0]
-        for part in parts[1:]:
-            result = result.union(part)
-        return result
+        return cad_helpers.union(parts[0], *parts[1:])
 
     def build_colored(
         self,
@@ -292,7 +288,7 @@ class Assembly:
         assembly: Any | None = None,
         extra_parts: list[tuple[str, Any]] | None = None,
     ):
-        """Build a ``cadquery.Assembly`` with one colored child per part.
+        """Build a ``ColoredAssembly`` with one colored child per part.
 
         Unlike :meth:`build`/:meth:`build_subset`, which fuse everything into
         a single boolean solid, this keeps each component (and any
@@ -310,7 +306,7 @@ class Assembly:
             look up each component's color in ``utilities.colors``. A
             component missing from the map falls back to its ``.name``,
             then to the palette's default color.
-        assembly : cadquery.Assembly or None
+        assembly : ColoredAssembly or None
             Existing assembly to add children to; a new one is created if
             omitted (so callers can compose a case shell with components in
             one call, e.g. via ``extra_parts``).
@@ -321,29 +317,28 @@ class Assembly:
 
         Returns
         -------
-        cadquery.Assembly
+        ColoredAssembly
         """
-        from utilities import cq_helpers
+        from utilities import cad_helpers
         from utilities.colors import color_for
 
-        cq = cq_helpers.require_cq()
         placements = self.placements if placements is None else placements
         role_map = role_map or {}
-        assy = assembly if assembly is not None else cq.Assembly()
+        assy = assembly if assembly is not None else cad_helpers.new_assembly()
 
         for placement in placements:
             solid = placement.component.build()
             if placement.rotation:
-                solid = cq_helpers.rotate_z(solid, placement.rotation)
+                solid = cad_helpers.rotate_z(solid, placement.rotation)
             if placement.flip_x:
-                solid = cq_helpers.rotate_x(solid, 180.0)
+                solid = cad_helpers.rotate_x(solid, 180.0)
             if placement.tilt_x:
-                solid = cq_helpers.rotate_x(solid, placement.tilt_x)
-            solid = cq_helpers.translate(solid, placement.x, placement.y, placement.z)
+                solid = cad_helpers.rotate_x(solid, placement.tilt_x)
+            solid = cad_helpers.translate(solid, placement.x, placement.y, placement.z)
             role = role_map.get(id(placement.component), placement.component.name)
-            assy.add(solid, name=placement.component.name, color=cq.Color(*color_for(role)))
+            cad_helpers.assembly_add(assy, solid, placement.component.name, color_for(role))
 
         for role, solid in extra_parts or []:
-            assy.add(solid, name=role, color=cq.Color(*color_for(role)))
+            cad_helpers.assembly_add(assy, solid, role, color_for(role))
 
         return assy

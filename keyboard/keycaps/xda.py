@@ -14,7 +14,7 @@ from keyboard.registry import register_keycap
 
 @register_keycap("xda")
 class XdaKeycap:
-    """XDA profile keycap — data only, no CadQuery."""
+    """XDA profile keycap — data only, no CAD library."""
 
     def base_size(self) -> float:
         return 18.5
@@ -28,6 +28,9 @@ class XdaKeycap:
     def segments(self) -> int:
         return 32
 
+    def base_chamfer(self) -> float:
+        return 1.0  # TODO: measure — corner softening of the cap's base
+
     def metadata(self) -> dict[str, Any]:
         return {
             "profile": "xda",
@@ -35,4 +38,5 @@ class XdaKeycap:
             "top_diameter": 15.0,
             "height": 9.0,
             "segments": 32,
+            "base_chamfer": 1.0,
         }

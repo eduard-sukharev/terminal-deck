@@ -103,16 +103,16 @@ def build(spec: CradleSpec):
 
     Returns
     -------
-    cadquery.Workplane
+    Shape
         The saddle solid.
     """
-    from utilities import cq_helpers
+    from utilities import cad_helpers
 
-    cq_helpers.require_cq()
+    cad_helpers.require_cad()
     half = spec.block_half_width
-    block = cq_helpers.box_centered(2 * half, spec.width, spec.height)
-    block = cq_helpers.translate(block, 0.0, 0.0, spec.height / 2.0)
-    groove = cq_helpers.cylinder_centered(2 * spec.groove_radius, spec.width + 2.0)
-    groove = groove.rotate((0, 0, 0), (1, 0, 0), 90.0)
-    groove = cq_helpers.translate(groove, 0.0, 0.0, spec.cell_center_z)
-    return block.cut(groove)
+    block = cad_helpers.box_centered(2 * half, spec.width, spec.height)
+    block = cad_helpers.translate(block, 0.0, 0.0, spec.height / 2.0)
+    groove = cad_helpers.cylinder_centered(2 * spec.groove_radius, spec.width + 2.0)
+    groove = cad_helpers.rotate_x(groove, 90.0)
+    groove = cad_helpers.translate(groove, 0.0, 0.0, spec.cell_center_z)
+    return cad_helpers.cut(block, groove)

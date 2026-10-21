@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The keyboard subsystem is a geometry generator that converts a keyboard layout into reusable CadQuery geometry for the cyberdeck assembly.
+The keyboard subsystem is a geometry generator that converts a keyboard layout into reusable build123d geometry for the cyberdeck assembly.
 
 It is **not** a keyboard CAD application.
 
@@ -23,7 +23,7 @@ Its responsibility ends with producing accurate keyboard geometry and metadata t
 The subsystem must satisfy the following requirements.
 
 * Entirely scriptable
-* Native CadQuery output
+* Native build123d output
 * Fully parametric
 * Independent of any particular enclosure
 * Independent of any switch family
@@ -59,7 +59,7 @@ The subsystem produces:
 * bounding box
 * key metadata
 * switch center locations
-* CadQuery solid
+* build123d solid
 * optional DXF export
 
 No enclosure geometry is generated.
@@ -138,7 +138,7 @@ Plate Generator
 
 ↓
 
-CadQuery Solid
+build123d Solid
 
 ↓
 
@@ -326,7 +326,7 @@ For every key
 
 Generate mounting holes
 
-Return CadQuery solid
+Return build123d solid
 ```
 
 The generator contains almost no keyboard-specific knowledge.
@@ -389,9 +389,9 @@ The enclosure generator later creates bosses that align with these holes.
 
 ---
 
-# CadQuery Integration
+# build123d Integration
 
-The keyboard subsystem exports native CadQuery objects.
+The keyboard subsystem exports native build123d objects.
 
 Example:
 
@@ -537,7 +537,7 @@ The following rules should be followed throughout implementation.
 * Keep layout, geometry and assembly strictly separated.
 * Every hardware family should be implemented as a replaceable module.
 * Prefer immutable reference data over embedded constants.
-* Produce native CadQuery geometry rather than intermediate CAD files.
+* Produce native build123d geometry rather than intermediate CAD files.
 * Expose metadata alongside geometry.
 * Build the plate entirely from reusable switch and stabilizer libraries.
 * Keep the keyboard subsystem completely independent from the cyberdeck enclosure while making its outputs straightforward to consume by the enclosure generator.

@@ -137,20 +137,20 @@ class OrangePiZero2W(Component):
 
     def build(self):
         """Generate the SBC solid: PCB, SoC block, connector sockets, holes."""
-        from utilities import cq_helpers
+        from utilities import cad_helpers
 
-        cq_helpers.require_cq()
-        pcb = cq_helpers.box_centered(self.width, self.depth, self.pcb_thickness)
-        pcb = cq_helpers.translate(pcb, 0.0, 0.0, self.pcb_thickness / 2.0)
+        cad_helpers.require_cad()
+        pcb = cad_helpers.box_centered(self.width, self.depth, self.pcb_thickness)
+        pcb = cad_helpers.translate(pcb, 0.0, 0.0, self.pcb_thickness / 2.0)
 
         # Bottom-side SOP-8 SPI flash (measured 2.0 mm tall, below the PCB).
         body = pcb
-        flash = cq_helpers.box_centered(6.0, 4.0, 2.0)
-        body = body.union(cq_helpers.translate(flash, 8.0, 6.0, 1.0))
+        flash = cad_helpers.box_centered(6.0, 4.0, 2.0)
+        body = cad_helpers.union(body, cad_helpers.translate(flash, 8.0, 6.0, 1.0))
 
         # Top-side SoC/memory block (sits under the tallest sockets at 3.3 mm).
-        soc = cq_helpers.box_centered(10.0, 10.0, 3.3)
-        body = body.union(cq_helpers.translate(soc, -8.0, 0.0, self.pcb_thickness + 1.65))
+        soc = cad_helpers.box_centered(10.0, 10.0, 3.3)
+        body = cad_helpers.union(body, cad_helpers.translate(soc, -8.0, 0.0, self.pcb_thickness + 1.65))
 
         # Connector socket blocks on the south/west edges.
         sockets = [
@@ -160,12 +160,12 @@ class OrangePiZero2W(Component):
             (-26.8, -7.9, 11.4, 11.4, 1.4),   # microSD (west)
         ]
         for x, y, w, d, h in sockets:
-            block = cq_helpers.box_centered(w, d, h)
-            block = cq_helpers.translate(block, x, y, self.pcb_thickness + h / 2.0)
-            body = body.union(block)
+            block = cad_helpers.box_centered(w, d, h)
+            block = cad_helpers.translate(block, x, y, self.pcb_thickness + h / 2.0)
+            body = cad_helpers.union(body, block)
 
         for hole in self.mounting_holes():
-            bore = cq_helpers.cylinder_centered(hole.diameter, self.height + 1.0)
-            bore = cq_helpers.translate(bore, hole.x, hole.y, self.height / 2.0)
-            body = body.cut(bore)
+            bore = cad_helpers.cylinder_centered(hole.diameter, self.height + 1.0)
+            bore = cad_helpers.translate(bore, hole.x, hole.y, self.height / 2.0)
+            body = cad_helpers.cut(body, bore)
         return body

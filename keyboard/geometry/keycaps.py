@@ -108,6 +108,28 @@ def stadium_vertices(
     return verts
 
 
+def chamfered_rect_vertices(
+    width: float, depth: float, chamfer: float
+) -> list[tuple[float, float]]:
+    """Return the 8 vertices of a rectangle with its four corners cut off.
+
+    The low-poly stand-in for :func:`stadium_vertices` /
+    :func:`rectangle_vertices`: a keycap lofted between two of these has
+    10 faces instead of ~34. ``chamfer`` is the leg length of each corner
+    cut (mm), clamped just under half the shorter side so no vertices
+    collapse together. Vertices run counter-clockwise starting on the +X edge,
+    so two outlines of different size pair 1:1 for a ruled loft.
+    """
+    hw, hd = width / 2.0, depth / 2.0
+    k = min(chamfer, 0.99 * min(hw, hd))
+    return [
+        (hw, -(hd - k)), (hw, hd - k),
+        (hw - k, hd), (-(hw - k), hd),
+        (-hw, hd - k), (-hw, -(hd - k)),
+        (-(hw - k), -hd), (hw - k, -hd),
+    ]
+
+
 def keycap_specs(
     keys: list[Key],
     profile: Any,
@@ -133,13 +155,14 @@ def keycap_specs(
     list[dict]
         One dict per key with keys: ``x``, ``y``, ``rotation``, ``base_w``,
         ``base_d``, ``top_w``, ``top_d``, ``corner_radius``, ``height``,
-        ``segments``.
+        ``segments``, ``base_chamfer``, ``top_chamfer``.
     """
     cx, cy = layout_centroid
     base_size = profile.base_size()
     top_diameter = profile.top_diameter()
     cap_height = profile.height()
     segments = profile.segments()
+    base_chamfer = profile.base_chamfer()
 
     result: list[dict[str, float | int]] = []
     for key in keys:
@@ -155,6 +178,10 @@ def keycap_specs(
         top_w = key.width * top_diameter
         top_d = key.height * top_diameter
         corner_radius = min(top_w, top_d) / 2.0
+        # Chamfer tangent to the round top: a circle of radius r inside its
+        # bounding square is touched by the chamfer line x + y = r*sqrt(2),
+        # which cuts each corner by a leg of r * (2 - sqrt(2)).
+        top_chamfer = corner_radius * (2.0 - math.sqrt(2.0))
 
         result.append({
             "x": x,
@@ -167,5 +194,7 @@ def keycap_specs(
             "corner_radius": corner_radius,
             "height": cap_height,
             "segments": segments,
+            "base_chamfer": base_chamfer,
+            "top_chamfer": top_chamfer,
         })
     return result

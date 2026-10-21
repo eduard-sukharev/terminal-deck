@@ -74,24 +74,20 @@ class Hinge(Component):
         The hinge axis runs along X through the origin. The caller translates
         the result to the case rear edge.
         """
-        from utilities import cq_helpers
+        from utilities import cad_helpers
 
-        cq = cq_helpers.require_cq()
         xl, xr = self.barrel_offsets(case_depth)
         # Each barrel is a short cylinder along the hinge axis near the case
         # edge; barrel_offsets spans the two ends of the hinge edge.
         barrel_len = self.diameter
         parts = []
         for cx in (xl, xr):
-            barrel = cq.Workplane("XY").cylinder(radius=self.diameter / 2.0, height=barrel_len)
-            barrel = barrel.rotate((0, 0, 0), (0, 1, 0), 90).translate((cx, 0, 0))
-            bore = cq.Workplane("XY").cylinder(radius=self.pin / 2.0, height=barrel_len + 1.0)
-            bore = bore.rotate((0, 0, 0), (0, 1, 0), 90).translate((cx, 0, 0))
-            parts.append(barrel.cut(bore))
-        result = parts[0]
-        for part in parts[1:]:
-            result = result.union(part)
-        return result
+            barrel = cad_helpers.cylinder_centered(self.diameter, barrel_len)
+            barrel = cad_helpers.translate(cad_helpers.rotate_y(barrel, 90), cx, 0, 0)
+            bore = cad_helpers.cylinder_centered(self.pin, barrel_len + 1.0)
+            bore = cad_helpers.translate(cad_helpers.rotate_y(bore, 90), cx, 0, 0)
+            parts.append(cad_helpers.cut(barrel, bore))
+        return cad_helpers.union(parts[0], *parts[1:])
 
 
 class HingePin(Component):
@@ -108,11 +104,10 @@ class HingePin(Component):
 
     def build(self, case_depth: float = 90.0):
         """Generate the hinge pin solid (axis along X)."""
-        from utilities import cq_helpers
+        from utilities import cad_helpers
 
-        cq = cq_helpers.require_cq()
-        pin = cq.Workplane("XY").cylinder(radius=self.pin / 2.0, height=case_depth)
-        return pin.rotate((0, 0, 0), (0, 1, 0), 90)
+        pin = cad_helpers.cylinder_centered(self.pin, case_depth)
+        return cad_helpers.rotate_y(pin, 90)
 
 
 class WireTunnel(Component):
@@ -129,8 +124,7 @@ class WireTunnel(Component):
 
     def build(self, case_depth: float = 90.0):
         """Generate the wire tunnel solid (axis along X; a void marker)."""
-        from utilities import cq_helpers
+        from utilities import cad_helpers
 
-        cq = cq_helpers.require_cq()
-        tunnel = cq.Workplane("XY").cylinder(radius=self.wire_tunnel / 2.0, height=case_depth)
-        return tunnel.rotate((0, 0, 0), (0, 1, 0), 90)
+        tunnel = cad_helpers.cylinder_centered(self.wire_tunnel, case_depth)
+        return cad_helpers.rotate_y(tunnel, 90)

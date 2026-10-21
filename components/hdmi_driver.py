@@ -122,11 +122,11 @@ class HdmiDriver(Component):
 
     def build(self):
         """Generate the driver board solid: PCB, socket blocks, mounting holes."""
-        from utilities import cq_helpers
+        from utilities import cad_helpers
 
-        cq_helpers.require_cq()
-        pcb = cq_helpers.box_centered(self.width, self.depth, self.pcb_thickness)
-        pcb = cq_helpers.translate(pcb, 0.0, 0.0, self.pcb_thickness / 2.0)
+        cad_helpers.require_cad()
+        pcb = cad_helpers.box_centered(self.width, self.depth, self.pcb_thickness)
+        pcb = cad_helpers.translate(pcb, 0.0, 0.0, self.pcb_thickness / 2.0)
 
         # Socket blocks sit on top of the PCB at the connector positions.
         sockets = [
@@ -136,12 +136,12 @@ class HdmiDriver(Component):
         ]
         body = pcb
         for x, y, w, d, h in sockets:
-            block = cq_helpers.box_centered(w, d, h)
-            block = cq_helpers.translate(block, x, y, self.pcb_thickness + h / 2.0)
-            body = body.union(block)
+            block = cad_helpers.box_centered(w, d, h)
+            block = cad_helpers.translate(block, x, y, self.pcb_thickness + h / 2.0)
+            body = cad_helpers.union(body, block)
 
         for hole in self.mounting_holes():
-            bore = cq_helpers.cylinder_centered(hole.diameter, self.height + 1.0)
-            bore = cq_helpers.translate(bore, hole.x, hole.y, self.height / 2.0)
-            body = body.cut(bore)
+            bore = cad_helpers.cylinder_centered(hole.diameter, self.height + 1.0)
+            bore = cad_helpers.translate(bore, hole.x, hole.y, self.height / 2.0)
+            body = cad_helpers.cut(body, bore)
         return body

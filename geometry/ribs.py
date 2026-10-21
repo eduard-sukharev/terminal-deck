@@ -105,14 +105,14 @@ def build(spec: RibSpec, panel_width: float, panel_depth: float):
 
     Returns
     -------
-    list[cadquery.Workplane]
+    list[Shape]
         The rib solids (union into the shell by the caller).
     """
-    from utilities import cq_helpers
+    from utilities import cad_helpers
 
-    cq_helpers.require_cq()
+    cad_helpers.require_cad()
     ribs = []
     for pos in spec.positions:
-        rib = cq_helpers.box_centered(spec.thickness, panel_depth, spec.height)
-        ribs.append(cq_helpers.translate(rib, pos, 0.0, spec.height / 2.0))
+        rib = cad_helpers.box_centered(spec.thickness, panel_depth, spec.height)
+        ribs.append(cad_helpers.translate(rib, pos, 0.0, spec.height / 2.0))
     return ribs

@@ -238,11 +238,11 @@ class Component(ABC):
         return (0.0, 0.0, 0.0)
 
     def build(self):
-        """Generate the component's CadQuery geometry.
+        """Generate the component's CAD geometry.
 
         Returns
         -------
-        cadquery.Shape
+        Shape
             The solid model centered on the component origin.
 
         Raises

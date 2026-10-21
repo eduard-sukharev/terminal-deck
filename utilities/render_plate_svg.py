@@ -1,6 +1,6 @@
 """Render the keyboard switch plate as a high-contrast 2D SVG/PNG.
 
-Pure-data render (no CadQuery): draws the plate outline, switch cutouts,
+Pure-data render (no CAD library): draws the plate outline, switch cutouts,
 stabilizer cutouts, and mounting holes from the generated geometry model.
 Uses ``fill-rule="evenodd"`` so cutouts show as holes. For vision-model QA.
 

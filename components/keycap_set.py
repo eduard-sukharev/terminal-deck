@@ -1,8 +1,12 @@
 """Keycap set — cyberdeck CAD adapter for the keycap geometry model.
 
-Builds one lofted keycap per switch centre using the profile registered in
-the keycap registry.  Switch housings are **not** rendered — only the plate
-cutouts and the keycaps above them.
+Builds one simplified keycap per switch centre using the profile registered
+in the keycap registry: a ruled loft between two chamfered rectangles (the
+base footprint and the smaller, rounder top), 10 faces per cap. That keeps the
+footprint, taper, height and rounded top while staying cheap to build — the
+earlier 32-point sampled outlines made the keyboard the slowest part of the
+whole build. Switch housings are **not** rendered — only the plate cutouts
+and the keycaps above them.
 """
 
 from __future__ import annotations
@@ -18,7 +22,7 @@ CAP_PLATE_GAP: float = 5.5
 
 
 class KeycapSet:
-    """A set of keycaps lofted above the switch plate.
+    """A set of simplified keycaps above the switch plate.
 
     Parameters
     ----------
@@ -63,18 +67,17 @@ class KeycapSet:
     def build(self) -> Any:
         """Build the keycap set solid.
 
-        Returns a CadQuery Workplane (or an empty compound if disabled).
+        Returns a shape (or an empty compound if disabled).
         """
         if not self._enabled or not self._positions:
-            from utilities.cq_helpers import require_cq
-            cq = require_cq()
-            return cq.Workplane("XY")
+            from utilities import cad_helpers
+            return cad_helpers.empty_solid()
 
         from keyboard.registry import get_keycap
-        from keyboard.geometry.keycaps import keycap_specs, rectangle_vertices, stadium_vertices
-        from utilities import cq_helpers
+        from keyboard.geometry.keycaps import chamfered_rect_vertices, keycap_specs
+        from utilities import cad_helpers
 
-        cq_helpers.require_cq()
+        cad_helpers.require_cad()
 
         profile_cls = get_keycap(self._profile_name)
         profile = profile_cls()
@@ -88,26 +91,23 @@ class KeycapSet:
         caps: list[Any] = []
 
         for sp, s in zip(self._positions, specs):
-            bottom = rectangle_vertices(
-                float(s["base_w"]), float(s["base_d"]),
-                int(s["segments"]),
+            bottom = chamfered_rect_vertices(
+                float(s["base_w"]), float(s["base_d"]), float(s["base_chamfer"]),
             )
-            top = stadium_vertices(
-                float(s["top_w"]), float(s["top_d"]),
-                float(s["corner_radius"]),
-                int(s["segments"]),
+            top = chamfered_rect_vertices(
+                float(s["top_w"]), float(s["top_d"]), float(s["top_chamfer"]),
             )
-            cap = cq_helpers.loft_between(
+            cap = cad_helpers.loft_between(
                 bottom, top, float(s["height"]),
                 x=sp[0], y=sp[1], z=cap_z,
             )
 
             rot = float(s["rotation"])
             if rot:
-                cap = cq_helpers.rotate_z(cap, rot)
+                cap = cad_helpers.rotate_z(cap, rot)
 
             caps.append(cap)
 
         if not caps:
-            return cq_helpers.require_cq().Workplane("XY")
-        return cq_helpers.make_compound(caps)
+            return cad_helpers.empty_solid()
+        return cad_helpers.make_compound(caps)

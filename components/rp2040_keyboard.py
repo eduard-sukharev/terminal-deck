@@ -3,7 +3,7 @@
 The physical keyboard is the Cherry-MX-compatible switch plate driven by a
 Waveshare RP2040-Zero running QMK/Vial. Plate geometry comes from the
 :mod:`keyboard` package (KLE layout → geometry model); this component is the
-cyberdeck adapter that produces the CadQuery solid.
+cyberdeck adapter that produces the solid.
 
 The controller is **not** part of this component: it is placed separately on
 the case floor (``components/rp2040_zero.py``, role ``controller`` in the
@@ -298,9 +298,9 @@ class Rp2040Keyboard(Component):
         bodies protruding through the cutouts and keycaps lofted above them.
         """
         from components.keycap_set import KeycapSet
-        from utilities import cq_helpers
+        from utilities import cad_helpers
 
-        cq_helpers.require_cq()
+        cad_helpers.require_cad()
 
         plate = self._plate.build()
 
@@ -316,16 +316,16 @@ class Rp2040Keyboard(Component):
         pin_center_z = self._plate_thickness - cube_bottom_offset - switch_pin_height / 2.0
         switch_shapes: list[Any] = []
         for x, y in self.switch_grid:
-            cube = cq_helpers.box_centered(switch_body_size, switch_body_size, switch_body_size)
-            cube = cq_helpers.translate(cube, x, y, cube_center_z)
+            cube = cad_helpers.box_centered(switch_body_size, switch_body_size, switch_body_size)
+            cube = cad_helpers.translate(cube, x, y, cube_center_z)
             switch_shapes.append(cube)
-            pin = cq_helpers.cylinder_centered(switch_pin_diameter, switch_pin_height)
-            pin = cq_helpers.translate(pin, x, y, pin_center_z)
+            pin = cad_helpers.cylinder_centered(switch_pin_diameter, switch_pin_height)
+            pin = cad_helpers.translate(pin, x, y, pin_center_z)
             switch_shapes.append(pin)
-        body = plate.union(cq_helpers.make_compound(switch_shapes))
+        body = cad_helpers.union(plate, cad_helpers.make_compound(switch_shapes))
 
         # Raise the plate assembly onto its standoffs.
-        body = cq_helpers.translate(body, 0.0, 0.0, self._plate_raise)
+        body = cad_helpers.translate(body, 0.0, 0.0, self._plate_raise)
 
         # Keycaps lofted above the plate (compound, fused in one op).
         self._plate._ensure_model()
@@ -340,4 +340,4 @@ class Rp2040Keyboard(Component):
             layout_centroid=centroid,
             enabled=self._keycap_enabled,
         )
-        return body.union(caps.build())
+        return cad_helpers.union(body, caps.build())

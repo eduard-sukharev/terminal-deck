@@ -50,7 +50,7 @@ def generate(
     Returns
     -------
     KeyboardGeometryModel
-        Pure-data geometry model ready for the CadQuery adapter.
+        Pure-data geometry model ready for the CAD adapter.
     """
     pitch = layout.pitch
     centroid = layout._centroid()

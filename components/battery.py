@@ -166,14 +166,14 @@ class Battery(Component):
         """Generate the pack solid: one cylinder per cell, lying along +Y,
         the pack bottom-aligned at the origin.
         """
-        from utilities import cq_helpers
+        from utilities import cad_helpers
 
-        cq_helpers.require_cq()
+        cad_helpers.require_cad()
         result = None
         for cx, cy in self._cell_centers():
             # cylinder_centered builds along Z; lay it down onto +Y.
-            cell = cq_helpers.cylinder_centered(self.cell_diameter, self.cell_length)
-            cell = cell.rotate((0, 0, 0), (1, 0, 0), 90.0)
-            cell = cq_helpers.translate(cell, cx, cy, self.cell_diameter / 2.0)
-            result = cell if result is None else result.union(cell)
+            cell = cad_helpers.cylinder_centered(self.cell_diameter, self.cell_length)
+            cell = cad_helpers.rotate_x(cell, 90.0)
+            cell = cad_helpers.translate(cell, cx, cy, self.cell_diameter / 2.0)
+            result = cell if result is None else cad_helpers.union(result, cell)
         return result

@@ -32,7 +32,8 @@ load configuration -> load components -> place layout -> validate placement
 | Method | Consumes | Produces |
 |--------|----------|----------|
 | `Base.build()` | placements, config | base shell + walls/bosses/ribs/vents/cutouts |
-| `Lid.build()` | display, config | lid shell + bezel + glass recess + mounts |
+| `Lid.build_base()` | display, config | Lid shell (to be renamed, see CONTEXT.md) |
+| `Lid.build_bezel()` | display, config | Bezel + glass opening |
 
 ### Components (`components/`)
 
@@ -41,11 +42,15 @@ reference origin.
 
 ### Exports (`exports/`)
 
-`Exporter.export(shape, path)` — implemented; delegates to CadQuery exporters.
+`Exporter.export(shape, path)` — implemented; delegates to build123d exporters.
 
 ## Rules
 
 * No magic numbers. Every dimension from config / measured / calculated.
+* Every assembly build also exports a glTF with one color per component
+  (`Assembly.build_colored()`, palette in `utilities/colors.py`) so parts are
+  easy to distinguish. Each component role gets its own opaque color; apply
+  transparency only where it makes the inside visible (the case shell).
 * `wall_thickness = config.wall.thickness` is the single wall parameter.
 * Fillets use `config.corners.edge_radius` and `config.corners.radius`.
 * Heat inserts come from `utilities/fasteners.py`, never recreated.

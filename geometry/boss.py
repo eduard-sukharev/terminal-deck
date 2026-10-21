@@ -8,7 +8,7 @@ A boss couples a screw/insert to the shell wall. Inputs:
 * wall thickness
 
 The boss geometry (outer diameter, height, wall standoff) is *calculated*
-here; the CadQuery solid is generated in :func:`build`.
+here; the solid is generated in :func:`build`.
 """
 
 from __future__ import annotations
@@ -46,6 +46,31 @@ class BossSpec:
     def sleeve_thickness(self) -> float:
         """Material between the bore and the boss outer diameter (mm)."""
         return (self.outer_diameter - self.hole_diameter) / 2
+
+    @property
+    def base_diameter(self) -> float:
+        """Diameter of the boss's floor-contact footprint (mm).
+
+        Per the FDM boss-design rule ("widen the base"), the printed
+        footprint that actually carries load into the floor is wider than
+        the boss's nominal outer diameter: one more full
+        :attr:`sleeve_thickness` of material on each side, i.e. the sleeve is
+        doubled right at the floor. Derived from the boss's own proportions
+        rather than an independent literal, so it scales with screw/insert
+        size automatically.
+        """
+        return self.outer_diameter + 2 * self.sleeve_thickness
+
+    @property
+    def flare_height(self) -> float:
+        """Height of the tapered flare from :attr:`base_diameter` to :attr:`outer_diameter` (mm).
+
+        Tied to ``wall_thickness`` — the same local structural scale the
+        rest of the shell is sized against — and capped at the boss's own
+        height so a very short boss flares over its full height instead of
+        overshooting it.
+        """
+        return min(self.height, self.wall_thickness)
 
 
 def boss_spec(
@@ -106,6 +131,15 @@ def boss_spec(
 def build(spec: BossSpec, x: float = 0.0, y: float = 0.0):
     """Generate a boss solid centered at (x, y).
 
+    The body is a freestanding post that flares out to
+    :attr:`BossSpec.base_diameter` over the bottom :attr:`BossSpec.flare_height`
+    (self-supporting — it widens going *down* to the floor, not up, so it
+    needs no bridging/overhang support) before continuing straight at
+    :attr:`BossSpec.outer_diameter`, per the FDM "widen the base" rule: this
+    also removes the sharp boss-to-floor right-angle junction the flat rule
+    separately calls out, replacing it with a continuous taper instead of a
+    tacked-on chamfer.
+
     Parameters
     ----------
     spec : BossSpec
@@ -115,15 +149,22 @@ def build(spec: BossSpec, x: float = 0.0, y: float = 0.0):
 
     Returns
     -------
-    cadquery.Workplane
+    Shape
         The boss solid, rising from the shell floor (z=0) to ``spec.height``,
         with the bore removed.
     """
-    from utilities import cq_helpers
+    from utilities import cad_helpers
 
-    cq_helpers.require_cq()
-    body = cq_helpers.cylinder_centered(spec.outer_diameter, spec.height)
-    body = cq_helpers.translate(body, x, y, spec.height / 2.0)
-    bore = cq_helpers.cylinder_centered(spec.hole_diameter, spec.height)
-    bore = cq_helpers.translate(bore, x, y, spec.height / 2.0)
-    return body.cut(bore)
+    cad_helpers.require_cad()
+    flare_h = spec.flare_height
+    flare = cad_helpers.frustum_centered(spec.base_diameter, spec.outer_diameter, flare_h)
+    flare = cad_helpers.translate(flare, x, y, flare_h / 2.0)
+    body = flare
+    if flare_h < spec.height:
+        upper_h = spec.height - flare_h
+        upper = cad_helpers.cylinder_centered(spec.outer_diameter, upper_h)
+        upper = cad_helpers.translate(upper, x, y, flare_h + upper_h / 2.0)
+        body = cad_helpers.union(body, upper)
+    bore = cad_helpers.cylinder_centered(spec.hole_diameter, spec.height)
+    bore = cad_helpers.translate(bore, x, y, spec.height / 2.0)
+    return cad_helpers.cut(body, bore)

@@ -1,5 +1,5 @@
-# Cyberdeck CAD build — run after activating the miniforge environment.
-#   source $HOME/miniforge/bin/activate
+# Cyberdeck CAD build — run inside the `cyberdeck` conda env.
+#   conda activate cyberdeck   (setup: see AGENTS.md)
 #   make data       # data layer only (config → components → layout → validation)
 #   make all        # full CAD + exports (STEP/STL/SVG/glTF)
 #   make display    # display sub-assembly only (LCD + HDMI driver, fast)

@@ -12,7 +12,7 @@ Every build runs these checks before and after enclosure generation:
 * Hinge clears (hinge geometry does not intersect components)
 
 The checks operate on pure data (placements + component specs) so they run
-without CadQuery.
+without a CAD library.
 """
 
 from __future__ import annotations

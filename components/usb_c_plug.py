@@ -124,8 +124,8 @@ class UsbCPlug(Component):
         this box so that axis points out of the port. A port on an X-facing
         edge would need the placement rotated 90 degrees.
         """
-        from utilities import cq_helpers
+        from utilities import cad_helpers
 
-        cq_helpers.require_cq()
-        body = cq_helpers.box_centered(self.width, self.protrusion, self.height)
-        return cq_helpers.translate(body, 0.0, 0.0, self.height / 2.0)
+        cad_helpers.require_cad()
+        body = cad_helpers.box_centered(self.width, self.protrusion, self.height)
+        return cad_helpers.translate(body, 0.0, 0.0, self.height / 2.0)

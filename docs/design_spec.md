@@ -1,6 +1,6 @@
 # Cyberdeck CAD Generator – LLM Handoff Specification
 
-This document defines the architecture, conventions, directory layout, APIs, and implementation strategy for an autonomous LLM tasked with designing a fully parametric cyberdeck in CadQuery. The intent is to minimize ambiguity and prevent the model from hardcoding dimensions or creating monolithic CAD scripts.
+This document defines the architecture, conventions, directory layout, APIs, and implementation strategy for an autonomous LLM tasked with designing a fully parametric cyberdeck in build123d (see docs/adr/0002). The intent is to minimize ambiguity and prevent the model from hardcoding dimensions or creating monolithic CAD scripts.
 
 ---
 
@@ -81,20 +81,15 @@ QMK/Vial firmware
 
 ## Case Style
 
-Inspired by:
-
-* Micro Journal Rev2
-* Micro Journal Rev2 Revamp
-* Micro Journal Rev8
-
-But **NOT** copied.
+See `docs/form_factor.md` (references: NEC MobilePro 900, Jornada P6,
+Micro Journal Rev.2 ReVamp's visor). Not copied.
 
 Desired characteristics:
 
 * clamshell
 * compact
 * flat bottom
-* large palm rest
+* no palm rest
 * minimal bezel
 * easily printable
 
@@ -196,7 +191,7 @@ cyberdeck/
     utilities/
 
         constants.py
-        cq_helpers.py
+        cad_helpers.py
         validation.py
 
     generated/
@@ -516,7 +511,7 @@ overall_height()
 Single parameter.
 
 ```
-wall_thickness = 2.5
+wall_thickness = config.wall.thickness  # see config/default.yaml
 ```
 
 Everything derives from this.
@@ -754,39 +749,8 @@ Hinge clears
 
 # Configuration Example
 
-```yaml
-wall:
-  thickness: 2.5
-
-corners:
-  radius: 8
-
-display:
-
-  width: 219.52
-
-  height: 54.88
-
-  thickness: 5.6
-
-keyboard:
-
-  columns: 12
-
-  rows: 4
-
-hinge:
-
-  diameter: 10
-
-  pin: 3
-
-clearance:
-
-  shell: 0.35
-
-  insert: 0.2
-```
+See `config/*.yaml` — the config files are the source of truth; this spec
+carries no example numbers.
 
 ---
 
@@ -872,7 +836,7 @@ The architecture should support replacing any major module without modifying unr
 * Display (8.8" ultrawide → 7" 16:10 → 10.1")
 * Keyboard (40% → 60% → split)
 * Hinge (barrel → torque → friction)
-* Battery (external only → internal Li-ion pack)
+* Battery (internal Li-ion pack, implemented)
 * Alternate lid designs (single panel → dual display → accessory panel)
 
 If component interfaces remain stable, the enclosure should regenerate correctly after configuration changes with minimal or no code modifications.

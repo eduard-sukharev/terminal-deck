@@ -44,7 +44,7 @@ assemblies/    collision / clearance / enclosure resolution
 case/          base and lid shell generation
 routing/       cable routing engine (bend radius, clearance tunnels)
 exports/       STEP / STL / SVG exporters
-utilities/     constants, cq_helpers, fasteners, validation, config loading
+utilities/     constants, cad_helpers, fasteners, validation, config loading
 generated/     output directory for exported files
 docs/          specifications
 ```
@@ -52,8 +52,8 @@ docs/          specifications
 ## Usage
 
 ```bash
-# activate the CadQuery environment (miniforge)
-source $HOME/miniforge/bin/activate
+# activate the build123d environment (setup: see AGENTS.md)
+conda activate cyberdeck
 
 # generate the build (STEP + STL + SVG)
 python main.py --config config/default.yaml --steps all

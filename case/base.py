@@ -183,22 +183,22 @@ class Base:
         then rotated about X by the slope angle. Returns a box whose bottom
         face is that plane and which extends ``height`` above it.
         """
-        from utilities import cq_helpers
+        from utilities import cad_helpers
 
         slope = self.slope()
         # Long enough that the tilted box still covers the full footprint.
         pad = 4.0 * (size.width + size.depth)
-        tool = cq_helpers.box_centered(size.width + pad, size.depth + pad, height)
+        tool = cad_helpers.box_centered(size.width + pad, size.depth + pad, height)
         # Sit the box on z=0, tilt it about the origin, then lift the plane
         # to the requested front-edge height. Rotating about X by -slope
         # raises -Y (rear) and lowers +Y, matching deck_level_at.
-        tool = cq_helpers.translate(tool, 0.0, 0.0, height / 2.0)
+        tool = cad_helpers.translate(tool, 0.0, 0.0, height / 2.0)
         if slope:
-            tool = tool.rotate((0, 0, 0), (1, 0, 0), -slope)
+            tool = cad_helpers.rotate_x(tool, -slope)
         front_y = size.depth / 2.0
         # After the rotation the plane passes through the origin; shift it so
         # it passes through (y=front_y, z=z_at_front) as deck_level_at says.
-        return cq_helpers.translate(
+        return cad_helpers.translate(
             tool, 0.0, 0.0,
             z_at_front + front_y * math.tan(math.radians(slope)),
         )
@@ -228,7 +228,7 @@ class Base:
         when there is no keyboard to hinge a knee off, or the deck is flat
         to begin with.
         """
-        from utilities import cq_helpers
+        from utilities import cad_helpers
 
         knee_y = self._deck_knee_y()
         if knee_y is None or not self.slope():
@@ -245,18 +245,18 @@ class Base:
         overlap = 1.0  # mm of deliberate overlap across the knee seam, see above
 
         sloped = self._slope_cut_tool(z_at_front, size, height)
-        front_clip = cq_helpers.box_centered(size.width + pad, reach, reach)
-        front_clip = cq_helpers.translate(
+        front_clip = cad_helpers.box_centered(size.width + pad, reach, reach)
+        front_clip = cad_helpers.translate(
             front_clip, 0.0, knee_y - overlap + reach / 2.0, 0.0
         )
-        sloped = sloped.intersect(front_clip)
+        sloped = cad_helpers.intersect(sloped, front_clip)
 
-        flat = cq_helpers.box_centered(size.width + pad, reach, height)
-        flat = cq_helpers.translate(
+        flat = cad_helpers.box_centered(size.width + pad, reach, height)
+        flat = cad_helpers.translate(
             flat, 0.0, knee_y + overlap - reach / 2.0, knee_z + height / 2.0
         )
 
-        return sloped.union(flat)
+        return cad_helpers.union(sloped, flat)
 
     def _corner_standoff_outer_diameter(self) -> float:
         """Outer diameter of a corner deck-mount standoff boss (mm, M2.5)."""
@@ -447,14 +447,14 @@ class Base:
 
         Returns
         -------
-        cadquery.Workplane
+        Shape
             The base bottom tray solid.
         """
         from components.battery import Battery
-        from geometry import boss, cradle, cutouts, fillet, ribs, shell, vents
-        from utilities import cq_helpers, fasteners
+        from geometry import boss, cradle, cutouts, fillet, ribs, vents
+        from utilities import cad_helpers, fasteners
 
-        cq_helpers.require_cq()
+        cad_helpers.require_cad()
         config = self.config
         wall = config.wall_thickness
         clearance = config.clearance.shell
@@ -467,16 +467,20 @@ class Base:
         # (negative shell offset). The sloped rim is cut afterwards — shelling
         # a prism and then slicing it leaves the walls following the slope,
         # which is what the deck seats against.
-        outer = cq_helpers.box_centered(size.width, size.depth, rear_dl + wall)
-        outer = cq_helpers.translate(outer, 0.0, 0.0, (rear_dl - wall) / 2.0)
+        outer = cad_helpers.box_centered(size.width, size.depth, rear_dl + wall)
+        outer = cad_helpers.translate(outer, 0.0, 0.0, (rear_dl - wall) / 2.0)
         outer = fillet.fillet_corners(outer, config.corners.radius)
-        body = outer.faces(">Z").shell(-wall)
+        # Not geometry.shell.offset_shell: that helper's chain includes an
+        # extra .workplane() call (needed by the lid) that is numerically
+        # different from this literal chain — see
+        # utilities.cad_helpers.shell_open_face's docstring.
+        body = cad_helpers.shell_open_face(outer, wall, cad_helpers.FaceRef.TOP)
         if self.slope():
             # Trim the prism down to the sloped rim: everything above the
             # deck's own underside plane goes, leaving walls whose top edge
             # is the seat the deck lies on.
-            body = body.cut(
-                self._deck_surface_tool(dl, size, rear_dl + 2 * wall)
+            body = cad_helpers.cut(
+                body, self._deck_surface_tool(dl, size, rear_dl + 2 * wall)
             )
 
         # Mounting bosses for base-floor components.
@@ -493,19 +497,27 @@ class Base:
         screw = fasteners.screw("M2.5")
         boss_od = self._corner_standoff_outer_diameter()
         corner_positions = self._corner_positions()
+        corner_base_diameters = []
         for cx, cy in corner_positions:
             corner_dl = self.deck_level_at(cy)
-            standoff = cq_helpers.cylinder_centered(boss_od, corner_dl)
-            standoff = cq_helpers.translate(standoff, cx, cy, corner_dl / 2.0)
-            bore = cq_helpers.cylinder_centered(screw.pilot_hole, corner_dl + 1.0)
-            bore = cq_helpers.translate(bore, cx, cy, corner_dl / 2.0)
+            # Built through geometry.boss.build (a widened, tapered base per
+            # the FDM boss-design rule) rather than a bare cylinder, same as
+            # every component mounting boss below.
+            standoff_spec = boss.BossSpec(
+                hole_diameter=screw.pilot_hole,
+                outer_diameter=boss_od,
+                height=corner_dl,
+                wall_thickness=wall,
+            )
+            corner_base_diameters.append(standoff_spec.base_diameter)
+            standoff = boss.build(standoff_spec, cx, cy)
             # Square off the top against the sloped underside so the standoff
             # meets the deck flush instead of poking a cylinder through it.
             if self.slope():
-                standoff = standoff.cut(
-                    self._deck_surface_tool(dl, size, rear_dl + 2 * wall)
+                standoff = cad_helpers.cut(
+                    standoff, self._deck_surface_tool(dl, size, rear_dl + 2 * wall)
                 )
-            features.append(standoff.cut(bore))
+            features.append(standoff)
 
         # Battery cell cradles: printed floor saddles that key each cell's
         # lateral position (geometry.cradle) — the pack isn't fastened like
@@ -536,7 +548,7 @@ class Base:
             # orients the cells orients the saddle.
             saddle = cradle.build(spec)
             if p.rotation:
-                saddle = saddle.rotate((0, 0, 0), (0, 0, 1), p.rotation)
+                saddle = cad_helpers.rotate_z(saddle, p.rotation)
             # Two saddles per cell, offset toward each end along the cell's
             # own axis (local Y), not one centred on the cell's midpoint: a
             # cylinder resting on a single narrow saddle (width = wall * 3,
@@ -552,7 +564,7 @@ class Base:
             for cx, cy in battery._cell_centers():
                 for cy_end in (cy - end_offset, cy + end_offset):
                     wx, wy, _ = p.world_offset(cx, cy_end, 0.0)
-                    cradle_solids.append(cq_helpers.translate(saddle, wx, wy, 0.0))
+                    cradle_solids.append(cad_helpers.translate(saddle, wx, wy, 0.0))
         features.extend(cradle_solids)
 
         # Stiffening ribs, kept clear of every boss above: a rib crossing a
@@ -570,19 +582,22 @@ class Base:
             interior_w, interior_d, wall, rib_height=ribs.rib_height(wall)
         )
         rib_solids = ribs.build(rspec, interior_w, interior_d)
-        boss_keepouts = [(x, y, spec.outer_diameter) for x, y, spec in mounting_bosses]
-        boss_keepouts += [(cx, cy, boss_od) for cx, cy in corner_positions]
+        # base_diameter (not outer_diameter): the rib clearance cut has to
+        # clear the boss's widest point, at the floor, where the tapered
+        # base flares out beyond the post's nominal diameter.
+        boss_keepouts = [(x, y, spec.base_diameter) for x, y, spec in mounting_bosses]
+        boss_keepouts += [
+            (cx, cy, base_d) for (cx, cy), base_d in zip(corner_positions, corner_base_diameters)
+        ]
         for bx, by, diameter in boss_keepouts:
-            clearance_cyl = cq_helpers.cylinder_centered(diameter + wall, rspec.height)
-            clearance_cyl = cq_helpers.translate(clearance_cyl, bx, by, rspec.height / 2.0)
-            rib_solids = [rib.cut(clearance_cyl) for rib in rib_solids]
+            clearance_cyl = cad_helpers.cylinder_centered(diameter + wall, rspec.height)
+            clearance_cyl = cad_helpers.translate(clearance_cyl, bx, by, rspec.height / 2.0)
+            rib_solids = [cad_helpers.cut(rib, clearance_cyl) for rib in rib_solids]
         features.extend(rib_solids)
 
         if features:
-            fused = features[0]
-            for part in features[1:]:
-                fused = fused.union(part)
-            body = body.union(fused)
+            fused = cad_helpers.union(features[0], *features[1:])
+            body = cad_helpers.union(body, fused)
 
         # Vent slots through the rear wall, skipping any slat that would
         # land inside a rear-wall connector cutout — left in, a vent slat
@@ -616,10 +631,10 @@ class Base:
         vspec = vents.vent_slots(interior_w, rear_dl - wall, keepouts=vent_keepouts)
         slots = vents.build(vspec, wall)
         if slots:
-            slots = cq_helpers.translate(
+            slots = cad_helpers.translate(
                 slots, 0.0, -size.depth / 2 + wall / 2.0, rear_dl / 2.0
             )
-            body = body.cut(slots)
+            body = cad_helpers.cut(body, slots)
 
         # Connector cutouts (external, reach-aware), beveled for plug lead-in.
         body = cutouts.build(
@@ -639,14 +654,14 @@ class Base:
 
         Returns
         -------
-        cadquery.Workplane
+        Shape
             The base top deck solid, or an empty Workplane if no keyboard
             is configured.
         """
         from geometry import fillet
-        from utilities import cq_helpers, fasteners
+        from utilities import cad_helpers, fasteners
 
-        cq_helpers.require_cq()
+        cad_helpers.require_cad()
         config = self.config
         wall = config.wall_thickness
         clearance = config.clearance.shell
@@ -661,14 +676,14 @@ class Base:
         # keeps the outer sides vertical and the footprint exactly the case
         # footprint, so the fillet and the walls below still line up.
         blank_h = rear_dl + 4 * wall
-        deck = cq_helpers.box_centered(size.width, size.depth, blank_h)
-        deck = cq_helpers.translate(deck, 0.0, 0.0, blank_h / 2.0)
+        deck = cad_helpers.box_centered(size.width, size.depth, blank_h)
+        deck = cad_helpers.translate(deck, 0.0, 0.0, blank_h / 2.0)
         deck = fillet.fillet_corners(deck, config.corners.radius)
         # Keep only the material between the two deck-parallel planes. At
         # slope 0 these tools degenerate to plain half-spaces, reproducing
         # the original flat plate exactly.
-        deck = deck.cut(self._deck_surface_tool(dl + wall, size, blank_h))
-        deck = deck.intersect(self._deck_surface_tool(dl, size, blank_h))
+        deck = cad_helpers.cut(deck, self._deck_surface_tool(dl + wall, size, blank_h))
+        deck = cad_helpers.intersect(deck, self._deck_surface_tool(dl, size, blank_h))
 
         # Keyboard cutout centered at the keyboard placement. Bored along the
         # deck normal (tilted with the slab) so the opening keeps its true
@@ -679,16 +694,16 @@ class Base:
             cut_w = kb_size.width + 2 * clearance
             cut_d = kb_size.depth + 2 * clearance
             cut_h = blank_h
-            cutout = cq_helpers.box_centered(cut_w, cut_d, cut_h)
+            cutout = cad_helpers.box_centered(cut_w, cut_d, cut_h)
             if slope:
-                cutout = cutout.rotate((0, 0, 0), (1, 0, 0), -slope)
-            cutout = cq_helpers.translate(
+                cutout = cad_helpers.rotate_x(cutout, -slope)
+            cutout = cad_helpers.translate(
                 cutout,
                 kb_placement.x,
                 kb_placement.y,
                 self.deck_level_at(kb_placement.y) + wall / 2.0,
             )
-            deck = deck.cut(cutout)
+            deck = cad_helpers.cut(deck, cutout)
 
         # M2.5 clearance holes for the deck screws, each bored normal to the
         # deck surface at its own Y — tilted with the slab in front of the
@@ -701,12 +716,12 @@ class Base:
         for cx, cy in self._corner_positions():
             # Generously longer than the slab is thick, so a tilted bore still
             # exits both faces cleanly.
-            hole = cq_helpers.cylinder_centered(screw.clearance, 4 * wall + 2 * clearance)
+            hole = cad_helpers.cylinder_centered(screw.clearance, 4 * wall + 2 * clearance)
             if slope and (knee_y is None or cy >= knee_y):
-                hole = hole.rotate((0, 0, 0), (1, 0, 0), -slope)
-            hole = cq_helpers.translate(
+                hole = cad_helpers.rotate_x(hole, -slope)
+            hole = cad_helpers.translate(
                 hole, cx, cy, self.deck_level_at(cy) + wall / 2.0
             )
-            deck = deck.cut(hole)
+            deck = cad_helpers.cut(deck, hole)
 
         return deck

@@ -148,11 +148,48 @@ class Material:
 
 @dataclass(frozen=True)
 class Seam:
-    """Left/right Half split of one part (see ``geometry.split.SeamSpec``)."""
+    """Left/right Half split of one part (ADR 0001).
+
+    ``x`` is the Seam's base X position; ``step`` the jog size and ``steps``
+    the number of segments along Y (``step == 0`` is a straight cut).
+    """
 
     x: float = 0.0
     step: float = 0.0
     steps: int = 1
+
+    def __post_init__(self) -> None:
+        if self.steps < 1:
+            raise ValueError("seam steps must be >= 1")
+        if self.step < 0:
+            raise ValueError("seam step must be >= 0")
+
+    def segments(self, depth: float) -> list[tuple[float, float, float]]:
+        """``(y0, y1, x)`` per segment, front-to-back across ``depth``."""
+        seg = depth / self.steps
+        return [
+            (-depth / 2 + i * seg, -depth / 2 + (i + 1) * seg,
+             self.x + (self.step if i % 2 else 0.0))
+            for i in range(self.steps)
+        ]
+
+    @property
+    def x_range(self) -> tuple[float, float]:
+        """X interval the stepped Seam sweeps across."""
+        return (self.x, self.x + (self.step if self.steps > 1 else 0.0))
+
+
+@dataclass(frozen=True)
+class Feet:
+    """Round rubber-foot recesses in the Tray floor.
+
+    Positions are inset from the case corners and independent of bosses.
+    """
+
+    diameter: float = 15.0
+    depth: float = 1.0
+    inset_x: float = 15.0
+    inset_y: float = 15.0
 
 
 @dataclass(frozen=True)
@@ -172,6 +209,7 @@ class Config:
     material: Material
     hardware: dict[str, Any] = field(default_factory=dict)
     split: dict[str, Seam] = field(default_factory=dict)
+    feet: Feet = field(default_factory=Feet)
     topics: tuple[str, ...] = field(default_factory=tuple)
 
     @property
@@ -261,6 +299,7 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
                        steps=int(v.get("steps", 1)))
             for part, v in (raw.get("split") or {}).items()
         },
+        feet=Feet(**{k: float(v) for k, v in (raw.get("feet") or {}).items()}),
         topics=topics,
     )
     return config

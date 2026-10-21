@@ -437,6 +437,14 @@ class Base:
             result.append((cx, cy, boss_od, self.deck_level_at(cy), None))
         return result
 
+    def foot_positions(self) -> list[tuple[float, float]]:
+        """Centers of the four rubber-foot recesses (config-derived)."""
+        size = self.size()
+        feet = self.config.feet
+        hx = size.width / 2.0 - feet.inset_x
+        hy = size.depth / 2.0 - feet.inset_y
+        return [(sx * hx, sy * hy) for sx in (-1, 1) for sy in (-1, 1)]
+
     def build_bottom(self):
         """Generate the base bottom tray solid.
 
@@ -640,6 +648,16 @@ class Base:
         body = cutouts.build(
             self.cutouts(), body, wall, chamfer=config.corners.cutout_chamfer
         )
+
+        # Rubber-foot recesses in the floor's underside. Positions come from
+        # config alone (foot_positions), never from boss positions.
+        feet = config.feet
+        floor_z = cad_helpers.bounding_box(body).zmin
+        for fx, fy in self.foot_positions():
+            recess = cad_helpers.cylinder_centered(feet.diameter, 2 * feet.depth)
+            body = cad_helpers.cut(
+                body, cad_helpers.translate(recess, fx, fy, floor_z)
+            )
         return body
 
     def build_top(self):

@@ -117,3 +117,59 @@ def test_hinge_clearance_fail():
     r = ValidationReport()
     check_hinge_clearance(5.0, 3.0, r)
     assert not r.passed
+
+
+def _seam_config(**seams):
+    from utilities.config_loader import Feet, Seam
+
+    class _Cfg:
+        wall_thickness = 2.0
+        feet = Feet()
+        split = {k: Seam(**v) for k, v in seams.items()}
+
+        class display:
+            width = 200.0
+
+        class bezel:
+            inset = 5.0
+
+    return _Cfg
+
+
+def test_staggered_seams_pass():
+    from utilities.validation import check_seams
+
+    cfg = _seam_config(
+        tray={"x": 0.0, "step": 4.0, "steps": 6},
+        deck={"x": 20.0, "step": 4.0, "steps": 6},
+        bezel={"x": 40.0, "step": 4.0, "steps": 6},
+    )
+    r = ValidationReport()
+    check_seams(cfg, 236.0, r)
+    assert r.passed, r.summary()
+
+
+def test_aligned_seams_fail():
+    from utilities.validation import check_seams
+
+    cfg = _seam_config(tray={"x": 0.0}, bezel={"x": 0.0})
+    r = ValidationReport()
+    check_seams(cfg, 236.0, r)
+    assert not r.passed
+
+
+def test_tray_seam_through_foot_fails():
+    from utilities.validation import check_seams
+
+    # feet centered at +-(118 - 15) = +-103
+    r = ValidationReport()
+    check_seams(_seam_config(tray={"x": 100.0}), 236.0, r)
+    assert not r.passed
+
+
+def test_bezel_seam_outside_opening_fails():
+    from utilities.validation import check_seams
+
+    r = ValidationReport()
+    check_seams(_seam_config(bezel={"x": 120.0}), 236.0, r)
+    assert not r.passed

@@ -68,8 +68,8 @@ booleans (the base shell takes ~1 min).
 | `base` | Combined base: base_bottom + keyboard_assembly + base_top |
 | `base_bottom` | Bottom tray (floor, walls, bosses, ribs, vents, cutouts) |
 | `base_top` | Top deck with keyboard cutout |
-| `lid` | Combined lid: lid_base + display_assembly + lid_bezel |
-| `lid_base` | Rear shell tray only |
+| `lid` | Combined lid: lid_shell + display_assembly + lid_bezel |
+| `lid_shell` | Rear shell tray only |
 | `lid_bezel` | Front plate with glass cutout only |
 | `hinge` | Hinge barrels + pin + wire tunnel |
 | `display` | LCD panel + HDMI driver combined (fast) |
@@ -83,7 +83,7 @@ keyboard sub-assembly is built the same way and shared between the `base`
 and `components` targets.
 
 Makefile convenience targets: `make display`, `make base_bottom`, `make base_top`,
-`make lid_base`, `make lid_bezel`, `make build TARGETS=display,base`.
+`make lid_shell`, `make lid_bezel`, `make build TARGETS=display,base`.
 
 ## Failure mode
 

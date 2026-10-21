@@ -346,6 +346,51 @@ def check_dimension_consistency(
         report.add("dimension-consistency", True, "keyboard/display not both present — skipped")
 
 
+def check_seams(config: Any, case_width: float, report: ValidationReport) -> None:
+    """Fail if the Halves' Seams line up or cut through a protected feature.
+
+    * Seams are staggered: no two parts' swept X ranges overlap or come
+      closer than ``4 * wall`` (so no single weak line runs through the
+      closed device).
+    * The Tray Seam avoids every foot recess.
+    * The Bezel Seam lies inside the display opening.
+    """
+    seams = config.split
+    min_gap = 4.0 * config.wall_thickness
+    names = sorted(seams)
+    clashes = []
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            a0, a1 = seams[a].x_range
+            b0, b1 = seams[b].x_range
+            if max(a0, b0) - min(a1, b1) < min_gap:
+                clashes.append(f"{a}/{b}")
+    report.add(
+        "seams-staggered", not clashes,
+        "no two Seams within "
+        f"{min_gap:g} mm" if not clashes else f"Seams too close: {', '.join(clashes)}",
+    )
+
+    if "tray" in seams:
+        feet = config.feet
+        x0, x1 = seams["tray"].x_range
+        hit = [
+            fx for fx in (-1, 1)
+            for cx in [fx * (case_width / 2.0 - feet.inset_x)]
+            if x1 > cx - feet.diameter / 2.0 and x0 < cx + feet.diameter / 2.0
+        ]
+        report.add("seam-avoids-feet", not hit, f"tray Seam x={x0:g}..{x1:g}")
+
+    if "bezel" in seams:
+        half_open = (config.display.width - 2.0 * config.bezel.inset) / 2.0
+        x0, x1 = seams["bezel"].x_range
+        report.add(
+            "seam-in-display-opening",
+            -half_open <= x0 and x1 <= half_open,
+            f"bezel Seam x={x0:g}..{x1:g}, opening +-{half_open:g}",
+        )
+
+
 def run_all(
     placements: list[Any],
     config: Any,

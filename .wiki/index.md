@@ -37,14 +37,14 @@ make check                                  # py_compile all modules
 Expected output of `make data`: a placement validation report with 9 checks
 (`9 checks: PASS`), followed by the constraint resolution report for the
 recipe. The full run writes
-`cyberdeck_{assembly,base,base_bottom,base_top,lid,lid_base,lid_bezel,display,hinge}.step/.stl/.svg`
+`cyberdeck_{assembly,base,base_bottom,base_top,lid,lid_shell,lid_bezel,display,hinge}.step/.stl/.svg`
 into `generated/`.
 
 Selective build via `--targets` (comma-separated): `assembly`, `base`,
-`base_bottom`, `base_top`, `lid`, `lid_base`, `lid_bezel`, `hinge`, `display`
+`base_bottom`, `base_top`, `lid`, `lid_shell`, `lid_bezel`, `hinge`, `display`
 (LCD + HDMI driver combined), `components` (all debug STLs), `comp:<role>`
 (single component). Makefile convenience targets: `make display`,
-`make base_bottom`, `make base_top`, `make lid_base`, `make lid_bezel`, etc.
+`make base_bottom`, `make base_top`, `make lid_shell`, `make lid_bezel`, etc.
 
 There is one layout, `compact` (the default), defined by
 `config/layouts/clamshell.yaml`. Use `--layout-recipe <path>` to run a

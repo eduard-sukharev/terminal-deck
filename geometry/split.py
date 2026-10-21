@@ -9,9 +9,8 @@ Halves rejoin to the original with no gap and no overlap by construction.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from utilities import cad_helpers
+from utilities.config_loader import Seam
 
 #: Printer build volume (X, Y, Z) in mm — see AGENTS.md "Build volume".
 #: Slack (mm) added around a part so the splitting region always overhangs it.
@@ -20,35 +19,7 @@ _MARGIN: float = 1.0
 BUILD_VOLUME: tuple[float, float, float] = (220.0, 220.0, 256.0)
 
 
-@dataclass(frozen=True)
-class SeamSpec:
-    """Where a part splits and how its Seam is stepped.
-
-    ``x`` is the Seam's base X position; ``step`` the jog size and ``steps``
-    the number of segments along Y (``step == 0`` is a straight cut).
-    """
-
-    x: float = 0.0
-    step: float = 0.0
-    steps: int = 1
-
-    def __post_init__(self) -> None:
-        if self.steps < 1:
-            raise ValueError("seam steps must be >= 1")
-        if self.step < 0:
-            raise ValueError("seam step must be >= 0")
-
-    def segments(self, depth: float) -> list[tuple[float, float, float]]:
-        """``(y0, y1, x)`` per segment, front-to-back across ``depth``."""
-        seg = depth / self.steps
-        return [
-            (-depth / 2 + i * seg, -depth / 2 + (i + 1) * seg,
-             self.x + (self.step if i % 2 else 0.0))
-            for i in range(self.steps)
-        ]
-
-
-def _left_region(seam: SeamSpec, depth: float, x_extent: float, z_extent: float):
+def _left_region(seam: Seam, depth: float, x_extent: float, z_extent: float):
     """Solid covering everything left of the Seam (oversized in X/Z)."""
     pad = 2.0 * x_extent
     pieces = []
@@ -59,7 +30,7 @@ def _left_region(seam: SeamSpec, depth: float, x_extent: float, z_extent: float)
     return cad_helpers.union(pieces[0], *pieces[1:])
 
 
-def split_halves(shape, seam: SeamSpec, depth: float):
+def split_halves(shape, seam: Seam, depth: float):
     """Split ``shape`` into ``(left, right)`` along ``seam``.
 
     ``depth`` is the part's extent in Y (centered on the origin).

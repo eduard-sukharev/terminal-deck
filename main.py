@@ -289,6 +289,17 @@ class BuildPipeline:
             f"[pipeline] enclosure: {size.width:.1f} x {size.depth:.1f} x "
             f"{size.height:.1f} mm"
         )
+        from utilities.validation import ValidationReport, check_seams
+
+        seam_report = ValidationReport()
+        check_seams(config, size.width, seam_report)
+        print("[pipeline] seam validation:")
+        print(seam_report.summary())
+        if not seam_report.passed and not ignore_validation:
+            raise SystemExit(
+                "[pipeline] aborted: Seam validation failed "
+                "(pass --ignore-validation to build anyway)"
+            )
         print(f"[pipeline] bosses: {len(assembly.bosses())}")
         print(f"[pipeline] cutouts: {len(assembly.connector_cutouts())}")
 
@@ -608,7 +619,7 @@ class BuildPipeline:
         # Every wide printable part is split into left/right Halves along its
         # configured Seam; the Halves, not the whole part, are what must fit
         # the printer, so they are validated here and exported with the rest.
-        from geometry.split import SeamSpec, check_build_volume, check_halves, split_halves
+        from geometry.split import check_build_volume, check_halves, split_halves
 
         split_sources = {
             "base_bottom": "tray",
@@ -624,8 +635,7 @@ class BuildPipeline:
             if seam_cfg is None:
                 printable[part_name] = parts[part_name]
                 continue
-            seam = SeamSpec(x=seam_cfg.x, step=seam_cfg.step, steps=seam_cfg.steps)
-            left, right = split_halves(parts[part_name], seam, size.depth)
+            left, right = split_halves(parts[part_name], seam_cfg, size.depth)
             for side, half in (("left", left), ("right", right)):
                 parts[f"{part_name}_{side}"] = half
                 printable[f"{part_name}_{side}"] = half

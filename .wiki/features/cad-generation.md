@@ -31,10 +31,10 @@ miniforge env (`cq_helpers.require_cq()`).
   Four M2.5 bosses at the corners accept bezel screws. 2 mm chamfer on the
   bottom perimeter (applied before shelling).
 * **Lid bezel** (`case.Lid.build_bezel()`) — the front plate with a centered
-  glass cutout and four M2.5 clearance holes. Sits inside the lid_base pocket
-  so its front face is flush with the lid_base walls. 2 mm bevel on the inner
+  glass cutout and four M2.5 clearance holes. Sits inside the lid_shell pocket
+  so its front face is flush with the lid_shell walls. 2 mm bevel on the inner
   front edge of the glass cutout.
-* **Combined lid** — `--targets lid` unions lid_base + display_assembly +
+* **Combined lid** — `--targets lid` unions lid_shell + display_assembly +
   lid_bezel into one solid (`cyberdeck_lid.*`).
 * **Hinge** (`components/hinge.py`) — barrels, pin, and wire tunnel, built from
   `config.hinge` and translated to the rear gap between base cavity and lid.
@@ -44,7 +44,7 @@ miniforge env (`cq_helpers.require_cq()`).
   plate is extruded by the `components/keyboard_plate.py` adapter from the
   keyboard geometry model.
 * **Exports** (`exports/`) — real STEP/STL/SVG exporters (`EXPORTERS` registry),
-  writing `cyberdeck_{assembly,base,base_bottom,base_top,lid,lid_base,lid_bezel,display,hinge}.step/.stl/.svg`
+  writing `cyberdeck_{assembly,base,base_bottom,base_top,lid,lid_shell,lid_bezel,display,hinge}.step/.stl/.svg`
   to `generated/`. Selective via `--targets` (see [[build-pipeline]]).
 * **Keyboard render** (`components/keycap_set.py` + `rp2040_keyboard.py`) —
   XDA keycaps lofted above the plate and simplified switch bodies passing

@@ -22,9 +22,16 @@ clearance:
   screw: 0.6            # minimum radial clearance around a screw head / boss
 
 hinge:
-  diameter: 10          # barrel outer diameter
+  diameter: 13          # knuckle outer diameter (>= wire_tunnel + 2 * wall.thickness)
   pin: 3                # hinge pin diameter
-  wire_tunnel: 8        # wire tunnel diameter
+  wire_tunnel: 8        # display cable tunnel bore, through the Base knuckle
+  lid_knuckle: 20       # length of each Lid corner knuckle
+  knuckle_gap: 0.5      # axial gap between Lid and Base knuckles
+  pin_land: 8           # solid pin-bearing length at each end of the Base knuckle
+  pin_clearance: 0.2    # pin bore oversize (diameter)
+  cap_thickness: 2      # removable service cap head thickness
+  cap_plug: 4           # service cap plug depth into the pin bore
+  end_inset: 5          # hinge span inset from each case side
 
 screws:
   body: M2              # case body screws (fastener library)

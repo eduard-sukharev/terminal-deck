@@ -52,9 +52,15 @@ point) minus the Deck top. Each run checks `visor-closes-flush`,
 ## Hinge
 
 Jornada P6 style: three knuckles — two Lid knuckles at the corners, one long
-Base knuckle in the middle carrying the display cable tunnel. The Lid's rear
-edge is a roll around the hinge axis. Pin ends get removable service caps.
-Hinge math stays in `components/hinge.py`.
+Base knuckle in the middle. The Base knuckle has a solid pin land at each end
+and is a hollow tube between them: the display cable tunnel
+(`hinge.wire_tunnel`), so the cable never crosses the hinge exposed. Each side
+has a pin running from its Lid knuckle into the adjacent Base land, closed by
+a removable service cap (head outside the end, plug in the pin bore). Knuckle
+diameter must leave at least `wall.thickness` around the tunnel; the build
+rejects it otherwise. All dimensions are in the `hinge:` config section and
+the layout math stays in `components/hinge.py`. Not yet done: the Lid's rolled
+rear edge, and attaching the knuckles to the shells.
 
 ## Printing
 

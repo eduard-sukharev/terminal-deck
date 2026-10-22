@@ -131,6 +131,13 @@ class Hinge:
     diameter: float
     pin: float
     wire_tunnel: float
+    lid_knuckle: float = 20.0     # length of each Lid corner knuckle
+    knuckle_gap: float = 0.5      # axial gap between Lid and Base knuckles
+    pin_land: float = 8.0         # solid pin-bearing length at each Base knuckle end
+    pin_clearance: float = 0.2    # pin bore oversize (diameter)
+    cap_thickness: float = 2.0    # service cap head thickness
+    cap_plug: float = 4.0         # service cap plug depth into the pin bore
+    end_inset: float = 5.0        # hinge span inset from each case side
 
 
 @dataclass(frozen=True)

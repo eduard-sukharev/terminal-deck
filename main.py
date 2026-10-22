@@ -320,11 +320,7 @@ class BuildPipeline:
         target_tokens = [t.strip() for t in targets.split(",") if t.strip()]
         buckets, comp_roles = resolve_targets(target_tokens, set(components))
 
-        hinge_cfg = {
-            "diameter": config.hinge.diameter,
-            "pin": config.hinge.pin,
-            "wire_tunnel": config.hinge.wire_tunnel,
-        }
+        hinge_cfg = asdict(config.hinge)
         hinge = HingePart(hinge_cfg, wall_thickness=config.wall_thickness)
 
         # Build requested solids.

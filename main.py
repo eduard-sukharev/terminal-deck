@@ -469,7 +469,9 @@ class BuildPipeline:
                 interior=display_assembly_solid,
                 visor=base_obj.visor_profile(),
             )
-            from utilities.validation import ValidationReport, check_visor_flush
+            from utilities.validation import (
+                ValidationReport, check_hinge_fits, check_visor_flush,
+            )
 
             visor_report = ValidationReport()
             visor_profile = lid.visor
@@ -479,6 +481,9 @@ class BuildPipeline:
             )
             visor_report.goals["closed thickness (mm)"] = (
                 base_obj.closed_plane_z() + lid.height()
+            )
+            check_hinge_fits(
+                hinge.diameter, base_obj.closed_plane_z(), lid.height(), visor_report
             )
             print("[pipeline] closed-device validation:")
             print(visor_report.summary())
@@ -511,17 +516,7 @@ class BuildPipeline:
                 )
 
         if "hinge" in buckets:
-            base_outer_top = (
-                base_obj.deck_level() + config.wall_thickness
-                if base_obj is not None
-                else max(
-                    (p.z + p.component.size().height for p in placements if p.z <= 1e-6),
-                    default=0.0,
-                ) + config.clearance.shell
-            )
-            driver_height = float(config.hardware.get("driver_board", {}).get("height", 4.6))
-            lid_outer_bottom = display.z - driver_height - config.clearance.shell - config.wall_thickness
-            hinge_z = (base_outer_top + lid_outer_bottom) / 2.0
+            hinge_z = base_obj.hinge_axis_z()
             hinge_solid = hinge.build(case_depth=size.width)
             hinge_solid = cad_helpers.translate(hinge_solid, 0.0, -size.depth / 2.0, hinge_z)
             parts["hinge"] = hinge_solid
@@ -582,17 +577,10 @@ class BuildPipeline:
 
             # Hinge axis in the original frame.
             depth = size.depth
-            base_outer_top = (
-                base_obj.deck_level() + config.wall_thickness
-            )
+            hinge_z = base_obj.hinge_axis_z()
             driver_height = float(
                 config.hardware.get("driver_board", {}).get("height", 4.6)
             )
-            lid_outer_bottom = (
-                display_placement.z - driver_height
-                - config.clearance.shell - config.wall_thickness
-            )
-            hinge_z = (base_outer_top + lid_outer_bottom) / 2.0
 
             # Step 1: stand the closed assembly upright so the base sits in
             # the ZX plane (vertical), keyboard facing +Y.

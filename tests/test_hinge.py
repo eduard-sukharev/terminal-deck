@@ -51,3 +51,13 @@ def test_caps_close_the_pin_ends_and_pins_clear_each_other():
     assert cad_helpers.solid_count(base) == 1
     pins = cad_helpers.volume_mm3(h.build_pins(WIDTH))
     assert math.isclose(pins, 2 * math.pi * (h.pin / 2) ** 2 * h.pin_length(), rel_tol=1e-6)
+
+
+def test_hinge_fits_check():
+    from utilities.validation import ValidationReport, check_hinge_fits
+
+    ok, bad = ValidationReport(), ValidationReport()
+    check_hinge_fits(13.0, 20.0, 30.0, ok)
+    check_hinge_fits(13.0, 5.0, 30.0, bad)
+    assert ok.passed
+    assert [c.name for c in bad.failures] == ["hinge-fits"]

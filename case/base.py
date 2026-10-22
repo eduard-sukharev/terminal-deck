@@ -201,6 +201,14 @@ class Base:
         """Height of the Lid's flat underside when closed (mm)."""
         return self.deck_top_at(-self.size().depth / 2.0)
 
+    def hinge_axis_z(self) -> float:
+        """Height of the hinge axis (mm): the closed Lid/Base interface plane.
+
+        The one place the axis height is defined; the hinge builds around it
+        and the closed-device checks measure against it.
+        """
+        return self.closed_plane_z()
+
     def _slope_cut_tool(self, z_at_front: float, size, height: float):
         """A half-space solid lying above the deck-parallel plane through
         ``z_at_front`` (its height at the front edge), for cutting a solid

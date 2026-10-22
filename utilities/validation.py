@@ -309,6 +309,21 @@ def check_hinge_clearance(
     )
 
 
+def check_hinge_fits(
+    diameter: float, base_rear_height: float, lid_height: float, report: ValidationReport
+) -> None:
+    """Fail if the knuckle, centred on the closed interface plane, would stand
+    proud of the Base's or the Lid's rear face (needs half a diameter each side)."""
+    radius = diameter / 2.0
+    room = min(base_rear_height, lid_height)
+    report.add(
+        "hinge-fits",
+        radius <= room,
+        f"knuckle radius {radius:.2f} mm vs rear room {room:.2f} mm "
+        f"(Base {base_rear_height:.2f}, Lid {lid_height:.2f})",
+    )
+
+
 def check_dimension_consistency(
     placements: list[Any],
     config: Any,

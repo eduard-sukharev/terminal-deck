@@ -1,0 +1,6 @@
+-r requirements.txt
+pytest>=8.0
+# render tools (utilities/render_stl.py, render_section.py)
+numpy
+vtk
+Pillow

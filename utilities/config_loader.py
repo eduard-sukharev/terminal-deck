@@ -202,6 +202,10 @@ class Well:
 
     switch_margin: float = 1.0
 
+    def __post_init__(self) -> None:
+        if self.switch_margin < 0:
+            raise ValueError("well.switch_margin must be >= 0 (rim may not reach the switch tops)")
+
 
 @dataclass(frozen=True)
 class Config:

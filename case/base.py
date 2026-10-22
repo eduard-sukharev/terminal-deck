@@ -476,7 +476,7 @@ class Base:
         """Height of the Well rim above the Deck top (mm); 0 without a keyboard."""
         from geometry import well
 
-        if self.keyboard is None or not hasattr(self.keyboard, "switch_top_height"):
+        if self.keyboard is None:
             return 0.0
         return well.rim_height(
             self.keyboard.switch_top_height,
@@ -768,25 +768,26 @@ class Base:
             pose = (kb_placement.x, kb_placement.y,
                     self.deck_level_at(kb_placement.y) + wall / 2.0)
 
-            # Well rim: a wall-wide ring around the opening, tilted with the
-            # slab (local z=0 is the slab's mid-plane), clipped to the case
-            # footprint where the keyboard runs out to the edge.
-            rim = well.build_rim(
-                cut_w, cut_d, wall, self.well_rim_height(), overlap=wall / 2.0
-            )
-            if slope:
-                rim = cad_helpers.rotate_x(rim, -slope)
-            rim = cad_helpers.translate(rim, *pose)
-            # Closed, the Lid's flat underside lies on closed_plane_z: a rim
-            # taller than the Visor gap at its Y would thicken the device, so
-            # the rim tapers away under that plane like the Visor does.
-            ceiling_h = self.closed_plane_z()
-            ceiling = cad_helpers.translate(
-                cad_helpers.box_centered(size.width, size.depth, ceiling_h),
-                0.0, 0.0, ceiling_h / 2.0,
-            )
-            rim = cad_helpers.intersect(rim, cad_helpers.intersect(footprint, ceiling))
-            deck = cad_helpers.union(deck, rim)
+            if self.well_rim_height() > 0.0:
+                # Well rim: a wall-wide ring around the opening, tilted with the
+                # slab (local z=0 is the slab's mid-plane), clipped to the case
+                # footprint where the keyboard runs out to the edge.
+                rim = well.build_rim(
+                    cut_w, cut_d, wall, self.well_rim_height(), overlap=wall / 2.0
+                )
+                if slope:
+                    rim = cad_helpers.rotate_x(rim, -slope)
+                rim = cad_helpers.translate(rim, *pose)
+                # Closed, the Lid's flat underside lies on closed_plane_z: a rim
+                # taller than the Visor gap at its Y would thicken the device, so
+                # the rim tapers away under that plane like the Visor does.
+                ceiling_h = self.closed_plane_z()
+                ceiling = cad_helpers.translate(
+                    cad_helpers.box_centered(size.width, size.depth, ceiling_h),
+                    0.0, 0.0, ceiling_h / 2.0,
+                )
+                rim = cad_helpers.intersect(rim, cad_helpers.intersect(footprint, ceiling))
+                deck = cad_helpers.union(deck, rim)
 
             cutout = cad_helpers.box_centered(cut_w, cut_d, cut_h)
             if slope:

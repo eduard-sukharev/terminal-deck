@@ -1,3 +1,7 @@
+---
+status: superseded by ADR-0003
+---
+
 # Split every wide part into left/right Halves with stepped Seams
 
 The 8.8" panel (231 mm module) makes the Envelope ~236 × 118 mm, which does not

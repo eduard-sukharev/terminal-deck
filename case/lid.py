@@ -234,6 +234,16 @@ class Lid:
         width, depth, _, outer_top = self._outer_bounds()
         wall = self.config.wall_thickness
         reach = self.hinge.diameter
+        # Rolled rear edge: the Lid half of a full-width barrel on the hinge
+        # axis, kept to the rear wall's thickness like the knuckles.
+        roll_slab = cad_helpers.translate(
+            cad_helpers.box_centered(width, reach + wall, reach),
+            0.0, -depth / 2.0 - reach / 2.0 + wall / 2.0, outer_top - reach / 2.0,
+        )
+        roll = cad_helpers.intersect(
+            self._on_hinge_axis(self.hinge.build_lid_roll(width)), roll_slab
+        )
+        body = cad_helpers.union(body, roll)
         body = cad_helpers.cut(body, self._on_hinge_axis(self.hinge.build_lid_notch(width)))
         slab = cad_helpers.translate(
             cad_helpers.box_centered(width, reach + wall, 4 * reach),

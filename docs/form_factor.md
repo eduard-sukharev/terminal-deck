@@ -59,8 +59,10 @@ has a pin running from its Lid knuckle into the adjacent Base land, closed by
 a removable service cap (head outside the end, plug in the pin bore). Knuckle
 diameter must leave at least `wall.thickness` around the tunnel; the build
 rejects it otherwise. All dimensions are in the `hinge:` config section and
-the layout math stays in `components/hinge.py`. Not yet done: the Lid's rolled
-rear edge, and attaching the knuckles to the shells.
+the layout math stays in `components/hinge.py`. The knuckles are fused onto
+the shells, and the Lid's rear edge is rolled: the Lid half of a full-width
+barrel on the hinge axis (`Hinge.build_lid_roll`), notched in the middle for
+the Base knuckle, so the closed rear reads as one round roll.
 
 ## Printing
 

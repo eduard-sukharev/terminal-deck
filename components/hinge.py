@@ -246,6 +246,13 @@ class Hinge(Component):
             self._x_cylinder(bore, -out, l1), self._x_cylinder(bore, r0, out)
         )
 
+    def build_lid_roll(self, case_width: float = 80.0):
+        """The Lid's rolled rear edge: a full-width barrel on the hinge axis.
+
+        The caller keeps the Lid half of it and cuts the middle notch, so the
+        closed rear reads as one round roll with the Base knuckle in it."""
+        return self._x_cylinder(self.diameter, -case_width / 2.0, case_width / 2.0)
+
     def build_hardware(self, case_width: float = 80.0):
         """The separately printed or bought hinge parts: pins and service caps."""
         from utilities import cad_helpers

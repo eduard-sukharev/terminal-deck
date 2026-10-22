@@ -84,3 +84,12 @@ def test_hardware_is_pins_and_caps_only():
     hardware = cad_helpers.volume_mm3(h.build_hardware(WIDTH))
     assert hardware < cad_helpers.volume_mm3(h.build(WIDTH))
     assert hardware > cad_helpers.volume_mm3(h.build_pins(WIDTH))
+
+
+def test_lid_roll_spans_the_full_width_on_the_hinge_axis():
+    if not cad_helpers.cad_available():
+        pytest.skip("build123d not installed")
+    h = hinge()
+    x, y, z = cad_helpers.bounding_box_mm(h.build_lid_roll(WIDTH))
+    assert math.isclose(x, WIDTH, rel_tol=1e-6)
+    assert math.isclose(y, h.diameter, rel_tol=1e-6) and math.isclose(z, h.diameter, rel_tol=1e-6)

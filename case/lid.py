@@ -208,7 +208,42 @@ class Lid:
                 clearance=config.clearance.shell,
             )
 
-        return body
+        return self._mount_hinge(body)
+
+    def _on_hinge_axis(self, solid):
+        """Move an axis-at-origin hinge solid onto the hinge axis.
+
+        In the Lid's own frame the axis runs along the rear edge, in the Bezel's
+        front plane (the plane the Lid closes on).
+        """
+        from utilities import cad_helpers
+
+        _, depth, _, outer_top = self._outer_bounds()
+        return cad_helpers.translate(solid, 0.0, -depth / 2.0, outer_top)
+
+    def _mount_hinge(self, body):
+        """Notch the shell for the Base knuckle and fuse the Lid knuckles on.
+
+        The knuckles keep to the rear wall's thickness so they stay out of the
+        display cavity. Without a hinge, ``body`` is returned unchanged.
+        """
+        from utilities import cad_helpers
+
+        if self.hinge is None:
+            return body
+        width, depth, _, outer_top = self._outer_bounds()
+        wall = self.config.wall_thickness
+        reach = self.hinge.diameter
+        body = cad_helpers.cut(body, self._on_hinge_axis(self.hinge.build_lid_notch(width)))
+        slab = cad_helpers.translate(
+            cad_helpers.box_centered(width, reach + wall, 4 * reach),
+            0.0, -depth / 2.0 - reach / 2.0 + wall / 2.0, outer_top,
+        )
+        knuckles = cad_helpers.intersect(
+            self._on_hinge_axis(self.hinge.build_lid_knuckles(width)), slab
+        )
+        body = cad_helpers.union(body, knuckles)
+        return cad_helpers.cut(body, self._on_hinge_axis(self.hinge.build_lid_bores(width)))
 
     def build_bezel(self):
         """Generate the Bezel: the front plate with the glass opening.

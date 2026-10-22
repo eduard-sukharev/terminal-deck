@@ -517,7 +517,7 @@ class BuildPipeline:
 
         if "hinge" in buckets:
             hinge_z = base_obj.hinge_axis_z()
-            hinge_solid = hinge.build(case_depth=size.width)
+            hinge_solid = hinge.build_hardware(size.width)
             hinge_solid = cad_helpers.translate(hinge_solid, 0.0, -size.depth / 2.0, hinge_z)
             parts["hinge"] = hinge_solid
 

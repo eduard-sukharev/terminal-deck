@@ -209,6 +209,50 @@ class Base:
         """
         return self.closed_plane_z()
 
+    def _on_hinge_axis(self, solid):
+        """Move an axis-at-origin hinge solid onto the hinge axis (rear edge)."""
+        from utilities import cad_helpers
+
+        return cad_helpers.translate(
+            solid, 0.0, -self.size().depth / 2.0, self.hinge_axis_z()
+        )
+
+    def _mount_hinge(self, body, fuse_knuckle: bool):
+        """Notch ``body`` for the Lid knuckles and open the cable tunnel through it.
+
+        With ``fuse_knuckle`` (the Deck) the Base knuckle is also fused on, kept to
+        the rear wall's thickness and out from under the Tray so it neither
+        intrudes into the interior nor overlaps the Tray. Without a hinge,
+        ``body`` is returned unchanged.
+        """
+        from utilities import cad_helpers
+
+        if self.hinge is None:
+            return body
+        width = self.size().width
+        body = cad_helpers.cut(body, self._on_hinge_axis(self.hinge.build_base_notches(width)))
+        if fuse_knuckle:
+            size = self.size()
+            wall = self.config.wall_thickness
+            reach = self.hinge.diameter
+            # Rear wall slab (y from beyond the knuckle to the interior face), and the
+            # Tray's footprint below the Deck, which the knuckle must not enter.
+            slab = cad_helpers.translate(
+                cad_helpers.box_centered(width, reach + wall, 4 * reach),
+                0.0, -size.depth / 2.0 - reach / 2.0 + wall / 2.0, self.hinge_axis_z(),
+            )
+            rear_dl = self.deck_rear_level()
+            tray = cad_helpers.translate(
+                cad_helpers.box_centered(width, size.depth, rear_dl), 0.0, 0.0, rear_dl / 2.0
+            )
+            knuckle = cad_helpers.intersect(
+                self._on_hinge_axis(self.hinge.build_base_knuckle(width)), slab
+            )
+            body = cad_helpers.union(body, cad_helpers.cut(knuckle, tray))
+        return cad_helpers.cut(
+            body, self._on_hinge_axis(self.hinge.build_base_bores(width))
+        )
+
     def _slope_cut_tool(self, z_at_front: float, size, height: float):
         """A half-space solid lying above the deck-parallel plane through
         ``z_at_front`` (its height at the front edge), for cutting a solid
@@ -718,7 +762,7 @@ class Base:
             body = cad_helpers.cut(
                 body, cad_helpers.translate(recess, fx, fy, floor_z)
             )
-        return body
+        return self._mount_hinge(body, fuse_knuckle=False)
 
     def build_top(self):
         """Generate the base top deck solid.
@@ -822,4 +866,4 @@ class Base:
             )
             deck = cad_helpers.cut(deck, hole)
 
-        return deck
+        return self._mount_hinge(deck, fuse_knuckle=True)

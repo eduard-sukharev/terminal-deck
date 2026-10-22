@@ -61,3 +61,26 @@ def test_hinge_fits_check():
     check_hinge_fits(13.0, 5.0, 30.0, bad)
     assert ok.passed
     assert [c.name for c in bad.failures] == ["hinge-fits"]
+
+
+def test_notches_cover_the_other_shells_knuckles_with_clearance():
+    h = hinge()
+    b0, b1 = h.base_knuckle_span(WIDTH)
+    (cl0, cl1), (cr0, cr1) = h.corner_notch_spans(WIDTH)
+    (l0, l1), (r0, r1) = h.lid_knuckle_spans(WIDTH)
+    # Base notches hold the Lid knuckles and reach past the case side (cap access).
+    assert cl0 < -WIDTH / 2 and cr1 > WIDTH / 2
+    assert cl0 <= l0 and cl1 >= l1 and cr0 <= r0 and cr1 >= r1
+    # The Lid notch holds the Base knuckle, with clearance, and touches no Lid knuckle.
+    m0, m1 = h.middle_notch_span(WIDTH)
+    assert m0 < b0 and m1 > b1 and m0 >= l1 and m1 <= r0
+    assert h.notch_radius > h.diameter / 2
+
+
+def test_hardware_is_pins_and_caps_only():
+    h = hinge()
+    if not cad_helpers.cad_available():
+        pytest.skip("build123d not installed")
+    hardware = cad_helpers.volume_mm3(h.build_hardware(WIDTH))
+    assert hardware < cad_helpers.volume_mm3(h.build(WIDTH))
+    assert hardware > cad_helpers.volume_mm3(h.build_pins(WIDTH))

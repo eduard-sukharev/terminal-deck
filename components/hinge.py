@@ -25,6 +25,9 @@ from typing import Any
 
 from components.base import BoundingBox, Component
 
+#: How far a notch or bore runs past the case side, so the cut exits cleanly (mm).
+SIDE_OVERRUN = 1.0
+
 
 @dataclass(frozen=True)
 class HingeParameters:
@@ -177,6 +180,77 @@ class Hinge(Component):
                 cap = cad_helpers.rotate_z(cap, 180)
             caps.append(cad_helpers.translate(cap, sign * half, 0, 0))
         return cad_helpers.union(*caps)
+
+    # -- mounting into the shells ---------------------------------------------
+    #
+    # The knuckles are printed with the shells (Base knuckle on the Deck, Lid
+    # knuckles on the Lid shell); only the pins and caps are separate. Each
+    # shell is notched where the other shell's knuckle sits, and the bores
+    # are re-cut through the fused result. All of it is axis-at-origin along
+    # X, like the knuckles; the caller places it on the hinge axis.
+
+    @property
+    def notch_radius(self) -> float:
+        """Radius of the clearance notch around a knuckle (mm): knuckle plus the gap."""
+        return self.diameter / 2.0 + self.knuckle_gap
+
+    def corner_notch_spans(self, case_width: float) -> tuple[tuple[float, float], tuple[float, float]]:
+        """((x_min, x_max) left, right) Base notches over the Lid knuckles (mm).
+
+        Run from past the case side, so the service cap stays reachable, to the
+        Base knuckle."""
+        lo, hi = self.base_knuckle_span(case_width)
+        out = case_width / 2.0 + SIDE_OVERRUN
+        return ((-out, lo), (hi, out))
+
+    def middle_notch_span(self, case_width: float) -> tuple[float, float]:
+        """(x_min, x_max) of the Lid notch over the Base knuckle (mm)."""
+        lo, hi = self.base_knuckle_span(case_width)
+        return (lo - self.knuckle_gap / 2.0, hi + self.knuckle_gap / 2.0)
+
+    def build_base_notches(self, case_width: float = 80.0):
+        """Voids to cut from the Tray and Deck where the Lid knuckles swing."""
+        from utilities import cad_helpers
+
+        left, right = self.corner_notch_spans(case_width)
+        return cad_helpers.union(
+            self._x_cylinder(2 * self.notch_radius, *left),
+            self._x_cylinder(2 * self.notch_radius, *right),
+        )
+
+    def build_lid_notch(self, case_width: float = 80.0):
+        """Void to cut from the Lid shell where the Base knuckle swings."""
+        return self._x_cylinder(2 * self.notch_radius, *self.middle_notch_span(case_width))
+
+    def build_base_bores(self, case_width: float = 80.0):
+        """Voids to re-cut after the Base knuckle is fused: pin bore and cable tunnel.
+
+        The tunnel opens into the Deck, which is what lets the cable reach the Base interior."""
+        from utilities import cad_helpers
+
+        lo, hi = self.base_knuckle_span(case_width)
+        t0, t1 = self.tunnel_span(case_width)
+        return cad_helpers.union(
+            self._x_cylinder(self.pin + self.pin_clearance, lo, hi),
+            self._x_cylinder(self.wire_tunnel, t0, t1),
+        )
+
+    def build_lid_bores(self, case_width: float = 80.0):
+        """Voids to re-cut after the Lid knuckles are fused: pin bore out to the case side."""
+        from utilities import cad_helpers
+
+        (l0, l1), (r0, r1) = self.lid_knuckle_spans(case_width)
+        out = case_width / 2.0 + SIDE_OVERRUN
+        bore = self.pin + self.pin_clearance
+        return cad_helpers.union(
+            self._x_cylinder(bore, -out, l1), self._x_cylinder(bore, r0, out)
+        )
+
+    def build_hardware(self, case_width: float = 80.0):
+        """The separately printed or bought hinge parts: pins and service caps."""
+        from utilities import cad_helpers
+
+        return cad_helpers.union(self.build_pins(case_width), self.build_caps(case_width))
 
     def build(self, case_depth: float = 80.0):
         """The combined hinge solid for ``case_depth`` (the case width along X)."""

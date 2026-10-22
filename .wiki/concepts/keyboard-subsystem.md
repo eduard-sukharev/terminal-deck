@@ -10,7 +10,7 @@ updated_at: "2026-08-05"
 # Keyboard Subsystem
 
 The keyboard subsystem is a **geometry generator**: it converts a keyboard
-layout into reusable CadQuery geometry for the cyberdeck assembly. It is *not* a
+layout into reusable CAD geometry for the cyberdeck assembly. It is *not* a
 keyboard CAD application, and it is not responsible for keyboard case/PCB
 generation, firmware, wiring, or bill of materials. Its responsibility ends at
 accurate keyboard geometry and metadata for the enclosure generator.
@@ -19,7 +19,7 @@ Spec: `docs/keyboard_architecture.md` (external handoff guideline).
 
 ## Design goals
 
-Entirely scriptable, native CadQuery output, fully parametric, independent of any
+Entirely scriptable, native build123d output, fully parametric, independent of any
 particular enclosure *or* switch family, easily extensible, deterministic, and
 suitable for autonomous LLM development. The keyboard must behave as a reusable
 CAD component, not a standalone project.
@@ -38,11 +38,11 @@ keyboard/
     metadata.py, registry.py, validation.py, __init__.py
 ```
 
-The module has no dependency on cyberdeck geometry or on CadQuery — it imports
-cleanly without it (verified by blocking `cadquery` at import). The cyberdeck
+The module has no dependency on cyberdeck geometry or on a CAD library — it imports
+cleanly without it (verified by blocking `build123d` at import). The cyberdeck
 adapters (`components/keyboard_plate.py`, `components/rp2040_keyboard.py`,
 `components/keycap_set.py`) consume its `KeyboardGeometryModel` and extrude
-polygons through `utilities/cq_helpers.py`.
+polygons through `utilities/cad_helpers.py`.
 
 Keycap profiles (`keycaps/xda.py`, `reference/keycap_profiles.yaml`) follow the
 same registry pattern as switches/stabilizers; the cyberdeck adapter lofts them
@@ -52,7 +52,7 @@ into caps above the plate. See [[keycaps]].
 
 ```
 KLE JSON → Layout Parser → Internal Layout Model → Switch Library →
-Stabilizer Library → Plate Generator → CadQuery Solid → Cyberdeck Assembly
+Stabilizer Library → Plate Generator → build123d Solid → Cyberdeck Assembly
 ```
 
 Each stage has exactly one responsibility. The plate generator only assembles

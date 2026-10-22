@@ -23,7 +23,7 @@ generate ribs → export STEP/STL/SVG → run validation
 `BuildPipeline.run(steps)`:
 
 * **`data`** — config → components → layout → validation, then stops. No
-  CadQuery imported. This is the fast feedback loop.
+  build123d imported. This is the fast feedback loop.
 * **anything else / `all`** — continues: sizes the enclosure, computes bosses and
   connector cutouts, then (for `all`) builds the CAD solids and exports.
 
@@ -39,7 +39,7 @@ For `all`, the stages are:
    constraint-based layouts, also prints the constraint resolution report. Hard
    constraint violations abort the build before CAD generation.
 5. Build the `Assembly` → `enclosure_size()`, `bosses()`, `connector_cutouts()`.
-6. `cq_helpers.require_cq()` — enter the CAD pass ([[cad-generation]]).
+6. `cad_helpers.require_cad()` — enter the CAD pass ([[cad-generation]]).
 7. Build hinge → assembly solid → base bottom → base top → keyboard
    sub-assembly → lid base → lid bezel → display sub-assembly (LCD + HDMI
    driver combined) → hinge solid.
@@ -71,7 +71,7 @@ booleans (the base shell takes ~1 min).
 | `lid` | Combined lid: lid_shell + display_assembly + lid_bezel |
 | `lid_shell` | Rear shell tray only |
 | `lid_bezel` | Front plate with glass cutout only |
-| `hinge` | Hinge barrels + pin + wire tunnel |
+| `hinge` | Hinge pins + service caps (knuckles ship with the shells) |
 | `display` | LCD panel + HDMI driver combined (fast) |
 | `components` | All per-component debug STLs |
 | `comp:<role>` | Single component's raw STL (e.g. `comp:driver`) |
@@ -87,8 +87,8 @@ Makefile convenience targets: `make display`, `make base_bottom`, `make base_top
 
 ## Failure mode
 
-A `NotImplementedError` from a CAD stage is caught in `main()` and printed as
-"CAD stage not yet implemented" with exit code 2.
+A failed hard check (build volume, Half connectivity/rejoin, Seams, Visor, hinge)
+aborts the build; `make build IGNORE_VALIDATION=1` exports anyway.
 
 See [[data-layer]] and [[cad-generation]] for what each half of the pipeline does,
 [[constraint-system]] for the constraint architecture, and

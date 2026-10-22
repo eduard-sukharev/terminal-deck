@@ -61,7 +61,9 @@ python main.py --config config/default.yaml --steps all
 
 ## Status
 
-Scaffolded skeleton. The data layer (component model, configuration loading,
-fasteners, validation) is implemented. CAD generation methods raise
-`NotImplementedError` and are ready for implementation per the Component API
-contract in `docs/`.
+CAD generation is implemented on build123d. Create the env once with
+`conda create -n cyberdeck python=3.12 && conda activate cyberdeck &&
+pip install -r requirements.txt`. The case is a symmetric clamshell (Lid has the
+Base's footprint, Visor closes the Deck slope, P6-style three-knuckle hinge);
+every wide part is exported as left/right Halves that fit the 220 × 220 × 256 mm
+build volume. See `docs/form_factor.md`, `docs/adr/`, and `CONTEXT.md`.

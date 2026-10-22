@@ -9,7 +9,7 @@ updated_at: "2026-08-07"
 
 # Data Layer
 
-The part of the pipeline that runs **without CadQuery**. Everything here is pure
+The part of the pipeline that runs **without a CAD library**. Everything here is pure
 Python data — it imports cleanly and is what `--steps data` exercises.
 
 ## What it covers
@@ -28,7 +28,7 @@ Python data — it imports cleanly and is what `--steps data` exercises.
   `make_layout(name, components, config, recipe_path)` is the factory.
 * **Constraint system** (`layouts/constraints.py`, `layouts/composer.py`,
   `layouts/resolvers/`) — 13 constraint types with 13 real resolvers (no stubs).
-  Pure data, no CadQuery. See [[constraint-system]].
+  Pure data, no CAD library. See [[constraint-system]].
 * **Assembly sizing** (`assemblies/assembly.py`) — computes enclosure size,
   mounting bosses, and connector cutouts from placements without building solids.
   Also provides `select_placements(placements, keep)` for grouping placements
@@ -42,18 +42,18 @@ Python data — it imports cleanly and is what `--steps data` exercises.
   [[validation-suite]].
 * **Keyboard subsystem** (`keyboard/`) — pure data: KLE layout parsing, switch
   and stabilizer libraries, plate geometry model, and its own validation. No
-  CadQuery; the cyberdeck adapter (`components/keyboard_plate.py`) extrudes the
+  a CAD library; the cyberdeck adapter (`components/keyboard_plate.py`) extrudes the
   model into a solid only during the CAD pass. See [[keyboard-subsystem]].
 * **Build targets** (`utilities/targets.py`) — `resolve_targets(tokens, roles)`
   validates and resolves `--targets` tokens into bucket names and per-component
-  roles. Pure data, no CadQuery.
+  roles. Pure data, no CAD library.
 
-## The CadQuery boundary
+## The CAD boundary
 
-`utilities/cq_helpers.py` is the **only** module that imports CadQuery, and it
+`utilities/cad_helpers.py` is the **only** module that imports build123d, and it
 does so lazily (`require_cq()`). Geometry modules go through it — nothing else
-is allowed to `import cadquery`. This is what keeps the data layer importable
-without CadQuery. See [[cad-conventions]].
+is allowed to `import build123d`. This is what keeps the data layer importable
+without a CAD library. See [[cad-conventions]].
 
 ## How it plugs into the pipeline
 

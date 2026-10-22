@@ -3,7 +3,7 @@ title: "Keycaps and Switch Rendering"
 type: "feature"
 status: "active"
 language: "default"
-source_paths: ["components/keycap_set.py", "components/rp2040_keyboard.py", "components/keyboard_plate.py", "keyboard/keycaps/", "keyboard/geometry/keycaps.py", "keyboard/reference/keycap_profiles.yaml", "keyboard/registry.py", "utilities/cq_helpers.py"]
+source_paths: ["components/keycap_set.py", "components/rp2040_keyboard.py", "components/keyboard_plate.py", "keyboard/keycaps/", "keyboard/geometry/keycaps.py", "keyboard/reference/keycap_profiles.yaml", "keyboard/registry.py", "utilities/cad_helpers.py"]
 updated_at: "2026-08-05"
 ---
 
@@ -33,7 +33,7 @@ The corner radius is derived (`top_diameter / 2`), never stored.
 
 ## Cap geometry
 
-`keyboard/geometry/keycaps.py` is pure math, no CadQuery:
+`keyboard/geometry/keycaps.py` is pure math, no CAD library:
 
 * `rectangle_vertices(w, d, n)` — samples a rectangle boundary at *n* uniform
   angles from centre.

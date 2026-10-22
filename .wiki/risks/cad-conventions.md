@@ -3,7 +3,7 @@ title: "CAD Conventions"
 type: "risk"
 status: "active"
 language: "default"
-source_paths: ["docs/design_spec.md", "AGENTS.md", "utilities/cq_helpers.py"]
+source_paths: ["docs/design_spec.md", "AGENTS.md", "utilities/cad_helpers.py"]
 updated_at: "2026-08-04"
 ---
 
@@ -27,9 +27,9 @@ Violating these silently breaks the component → assembly → enclosure contrac
 * **Hinge math** lives in `components/hinge.py`; **cable routing** in
   `routing/cable_routing.py`; **fasteners** in `utilities/fasteners.py`. Never
   recreated inline.
-* **`utilities/cq_helpers.py` is the only CadQuery adapter.** It imports lazily
-  so the [[data-layer]] stays importable without CadQuery. Geometry modules must
-  go through it, not `import cadquery` directly.
+* **`utilities/cad_helpers.py` is the only build123d adapter.** It imports lazily
+  so the [[data-layer]] stays importable without a CAD library. Geometry modules must
+  go through it, not `import build123d` directly.
 * **No `box(220,120,20)`-style magic boxes** — use derived `overall_width()`,
   `overall_depth()`, `overall_height()`.
 

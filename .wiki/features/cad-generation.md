@@ -3,14 +3,14 @@ title: "CAD Generation"
 type: "feature"
 status: "active"
 language: "default"
-source_paths: ["assemblies/assembly.py", "case/base.py", "case/lid.py", "components/hinge.py", "components/keycap_set.py", "geometry/", "exports/", "utilities/cq_helpers.py"]
+source_paths: ["assemblies/assembly.py", "case/base.py", "case/lid.py", "components/hinge.py", "components/keycap_set.py", "geometry/", "exports/", "utilities/cad_helpers.py"]
 updated_at: "2026-08-07"
 ---
 
 # CAD Generation
 
-The CadQuery pass that turns placements into solid geometry. Requires the
-miniforge env (`cq_helpers.require_cq()`).
+The build123d pass that turns placements into solid geometry. Requires the
+`cyberdeck` conda env.
 
 ## What gets built
 
@@ -36,10 +36,12 @@ miniforge env (`cq_helpers.require_cq()`).
   front edge of the glass cutout.
 * **Combined lid** — `--targets lid` unions lid_shell + display_assembly +
   lid_bezel into one solid (`cyberdeck_lid.*`).
-* **Hinge** (`components/hinge.py`) — barrels, pin, and wire tunnel, built from
-  `config.hinge` and translated to the rear gap between base cavity and lid.
+* **Hinge** (`components/hinge.py`) — three knuckles (two Lid corner knuckles, one long Base
+  knuckle with the cable tunnel) fused into the Deck and Lid shell, the Lid's
+  rolled rear edge, plus separate pins and removable service caps (the `hinge`
+  target). Built from `config.hinge`; the axis is `Base.hinge_axis_z()`.
 * **Geometry primitives** (`geometry/`) — boss, fillet, shell, ribs, vents,
-  cutouts. These must go through `utilities/cq_helpers.py`. Switch/stabilizer
+  cutouts. These must go through `utilities/cad_helpers.py`. Switch/stabilizer
   cutouts live in the `keyboard/` package (`keyboard/geometry/`), not here; the
   plate is extruded by the `components/keyboard_plate.py` adapter from the
   keyboard geometry model.
@@ -50,11 +52,11 @@ miniforge env (`cq_helpers.require_cq()`).
   XDA keycaps lofted above the plate and simplified switch bodies passing
   through it. See [[keycaps]].
 
-## The CadQuery adapter
+## The build123d adapter
 
-`utilities/cq_helpers.py` wraps CadQuery (`box_centered`, `cylinder_centered`,
-`translate`, `loft_between`, `make_compound`, `require_cq`, ...). It imports
-lazily so the [[data-layer]] stays importable without CadQuery. Never bypass it.
+`utilities/cad_helpers.py` wraps build123d (`box_centered`, `cylinder_centered`,
+`translate`, `loft_between`, `make_compound`, ...). It imports
+lazily so the [[data-layer]] stays importable without a CAD library. Never bypass it.
 
 ## Batching boolean ops
 

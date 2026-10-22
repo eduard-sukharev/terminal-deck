@@ -35,8 +35,8 @@ All constructors reject non-positive dimensions via `__post_init__`.
 * `keepout() -> Keepout` — defaults to size + 4 mm cable allowance.
 * `reference_origin() -> tuple` — world-frame origin offset; default `(0,0,0)`
   (origin = center of base).
-* `build()` — generates CadQuery geometry; raises `NotImplementedError` in the
-  scaffolding pass.
+* `build()` — generates build123d geometry (a component with no solid yet raises
+  `NotImplementedError`).
 
 ## Implementations
 
@@ -48,8 +48,8 @@ Connector type identifiers are the string constants in `utilities/constants.py`
 (e.g. `CONNECTOR_HDMI`), re-exported from `components/base.py`.
 
 The keyboard is currently modeled as grid-based components (`keyboard_plate.py`,
-`rp2040_keyboard.py`) driven by `config/keyboard.yaml`. A richer KLE-driven
-keyboard subsystem is specced but not implemented — see
+`rp2040_keyboard.py`) driven by `config/keyboard.yaml`. The KLE-driven
+keyboard subsystem generates the plate — see
 [[keyboard-subsystem]].
 
 See [[data-layer]] for how these feed the build, and [[component-data-pipeline]]

@@ -13,15 +13,16 @@ A smart newcomer's first 10 minutes with this repo.
 
 ## Environment
 
-CadQuery 2.8 lives in the miniforge env, and the base conda env is Python 3.7
-(too old — `typing.Final` missing). Activate miniforge first:
+The CAD backend is build123d. Use the dedicated `cyberdeck` conda env — the base
+conda env is Python 3.7 (too old — `typing.Final` missing). Create it once:
 
 ```bash
-source $HOME/miniforge/bin/activate
+conda create -n cyberdeck python=3.12 && conda activate cyberdeck
+pip install -r requirements.txt
 ```
 
 There is no CI; verification is `py_compile`, the pytest suite, and the CLI.
-A `Makefile` wraps the common commands (run after activating miniforge):
+A `Makefile` wraps the common commands (run inside the `cyberdeck` env):
 
 ```bash
 make data    # data layer only (config → components → layout → validation)
@@ -42,7 +43,7 @@ python -m py_compile main.py components/*.py geometry/*.py layouts/*.py assembli
 ```
 
 * `--steps data` — config → components → layout → validation (9 checks), prints
-  a report, followed by the constraint resolution report. No CadQuery needed.
+  a report, followed by the constraint resolution report. No CAD library needed.
 * `--steps all` — additionally builds the assembly/base/lid/hinge solids and
   exports STEP/STL/SVG to `generated/`. Boolean-heavy base shell takes ~1 min.
 * `--layout` accepts `compact` (the only layout, and the default).
@@ -77,7 +78,7 @@ see how config flows to geometry.
 
 ## One tempting dangerous change
 
-Import CadQuery directly in a geometry module instead of going through
-`utilities/cq_helpers.py`, or hardcode a dimension in a component. That bypasses
+Import build123d directly in a geometry module instead of going through
+`utilities/cad_helpers.py`, or hardcode a dimension in a component. That bypasses
 the lazy-import adapter and the "no magic numbers" rule, and silently breaks the
 component → assembly → enclosure contract. See [[cad-conventions]].

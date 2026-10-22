@@ -93,7 +93,7 @@ CAD: `width`, `height`, `switch_centers`, `mounting_points`, `bounding_box`,
 ## Outputs
 
 Plate, switch cutouts, stabilizer cutouts, mounting holes, plate outline,
-bounding box, key metadata, switch center locations, the CadQuery solid, and an
+bounding box, key metadata, switch center locations, the build123d solid, and an
 optional DXF export. No enclosure geometry is generated.
 
 ## Validation

@@ -13,7 +13,7 @@ updated_at: "2026-08-07"
 
 A fully parametric clamshell cyberdeck CAD generator. It turns YAML configuration
 (display, keyboard, SBC) into a complete 3D-printable enclosure: assembly solid,
-base and lid shells, hinge barrels, and STEP/STL/SVG export files. The tool is a
+base and lid shells, three-knuckle hinge, and STEP/STL/SVG export files. The tool is a
 terminal for field debugging of 3D printers (SSH, tmux, git, firmware flashing),
 not a maker platform.
 
@@ -24,10 +24,10 @@ geometry, and the enclosure regenerates when you change the config. See
 
 ## Get started
 
-The data layer needs no CadQuery; the CAD pass needs the miniforge env.
+The data layer needs no CAD library; the CAD pass needs the `cyberdeck` conda env (build123d).
 
 ```bash
-source $HOME/miniforge/bin/activate        # CadQuery 2.8 lives here
+conda activate cyberdeck                    # build123d lives here
 make data                                   # data layer only
 make all                                    # full CAD + exports (~1 min)
 make test                                   # pytest suite (76 tests)
@@ -62,7 +62,7 @@ First files to read:
 Safe first change: tweak `config/default.yaml` (e.g. `wall.thickness`) and re-run
 `--steps data` to see the validation output shift.
 
-Tempting dangerous change: editing `utilities/cq_helpers.py` to import CadQuery
+Tempting dangerous change: editing `utilities/cad_helpers.py` to import build123d
 globally, or hardcoding a dimension in a component — both break the
 component → assembly → enclosure contract. See [[cad-conventions]].
 
@@ -81,7 +81,7 @@ load config → load components → place layout → validate → size enclosure
 bosses/cutouts → build assembly solid → shell the base and lid → build hinge →
 export STEP/STL/SVG → run validation.
 
-`--steps data` stops after validation (no CadQuery needed). Constraint-based
+`--steps data` stops after validation (no CAD library needed). Constraint-based
 layouts also print a constraint resolution report alongside the validation
 report. See [[build-pipeline]].
 
@@ -97,14 +97,14 @@ report. See [[build-pipeline]].
 
 ## What are the important moving parts?
 
-* The **data layer** (no CadQuery): components, config loading, layouts, assembly
+* The **data layer** (no CAD library): components, config loading, layouts, assembly
   sizing, cable routing, validation. See [[data-layer]].
 * The **constraint system** — 13 constraint types with 13 real procedural
   resolvers that replace imperative layout math with composable, declarative
   rules. Layouts can be defined in Python or YAML (via `config/layouts/*.yaml`
   recipes). See [[constraint-system]].
 * The **CAD generation** pass: assembly union, base/lid shells, hinge, exporters,
-  all routed through the single CadQuery adapter `utilities/cq_helpers.py`. See
+  all routed through the single build123d adapter `utilities/cad_helpers.py`. See
   [[cad-generation]].
 * The **validation suite** — 9 checks that run on pure data, plus a constraint
   resolution report for constraint-based layouts. See [[validation-suite]].
@@ -115,7 +115,7 @@ report. See [[build-pipeline]].
 * The **keyboard subsystem** — a `keyboard/` package converting a KLE JSON
   layout into plate geometry (switch/stabilizer cutouts, mounting holes,
   outline) via switch/stabilizer libraries backed by kb_builder reference data.
-  Pure data — no CadQuery. The cyberdeck adapter `components/keyboard_plate.py`
+  Pure data — no CAD library. The cyberdeck adapter `components/keyboard_plate.py`
   extrudes the result into a solid. See [[keyboard-subsystem]].
 * The **keycap and switch rendering** — XDA keycaps lofted above the plate
   and simplified switch bodies passing through it. See [[keycaps]].
@@ -125,11 +125,11 @@ report. See [[build-pipeline]].
 * The single wall parameter: `config.wall.thickness`. Everything derives from it.
 * The coordinate system: +X right, +Y forward, +Z up; origin = center of base.
   Never redefine origins. Units are always millimeters.
-* `utilities/cq_helpers.py` is the **only** place allowed to touch CadQuery;
+* `utilities/cad_helpers.py` is the **only** place allowed to touch build123d;
   geometry modules must go through it.
 * No magic numbers — unmeasured dimensions carry `# TODO: measure`.
 * Layouts contain placements only, never CAD. See [[cad-conventions]].
-* Constraint resolvers are pure data — no CadQuery imports. See [[constraint-system]].
+* Constraint resolvers are pure data — no CAD-library imports. See [[constraint-system]].
 * YAML recipes in `config/layouts/` must stay in sync with component specs
   (references like `{sbc.depth}` resolve at load time).
 

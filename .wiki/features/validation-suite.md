@@ -10,7 +10,7 @@ updated_at: "2026-08-06"
 # Validation Suite
 
 Every build runs a set of checks on **pure data** (placements + component specs +
-config) — no CadQuery needed. That is what `--steps data` prints as the report.
+config) — no CAD library needed. That is what `--steps data` prints as the report.
 
 ## The 9 checks (`utilities/validation.py`)
 

@@ -456,3 +456,10 @@ def face_count(shape: Any) -> int:
 def solid_count(shape: Any) -> int:
     """Return the number of solids in the shape."""
     return len(shape.solids())
+
+
+def extrude_profile_x(vertices_yz: list[tuple[float, float]], length: float) -> Any:
+    """Extrude a closed (Y, Z) polygon along X, centered on ``x = 0``."""
+    b3d = require_cad()
+    wire = b3d.Wire.make_polygon([(0.0, vy, vz) for vy, vz in vertices_yz], close=True)
+    return b3d.extrude(b3d.Face(wire), amount=length / 2.0, both=True)

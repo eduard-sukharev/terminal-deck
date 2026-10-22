@@ -26,6 +26,13 @@ No palm rest. The Micro Journal "large palm rest" requirement is dropped.
   metric in the constraint report. Permitted levers: deck slope, keycap
   profile (config), minimal Lid. The buried-SBC layout stays.
 
+The Visor is built by `geometry/visor.py` from `Base.visor_profile()` and
+added to the Lid shell: a wall-thick ring on the shell outline, trimmed to a
+height that equals the Lid's flat underside plane (through the Deck's highest
+point) minus the Deck top. Each run checks `visor-closes-flush`,
+`visor-zero-at-hinge` and `visor-non-negative`, and reports closed thickness
+(Base to closed Lid top) as a GOAL line in the "closed-device validation".
+
 ## Lid
 
 * Display centered in the Lid. The driver board stays directly behind the

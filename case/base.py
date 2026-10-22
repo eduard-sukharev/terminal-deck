@@ -174,6 +174,33 @@ class Base:
         wall's own height on the old, unkneed slope otherwise."""
         return self.deck_level_at(-self.size().depth / 2.0)
 
+    def deck_top_at(self, y: float) -> float:
+        """Deck top-face height at world ``y`` (mm): the underside plus one wall."""
+        return self.deck_level_at(y) + self.config.wall_thickness
+
+    def visor_profile(self):
+        """Visor height along Y that fills the wedge under the closed Lid.
+
+        The Lid's flat underside lies on the plane through the Deck's highest
+        point (the rear level), so the Visor is that plane minus the Deck top:
+        full at the front, tapering to zero at the knee and flat behind it.
+        """
+        from geometry.visor import VisorProfile
+
+        size = self.size()
+        rear_y, front_y = -size.depth / 2.0, size.depth / 2.0
+        knee_y = self._deck_knee_y()
+        top = self.deck_top_at(rear_y)
+        knots = [(rear_y, 0.0)]
+        if knee_y is not None and self.slope() and rear_y < knee_y < front_y:
+            knots.append((knee_y, 0.0))
+        knots.append((front_y, top - self.deck_top_at(front_y)))
+        return VisorProfile(tuple(knots))
+
+    def closed_plane_z(self) -> float:
+        """Height of the Lid's flat underside when closed (mm)."""
+        return self.deck_top_at(-self.size().depth / 2.0)
+
     def _slope_cut_tool(self, z_at_front: float, size, height: float):
         """A half-space solid lying above the deck-parallel plane through
         ``z_at_front`` (its height at the front edge), for cutting a solid

@@ -90,6 +90,8 @@ class ValidationReport:
     """Aggregated results of all checks for one build."""
 
     checks: list[CheckResult] = field(default_factory=list)
+    #: GOAL metrics: reported, never a failure.
+    goals: dict[str, float] = field(default_factory=dict)
 
     @property
     def passed(self) -> bool:
@@ -107,6 +109,8 @@ class ValidationReport:
         for check in self.checks:
             marker = "ok  " if check.passed else "FAIL"
             lines.append(f"  [{marker}] {check.name}: {check.message}")
+        for name, value in self.goals.items():
+            lines.append(f"  [goal] {name}: {value:.2f}")
         return "\n".join(lines)
 
 
@@ -389,6 +393,38 @@ def check_seams(config: Any, case_width: float, report: ValidationReport) -> Non
             -half_open <= x0 and x1 <= half_open,
             f"bezel Seam x={x0:g}..{x1:g}, opening +-{half_open:g}",
         )
+
+
+def check_visor_flush(
+    deck_top_at: Any,
+    visor_height_at: Any,
+    rear_y: float,
+    front_y: float,
+    report: ValidationReport,
+    samples: int = 21,
+    tolerance: float = 1e-6,
+) -> None:
+    """Fail unless the Visor closes the Deck's slope into a box.
+
+    Closed, ``deck_top + visor_height`` must be one constant plane along Y
+    (Lid underside parallel to the Deck's base), the Visor must never be
+    negative, and it must vanish at the hinge end.
+    """
+    ys = [rear_y + (front_y - rear_y) * i / (samples - 1) for i in range(samples)]
+    tops = [deck_top_at(y) + visor_height_at(y) for y in ys]
+    flat = max(tops) - min(tops)
+    report.add(
+        "visor-closes-flush", flat <= tolerance,
+        f"Lid underside varies {flat:.3g} mm over the Deck",
+    )
+    report.add(
+        "visor-zero-at-hinge", abs(visor_height_at(rear_y)) <= tolerance,
+        f"Visor height at hinge {visor_height_at(rear_y):.3g} mm",
+    )
+    report.add(
+        "visor-non-negative", all(visor_height_at(y) >= -tolerance for y in ys),
+        "Visor height >= 0 everywhere",
+    )
 
 
 def run_all(

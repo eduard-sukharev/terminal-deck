@@ -38,6 +38,7 @@ class Lid:
         footprint: tuple[float, float] | None = None,
         bezel_thickness: float | None = None,
         interior=None,
+        visor=None,
     ) -> None:
         self.display = display
         self.config = config
@@ -48,6 +49,9 @@ class Lid:
         #: Solid of what sits inside the shell (display, driver); Seam
         #: joints keep clear of it.
         self.interior = interior
+        #: ``geometry.visor.VisorProfile`` for the Lid shell's tapered lip, or
+        #: ``None`` for a flat-topped shell.
+        self.visor = visor
         self.bezel_thickness = (
             bezel_thickness if bezel_thickness is not None else config.wall_thickness
         )
@@ -91,6 +95,11 @@ class Lid:
         outer_bottom = interior_bottom - wall
         outer_top = interior_top + wall
         return width, depth, outer_bottom, outer_top
+
+    def height(self) -> float:
+        """Lid shell + Bezel thickness, excluding the Visor (mm)."""
+        _, _, outer_bottom, outer_top = self._outer_bounds()
+        return outer_top - outer_bottom
 
     def _corner_positions(self) -> list[tuple[float, float]]:
         """Return the 4 bezel-mount corner positions (mm, XY).
@@ -173,6 +182,18 @@ class Lid:
                 hole, cx, cy, self._boss_top() - insert.depth / 2.0
             )
             body = cad_helpers.cut(body, hole)
+
+        # Visor: front and side walls rising above the rim to fill the Deck's
+        # wedge when closed (zero at the hinge end).
+        if self.visor is not None and self.visor.max_height > 0.0:
+            from geometry import visor as visor_geometry
+
+            body = cad_helpers.union(
+                body,
+                visor_geometry.build_walls(
+                    self.visor, width, depth, wall, config.corners.radius, outer_top
+                ),
+            )
 
         # Screw lugs that straddle the Lid shell Seam (US28).
         seam = config.split.get("lid_shell")

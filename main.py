@@ -354,12 +354,16 @@ class BuildPipeline:
 
         # Base bottom, top, and combined assembly.
         base_obj = None
-        if "base" in buckets or "base_bottom" in buckets or "base_top" in buckets or "hinge" in buckets:
+        needs_lid = "lid" in buckets or "lid_shell" in buckets or "lid_bezel" in buckets
+        if needs_lid or "base" in buckets or "base_bottom" in buckets or "base_top" in buckets or "hinge" in buckets:
             base_obj = Base(
                 assembly, config,
                 keyboard=components.get("keyboard"),
                 hinge=hinge,
             )
+        if base_obj is not None and (
+            "base" in buckets or "base_bottom" in buckets or "base_top" in buckets or "hinge" in buckets
+        ):
             # Bosses (component mounting bosses and deck-mount standoffs)
             # are case-build-time geometry, never placed components, so the
             # ordinary collision system never sees them — check them here,
@@ -467,7 +471,26 @@ class BuildPipeline:
                 world_z=display.z,
                 footprint=(size.width, size.depth),
                 interior=display_assembly_solid,
+                visor=base_obj.visor_profile(),
             )
+            from utilities.validation import ValidationReport, check_visor_flush
+
+            visor_report = ValidationReport()
+            visor_profile = lid.visor
+            check_visor_flush(
+                base_obj.deck_top_at, visor_profile.height_at,
+                -size.depth / 2.0, size.depth / 2.0, visor_report,
+            )
+            visor_report.goals["closed thickness (mm)"] = (
+                base_obj.closed_plane_z() + lid.height()
+            )
+            print("[pipeline] closed-device validation:")
+            print(visor_report.summary())
+            if not visor_report.passed and not ignore_validation:
+                raise SystemExit(
+                    "[pipeline] aborted: Visor does not close flush "
+                    "(pass --ignore-validation to build anyway)"
+                )
 
         if "lid_shell" in buckets:
             parts["lid_shell"] = lid.build_shell()
@@ -526,6 +549,7 @@ class BuildPipeline:
                 components["display"], config, hinge=hinge,
                 world_z=display_placement.z,
                 footprint=(size.width, size.depth),
+                visor=base_obj.visor_profile(),
             )
 
             # Build base solid (closed position).

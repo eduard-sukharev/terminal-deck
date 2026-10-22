@@ -14,8 +14,8 @@ Buckets
 * ``lid_shell`` — the Lid shell (rear tray); ``lid_bezel`` — the Bezel
 * ``<part>_left`` / ``<part>_right`` — one Half of ``base_bottom``,
   ``base_top``, ``lid_shell`` or ``lid_bezel`` (see :data:`SPLIT_PARTS`).
-  Halves are always exported together with their part, so these resolve to
-  the part's bucket.
+  They resolve to the part's bucket; :func:`requested_halves` then narrows
+  the export to just the named Halves.
 * ``hinge`` — hinge barrels + pin + wire tunnel
 * ``keyboard_plate`` — bare switch plate (printed as two Halves)
 * ``display`` — LCD panel + HDMI driver combined (the sub-assembly)
@@ -100,4 +100,29 @@ def resolve_targets(
     return buckets, comp_roles
 
 
-__all__ = ["BUCKETS", "SPLIT_PARTS", "resolve_targets"]
+#: Buckets that, when requested, include a split part as a whole.
+_PART_CONTAINERS: dict[str, frozenset[str]] = {
+    "base_bottom": frozenset({"base_bottom", "base", "all"}),
+    "base_top": frozenset({"base_top", "base", "all"}),
+    "lid_shell": frozenset({"lid_shell", "lid", "all"}),
+    "lid_bezel": frozenset({"lid_bezel", "lid", "all"}),
+    "keyboard_plate": frozenset({"keyboard_plate", "all"}),
+}
+
+
+def requested_halves(tokens: list[str]) -> set[str]:
+    """Half names (``<part>_left``/``_right``) that were asked for alone.
+
+    A Half is dropped from the result when its part is also wanted as a whole
+    (directly or via a bucket such as ``lid``, ``base`` or ``all``), because
+    then every Half is built anyway.  An empty result means "no narrowing".
+    """
+    wanted = set(tokens)
+    return {
+        token for token in tokens
+        if token in _HALF_ALIASES
+        and not wanted & _PART_CONTAINERS[_HALF_ALIASES[token]]
+    }
+
+
+__all__ = ["BUCKETS", "SPLIT_PARTS", "requested_halves", "resolve_targets"]

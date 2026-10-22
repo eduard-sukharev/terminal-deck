@@ -69,6 +69,8 @@ YAML recipe file through the same composer instead of the built-in one.
   Halves alongside the whole part (ADR 0001); seams come from the `split:`
   section of `config/default.yaml` and the run fails if a Half is
   disconnected, doesn't rejoin, or exceeds the build volume.
+  Naming a Half on its own (e.g. `--targets lid_shell_left`) exports only
+  that Half; naming the part or a bucket containing it exports all Halves.
 - `hinge` — hinge barrels + pin + wire tunnel
 - `display` — LCD panel + HDMI driver combined (the sub-assembly, fast)
 - `components` — all per-component debug STLs

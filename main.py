@@ -312,7 +312,7 @@ class BuildPipeline:
         from components.hinge import Hinge as HingePart
         from exports import EXPORTERS
         from utilities import cad_helpers
-        from utilities.targets import resolve_targets
+        from utilities.targets import requested_halves, resolve_targets
 
         cad_helpers.require_cad()
 
@@ -676,6 +676,20 @@ class BuildPipeline:
                         f"[pipeline] aborted: {part_name} Halves are invalid "
                         "(pass --ignore-validation to build anyway)"
                     )
+        # A Half named on its own (e.g. ``lid_shell_left``) exports just that
+        # Half; the whole part and the other Half were only built to check it.
+        only_halves = requested_halves(target_tokens)
+        if only_halves:
+            for part_name in split_sources:
+                names = (part_name, f"{part_name}_left", f"{part_name}_right")
+                if not only_halves & set(names):
+                    continue
+                if names[1] not in parts:
+                    continue  # unsplit part: the whole part is its only form
+                for name in names:
+                    if name not in only_halves:
+                        for table in (parts, printable, gltf_parts):
+                            table.pop(name, None)
         fit_errors = check_build_volume(printable)
         print(
             f"[pipeline] build volume: {len(printable)} printable part(s): "

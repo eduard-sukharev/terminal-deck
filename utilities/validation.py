@@ -299,13 +299,26 @@ def check_lid_clearance(
 
 
 def check_hinge_clearance(
-    hinge_z_span: float, component_z_span: float, report: ValidationReport
+    knuckle_box: tuple[float, float, float, float, float, float],
+    placements: list[Any],
+    report: ValidationReport,
 ) -> None:
-    """Fail if the hinge volume intersects the component volume."""
+    """Fail if a placed component intrudes on the Base knuckle's reach.
+
+    ``knuckle_box`` is ``(x0, x1, y0, y1, z0, z1)`` in world coordinates: the
+    part of the knuckle that sits inside the case.     """
+    kx0, kx1, ky0, ky1, kz0, kz1 = knuckle_box
+    hits = []
+    for p in placements:
+        x0, y0, x1, y1 = p.box
+        z0, z1 = p.z_bounds()
+        if x0 < kx1 and x1 > kx0 and y0 < ky1 and y1 > ky0 and z0 < kz1 and z1 > kz0:
+            hits.append(p.component.__class__.__name__)
     report.add(
         "hinge-clears",
-        hinge_z_span <= component_z_span,
-        f"hinge_z={hinge_z_span}, component_z={component_z_span}",
+        not hits,
+        f"components inside Base knuckle reach: {', '.join(hits)}" if hits
+        else "no component inside Base knuckle reach",
     )
 
 
@@ -449,11 +462,10 @@ def run_all(
     shell_opening: list[str] | None = None,
     max_component_height: float = 0.0,
     lid_interior_height: float = 0.0,
-    hinge_z_span: float = 0.0,
 ) -> ValidationReport:
     """Run the full validation suite over a placement set.
 
-    Geometry-dependent inputs (lid interior height, hinge span, cable bend)
+    Geometry-dependent inputs (lid interior height, cable bend)
     default to ``0`` and should be supplied by the assembly/case stage.
     """
     report = ValidationReport()
@@ -466,6 +478,5 @@ def run_all(
     check_cable_bend(0.0, 0.0, report)  # filled by routing stage
     check_connectors_accessible(placements, shell_opening or [], report)
     check_lid_clearance(max_component_height, lid_interior_height, report)
-    check_hinge_clearance(hinge_z_span, max_component_height, report)
     check_dimension_consistency(placements, config, report)
     return report

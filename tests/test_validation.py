@@ -9,7 +9,6 @@ from utilities.validation import (
     check_cable_bend,
     check_connectors_accessible,
     check_lid_clearance,
-    check_hinge_clearance,
 )
 from layouts.base import Placement
 from components.base import Component, BoundingBox, Hole, Connector
@@ -104,18 +103,6 @@ def test_lid_clearance_pass():
 def test_lid_clearance_fail():
     r = ValidationReport()
     check_lid_clearance(20.0, 15.0, r)
-    assert not r.passed
-
-
-def test_hinge_clearance_pass():
-    r = ValidationReport()
-    check_hinge_clearance(5.0, 10.0, r)
-    assert r.passed
-
-
-def test_hinge_clearance_fail():
-    r = ValidationReport()
-    check_hinge_clearance(5.0, 3.0, r)
     assert not r.passed
 
 

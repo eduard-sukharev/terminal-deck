@@ -157,7 +157,6 @@ class BuildPipeline:
             shell_opening=openings or [],
             max_component_height=max_height,
             lid_interior_height=max_height,
-            hinge_z_span=0.0,
         )
         return report.summary()
 
@@ -470,7 +469,8 @@ class BuildPipeline:
                 visor=base_obj.visor_profile(),
             )
             from utilities.validation import (
-                ValidationReport, check_hinge_fits, check_visor_flush,
+                ValidationReport, check_hinge_clearance, check_hinge_fits,
+                check_visor_flush,
             )
 
             visor_report = ValidationReport()
@@ -484,6 +484,17 @@ class BuildPipeline:
             )
             check_hinge_fits(
                 hinge.diameter, base_obj.closed_plane_z(), lid.height(), visor_report
+            )
+            axis_z = base_obj.hinge_axis_z()
+            knuckle_x0, knuckle_x1 = hinge.base_knuckle_span(size.width)
+            rear_y = -size.depth / 2.0
+            check_hinge_clearance(
+                (
+                    knuckle_x0, knuckle_x1,
+                    rear_y, rear_y + config.wall_thickness,
+                    axis_z - hinge.diameter / 2.0, axis_z + hinge.diameter / 2.0,
+                ),
+                placements, visor_report,
             )
             print("[pipeline] closed-device validation:")
             print(visor_report.summary())

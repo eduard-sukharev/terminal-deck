@@ -93,3 +93,21 @@ def test_lid_roll_spans_the_full_width_on_the_hinge_axis():
     x, y, z = cad_helpers.bounding_box_mm(h.build_lid_roll(WIDTH))
     assert math.isclose(x, WIDTH, rel_tol=1e-6)
     assert math.isclose(y, h.diameter, rel_tol=1e-6) and math.isclose(z, h.diameter, rel_tol=1e-6)
+
+
+def test_hinge_clears_check():
+    from types import SimpleNamespace
+
+    from utilities.validation import ValidationReport, check_hinge_clearance
+
+    def placed(x0, x1, y0, y1, z0, z1):
+        return SimpleNamespace(
+            component=object(), box=(x0, y0, x1, y1), z_bounds=lambda: (z0, z1)
+        )
+
+    box = (-10.0, 10.0, -40.0, -37.5, 5.0, 18.0)
+    ok, bad = ValidationReport(), ValidationReport()
+    check_hinge_clearance(box, [placed(-5, 5, -30, 0, 0, 20)], ok)
+    check_hinge_clearance(box, [placed(-5, 5, -42, -30, 0, 20)], bad)
+    assert ok.passed
+    assert [c.name for c in bad.failures] == ["hinge-clears"]

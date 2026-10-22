@@ -264,6 +264,11 @@ footprint with something above/below them:
 Use fff and codegraph MCPs for navigating the codebase.
 Use ripgrep's `rg` instead of regular `grep`.
 
+## Commits
+
+When asked to commit, agents commit **without signing**: pass `--no-gpg-sign`
+to `git commit`.
+
 ## Agent skills
 
 ### Issue tracker

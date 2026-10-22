@@ -147,6 +147,12 @@ class Rp2040Keyboard(Component):
         cube_bottom = self._plate_thickness - self.switch_cube_bottom_offset
         return -(cube_bottom - self.switch_pin_height)
 
+    @property
+    def switch_top_height(self) -> float:
+        """Switch tops above the plate's top surface (mm): where keycaps start."""
+        from components.keycap_set import CAP_PLATE_GAP
+        return CAP_PLATE_GAP
+
     def size(self) -> BoundingBox:
         box = self._plate.size()
         from components.keycap_set import CAP_PLATE_GAP

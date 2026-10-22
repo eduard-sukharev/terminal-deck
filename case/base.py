@@ -472,6 +472,18 @@ class Base:
         hy = size.depth / 2.0 - feet.inset_y
         return [(sx * hx, sy * hy) for sx in (-1, 1) for sy in (-1, 1)]
 
+    def well_rim_height(self) -> float:
+        """Height of the Well rim above the Deck top (mm); 0 without a keyboard."""
+        from geometry import well
+
+        if self.keyboard is None or not hasattr(self.keyboard, "switch_top_height"):
+            return 0.0
+        return well.rim_height(
+            self.keyboard.switch_top_height,
+            self.config.wall_thickness,
+            self.config.well.switch_margin,
+        )
+
     def build_bottom(self):
         """Generate the base bottom tray solid.
 
@@ -716,7 +728,7 @@ class Base:
             The base top deck solid, or an empty Workplane if no keyboard
             is configured.
         """
-        from geometry import fillet
+        from geometry import fillet, well
         from utilities import cad_helpers, fasteners
 
         cad_helpers.require_cad()
@@ -737,6 +749,7 @@ class Base:
         deck = cad_helpers.box_centered(size.width, size.depth, blank_h)
         deck = cad_helpers.translate(deck, 0.0, 0.0, blank_h / 2.0)
         deck = fillet.fillet_corners(deck, config.corners.radius)
+        footprint = deck
         # Keep only the material between the two deck-parallel planes. At
         # slope 0 these tools degenerate to plain half-spaces, reproducing
         # the original flat plate exactly.
@@ -752,15 +765,33 @@ class Base:
             cut_w = kb_size.width + 2 * clearance
             cut_d = kb_size.depth + 2 * clearance
             cut_h = blank_h
+            pose = (kb_placement.x, kb_placement.y,
+                    self.deck_level_at(kb_placement.y) + wall / 2.0)
+
+            # Well rim: a wall-wide ring around the opening, tilted with the
+            # slab (local z=0 is the slab's mid-plane), clipped to the case
+            # footprint where the keyboard runs out to the edge.
+            rim = well.build_rim(
+                cut_w, cut_d, wall, self.well_rim_height(), overlap=wall / 2.0
+            )
+            if slope:
+                rim = cad_helpers.rotate_x(rim, -slope)
+            rim = cad_helpers.translate(rim, *pose)
+            # Closed, the Lid's flat underside lies on closed_plane_z: a rim
+            # taller than the Visor gap at its Y would thicken the device, so
+            # the rim tapers away under that plane like the Visor does.
+            ceiling_h = self.closed_plane_z()
+            ceiling = cad_helpers.translate(
+                cad_helpers.box_centered(size.width, size.depth, ceiling_h),
+                0.0, 0.0, ceiling_h / 2.0,
+            )
+            rim = cad_helpers.intersect(rim, cad_helpers.intersect(footprint, ceiling))
+            deck = cad_helpers.union(deck, rim)
+
             cutout = cad_helpers.box_centered(cut_w, cut_d, cut_h)
             if slope:
                 cutout = cad_helpers.rotate_x(cutout, -slope)
-            cutout = cad_helpers.translate(
-                cutout,
-                kb_placement.x,
-                kb_placement.y,
-                self.deck_level_at(kb_placement.y) + wall / 2.0,
-            )
+            cutout = cad_helpers.translate(cutout, *pose)
             deck = cad_helpers.cut(deck, cutout)
 
         # M2.5 clearance holes for the deck screws, each bored normal to the

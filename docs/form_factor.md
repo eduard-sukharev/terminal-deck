@@ -42,7 +42,10 @@ point) minus the Deck top. Each run checks `visor-closes-flush`,
 ## Base
 
 * Keyboard sits in a **Well**: a rim around it at or below switch-top
-  height, so it adds no thickness.
+  height, so it adds no thickness. The rim is a wall-wide ring around the Deck
+  opening, `well.switch_margin` (config) below the switch tops
+  (`geometry/well.py`), and is clipped to the closed Lid's underside plane, so
+  it tapers away toward the hinge like the Visor.
 * Four 15 mm round recesses, 1 mm deep, in the floor for rubber feet. Feet
   and bosses are placed independently — neither positions the other.
 

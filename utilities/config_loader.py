@@ -193,6 +193,17 @@ class Feet:
 
 
 @dataclass(frozen=True)
+class Well:
+    """Rim around the keyboard opening in the Deck.
+
+    The rim top sits ``switch_margin`` below the switch tops, so it protects
+    the keys without adding closed thickness. Rim width is the wall thickness.
+    """
+
+    switch_margin: float = 1.0
+
+
+@dataclass(frozen=True)
 class Config:
     """Fully-resolved build configuration."""
 
@@ -210,6 +221,7 @@ class Config:
     hardware: dict[str, Any] = field(default_factory=dict)
     split: dict[str, Seam] = field(default_factory=dict)
     feet: Feet = field(default_factory=Feet)
+    well: Well = field(default_factory=Well)
     topics: tuple[str, ...] = field(default_factory=tuple)
 
     @property
@@ -300,6 +312,7 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
             for part, v in (raw.get("split") or {}).items()
         },
         feet=Feet(**{k: float(v) for k, v in (raw.get("feet") or {}).items()}),
+        well=Well(**{k: float(v) for k, v in (raw.get("well") or {}).items()}),
         topics=topics,
     )
     return config

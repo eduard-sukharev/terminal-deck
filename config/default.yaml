@@ -52,3 +52,8 @@ feet:
   depth: 1.0
   inset_x: 15.0
   inset_y: 15.0
+
+# Keyboard Well: a rim around the keyboard opening in the Deck. Its top stays
+# `switch_margin` below the switch tops so the rim adds no closed thickness.
+well:
+  switch_margin: 1.0

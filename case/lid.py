@@ -37,6 +37,7 @@ class Lid:
         world_z: float = 60.0,
         footprint: tuple[float, float] | None = None,
         bezel_thickness: float | None = None,
+        interior=None,
     ) -> None:
         self.display = display
         self.config = config
@@ -44,6 +45,9 @@ class Lid:
         self.lid_interior_height = lid_interior_height
         self.world_z = world_z
         self.footprint = footprint
+        #: Solid of what sits inside the shell (display, driver); Seam
+        #: joints keep clear of it.
+        self.interior = interior
         self.bezel_thickness = (
             bezel_thickness if bezel_thickness is not None else config.wall_thickness
         )
@@ -169,6 +173,19 @@ class Lid:
                 hole, cx, cy, self._boss_top() - insert.depth / 2.0
             )
             body = cad_helpers.cut(body, hole)
+
+        # Screw lugs that straddle the Lid shell Seam (US28).
+        seam = config.split.get("lid_shell")
+        if seam is not None:
+            from geometry import seam_joint
+
+            body = seam_joint.add_joints(
+                body, seam, depth, wall,
+                seam_joint.joint_spec(config.screws.body),
+                floor_top=floor_top,
+                obstacles=self.interior,
+                clearance=config.clearance.shell,
+            )
 
         return body
 

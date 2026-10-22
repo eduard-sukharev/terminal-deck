@@ -54,6 +54,14 @@ staggered between parts; outward-facing Seams are stepped in plan view
 position and step size come from config, per part. The keyboard plate splits
 at the key-column gap nearest the center.
 
+The Tray and Lid shell are joined by two lugs each (`geometry/seam_joint.py`):
+a lug straddles the Seam on the floor, and a horizontal M2 screw runs along X
+from a clearance bore in the left Half into a heat-set insert pocket in the
+right Half. Sites are tried front segment, rear segment, then the interior
+segments, skipping any whose lug would touch the components inside; the build
+fails if fewer than two clear sites exist. The Deck and Bezel are not yet
+joined this way.
+
 ## Review renders
 
 Every assembly target is also exported as glTF with one color per component,

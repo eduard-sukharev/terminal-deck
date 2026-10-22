@@ -649,6 +649,19 @@ class Base:
             self.cutouts(), body, wall, chamfer=config.corners.cutout_chamfer
         )
 
+        # Screw lugs that straddle the Tray Seam (US28), on the inner floor.
+        seam = config.split.get("tray")
+        if seam is not None:
+            from geometry import seam_joint
+
+            body = seam_joint.add_joints(
+                body, seam, size.depth, wall,
+                seam_joint.joint_spec(config.screws.body),
+                floor_top=cad_helpers.bounding_box(body).zmin + wall,
+                obstacles=self.assembly.build_subset(self.assembly.placements),
+                clearance=clearance,
+            )
+
         # Rubber-foot recesses in the floor's underside. Positions come from
         # config alone (foot_positions), never from boss positions.
         feet = config.feet

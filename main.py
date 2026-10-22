@@ -443,7 +443,7 @@ class BuildPipeline:
         # Display sub-assembly solid (shared between "display" bucket and
         # the combined "lid" target).
         display_assembly_solid = None
-        if "display" in buckets or "lid" in buckets:
+        if "display" in buckets or "lid" in buckets or "lid_shell" in buckets:
             from assemblies.assembly import select_placements
 
             display_placements = select_placements(
@@ -466,6 +466,7 @@ class BuildPipeline:
                 hinge=hinge,
                 world_z=display.z,
                 footprint=(size.width, size.depth),
+                interior=display_assembly_solid,
             )
 
         if "lid_shell" in buckets:

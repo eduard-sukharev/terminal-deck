@@ -401,6 +401,9 @@ class BuildPipeline:
         if "base_top" in buckets and base_obj is not None:
             parts["base_top"] = base_obj.build_top()
 
+        if "keyboard_plate" in buckets and "keyboard" in components:
+            parts["keyboard_plate"] = components["keyboard"].build_plate()
+
         if "base" in buckets and base_obj is not None:
             base_bottom_solid = base_obj.build_bottom()
             base_top_solid = base_obj.build_top()
@@ -626,16 +629,40 @@ class BuildPipeline:
             "base_top": "deck",
             "lid_shell": "lid_shell",
             "lid_bezel": "bezel",
+            "keyboard_plate": "keyboard_plate",
         }
         printable: dict[str, object] = {}
-        for part_name, seam_key in split_sources.items():
+        split_plans = {
+            name: (config.split.get(key), size.depth)
+            for name, key in split_sources.items()
+        }
+        if "keyboard_plate" in parts:
+            # The plate Seam is derived from the key layout, not configured:
+            # it must run through the key-column gaps (US29).
+            from keyboard.geometry.seam import plate_seam, seam_conflicts
+
+            plate_model = components["keyboard"].plate_model()
+            plate_cfg = plate_seam(plate_model)
+            conflicts = seam_conflicts(plate_model, plate_cfg)
+            print(
+                "[pipeline] keyboard_plate Seam avoids switch cutouts: "
+                f"{'PASS' if not conflicts else 'FAIL'}"
+            )
+            for conflict in conflicts:
+                print(f"  [x ] {conflict}")
+            if conflicts and not ignore_validation:
+                raise SystemExit(
+                    "[pipeline] aborted: plate Seam cuts a switch cutout "
+                    "(pass --ignore-validation to build anyway)"
+                )
+            split_plans["keyboard_plate"] = (plate_cfg, plate_model.metadata.height)
+        for part_name, (seam_cfg, part_depth) in split_plans.items():
             if part_name not in parts:
                 continue
-            seam_cfg = config.split.get(seam_key)
             if seam_cfg is None:
                 printable[part_name] = parts[part_name]
                 continue
-            left, right = split_halves(parts[part_name], seam_cfg, size.depth)
+            left, right = split_halves(parts[part_name], seam_cfg, part_depth)
             for side, half in (("left", left), ("right", right)):
                 parts[f"{part_name}_{side}"] = half
                 printable[f"{part_name}_{side}"] = half
@@ -779,7 +806,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         default="all",
         help="comma-separated build targets (default: all). "
              "Buckets: all, assembly, base, base_bottom, base_top, "
-             "lid, lid_shell, lid_bezel, hinge, display, components. "
+             "lid, lid_shell, lid_bezel, keyboard_plate, hinge, display, components. "
              "Per-component: comp:<role> (e.g. comp:driver).",
     )
     parser.add_argument(

@@ -10,7 +10,6 @@ Halves rejoin to the original with no gap and no overlap by construction.
 from __future__ import annotations
 
 from utilities import cad_helpers
-from utilities.config_loader import Seam
 
 #: Printer build volume (X, Y, Z) in mm — see AGENTS.md "Build volume".
 #: Slack (mm) added around a part so the splitting region always overhangs it.
@@ -19,7 +18,7 @@ _MARGIN: float = 1.0
 BUILD_VOLUME: tuple[float, float, float] = (220.0, 220.0, 256.0)
 
 
-def _left_region(seam: Seam, depth: float, x_extent: float, z_extent: float):
+def _left_region(seam, depth: float, x_extent: float, z_extent: float):
     """Solid covering everything left of the Seam (oversized in X/Z)."""
     pad = 2.0 * x_extent
     pieces = []
@@ -30,13 +29,16 @@ def _left_region(seam: Seam, depth: float, x_extent: float, z_extent: float):
     return cad_helpers.union(pieces[0], *pieces[1:])
 
 
-def split_halves(shape, seam: Seam, depth: float):
+def split_halves(shape, seam, depth: float):
     """Split ``shape`` into ``(left, right)`` along ``seam``.
 
+    ``seam`` is anything with ``segments(depth) -> [(y0, y1, x)]`` (a config
+    :class:`~utilities.config_loader.Seam` or a plate ``RowSeam``).
     ``depth`` is the part's extent in Y (centered on the origin).
     """
     box = cad_helpers.bounding_box(shape)
-    x_extent = max(abs(box.xmin), abs(box.xmax), abs(seam.x) + seam.step) + _MARGIN
+    seam_x = max(abs(x) for _, _, x in seam.segments(depth))
+    x_extent = max(abs(box.xmin), abs(box.xmax), seam_x) + _MARGIN
     z_extent = max(abs(box.zmin), abs(box.zmax)) + _MARGIN
     # Pad Y so Halves of a part slightly off-center are still fully covered.
     y_depth = max(depth, 2.0 * max(abs(box.ymin), abs(box.ymax))) + 2.0 * _MARGIN

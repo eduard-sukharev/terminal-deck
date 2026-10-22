@@ -17,6 +17,7 @@ Buckets
   Halves are always exported together with their part, so these resolve to
   the part's bucket.
 * ``hinge`` — hinge barrels + pin + wire tunnel
+* ``keyboard_plate`` — bare switch plate (printed as two Halves)
 * ``display`` — LCD panel + HDMI driver combined (the sub-assembly)
 * ``components`` — all per-component debug STLs
 
@@ -31,14 +32,14 @@ from __future__ import annotations
 #: All recognised bucket names.
 BUCKETS: frozenset[str] = frozenset({
     "all", "assembly", "assembly_opened", "base", "base_bottom", "base_top",
-    "lid", "lid_shell", "lid_bezel",
+    "lid", "lid_shell", "lid_bezel", "keyboard_plate",
     "hinge", "display", "components",
 })
 
 
 #: Parts printed as left/right Halves (ADR 0001).
 SPLIT_PARTS: frozenset[str] = frozenset({
-    "base_bottom", "base_top", "lid_shell", "lid_bezel",
+    "base_bottom", "base_top", "lid_shell", "lid_bezel", "keyboard_plate",
 })
 
 _HALF_ALIASES: dict[str, str] = {

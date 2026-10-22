@@ -280,6 +280,15 @@ class Rp2040Keyboard(Component):
     def switch_grid(self) -> list[tuple[float, float]]:
         return self._plate.switch_positions
 
+    def plate_model(self):
+        """The plate's geometry model (cutouts, outline), for Seam planning."""
+        self._plate._ensure_model()
+        return self._plate._model
+
+    def build_plate(self):
+        """The bare switch plate solid (no switches, keycaps or standoff raise)."""
+        return self._plate.build()
+
     def validate(self) -> tuple[int, list[str]]:
         """Run the keyboard plate geometry validation checks.
 

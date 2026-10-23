@@ -144,6 +144,7 @@ def test_screw_counts(rebuilt_metrics):
     assert screws["deck"] >= 2
     assert screws["hinge_bolts"] == 2
     assert screws["hinge_flange"] >= 1
+    assert screws["hinge_deck"] >= 2  # at least one per Deck Section
 
 
 def test_no_hard_check_fails(rebuilt_metrics):

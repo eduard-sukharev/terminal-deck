@@ -222,6 +222,7 @@ class Hinge(Component):
         drop: float = 30.0,
         screws: tuple[tuple[float, float], ...] = (),
         flange_cuts: tuple[tuple[float, float, float], ...] = (),
+        side_screws: tuple[tuple[float, float], ...] = (),
     ):
         """The Base knuckle part: bar, cheeks, web and flange as one printed solid.
 
@@ -229,7 +230,9 @@ class Hinge(Component):
         flange lies under that face. ``screws`` are ``(x, y)`` flange screw
         positions (``y`` from the rear face, +Y inward); ``flange_cuts`` are
         ``(x, y, radius)`` discs cut from the flange (rubber feet, Deck screw
-        heads). Print orientation: flange down.
+        heads). ``side_screws`` are ``(x, z)`` horizontal screw positions through
+        the web (``z`` from the axis) into the Deck's rear skirt. Print
+        orientation: flange down.
         """
         from utilities import cad_helpers
 
@@ -279,6 +282,10 @@ class Hinge(Component):
                 screw.head_diameter + 0.6, sx, sy, -drop - self.flange - 1.0,
                 -drop - self.flange + screw.head_depth + 0.2,
             ))
+        # Web screws: a clearance bore straight through; the head seats proud on
+        # the rear face, below the circle the Lid knuckles sweep.
+        for sx, sz in side_screws:
+            cuts.append(self._y_cylinder(screw.clearance, sx, sz, -t - 1.0, 1.0))
         for fx, fy, fr in flange_cuts:
             cuts.append(self._z_cylinder(2 * fr, fx, fy, -drop - self.flange - 1.0, -drop + 0.5))
         return cad_helpers.cut(body, *cuts)
@@ -289,6 +296,12 @@ class Hinge(Component):
         return cad_helpers.translate(
             cad_helpers.cylinder_centered(diameter, z1 - z0), x, y, (z0 + z1) / 2.0
         )
+
+    def _y_cylinder(self, diameter: float, x: float, z: float, y0: float, y1: float):
+        from utilities import cad_helpers
+
+        body = cad_helpers.rotate_x(cad_helpers.cylinder_centered(diameter, y1 - y0), 90)
+        return cad_helpers.translate(body, x, (y0 + y1) / 2.0, z)
 
     def _hex_prism(self, across_flats: float, length: float):
         """A hexagonal prism along X, flats up and down."""

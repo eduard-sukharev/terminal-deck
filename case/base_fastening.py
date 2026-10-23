@@ -426,6 +426,8 @@ class BaseFastening:
         r = self.knuckle_boss_spec().outer_diameter / 2.0
         for pts in self.knuckle_screw_sites().values():
             ranges += [(x - r - chamfer, x + r + chamfer) for x, _ in pts]
+        for x0, x1, _, _ in self.deck_knuckle_rects():
+            ranges.append((x0 - chamfer, x1 + chamfer))
         for col in self.columns():
             if "rear" in col.walls:
                 r = col.base_diameter / 2.0
@@ -452,6 +454,8 @@ class BaseFastening:
             features.append(Feature("cradle", f"#{i}", x0, x1, y0, y1, part="tray"))
         for i, (x0, x1, y0, y1) in enumerate(self.knuckle_rects()):
             features.append(Feature("boss", f"knuckle screw #{i}", x0, x1, y0, y1, part="tray"))
+        for i, (x0, x1, y0, y1) in enumerate(self.deck_knuckle_rects()):
+            features.append(Feature("boss", f"deck knuckle screw #{i}", x0, x1, y0, y1, part="deck"))
         for i, (x0, x1, y0, y1) in enumerate(self.vent_rects(vents, vent_width)):
             features.append(Feature("vent", f"#{i}", x0, x1, y0, y1))
         zp = self.parting_height()
@@ -551,6 +555,93 @@ class BaseFastening:
             sites[name] = [(fx, y) for fx in found]
         self._memo[key] = sites
         return sites
+
+    # -- Base knuckle screws into the Deck's rear skirt ---------------------------
+
+    def deck_knuckle_z(self) -> float:
+        """Height of the Deck knuckle screws' axis (mm).
+
+        As high as the knuckle web still covers the screw head, so the boss
+        keeps the most room above the Parting plane and the hub below it.
+        """
+        head = fasteners.screw("M3").head_diameter + self.config.clearance.screw
+        return self.hinge_axis_z() + self.hinge.web_top - head / 2.0 - self.config.clearance.screw
+
+    def deck_knuckle_screw(self):
+        """The stock screw: through web, wall and a 1 mm lead-in into the insert."""
+        wall = self.config.wall_thickness
+        spec = self.knuckle_boss_spec()
+        insert = fasteners.heat_insert("M3")
+        return deck_screw("M3", 2 * wall + (spec.height - insert.depth))
+
+    def deck_knuckle_sites(self) -> dict[str, list[tuple[float, float]]]:
+        """Horizontal flange-screw positions ``(x, z)`` per Deck Section.
+
+        Insert bosses on the Deck's rear skirt, above the Parting plane and so
+        above the hub, behind the Base knuckle's web. Up to two per Section,
+        inside the Base bar's span and clear of the Seam band, columns,
+        connector cutouts and whatever component rises into the skirt.
+        """
+        key = "deck_knuckle_sites"
+        if key in self._memo:
+            return self._memo[key]
+        split = self._split("deck")
+        if self.hinge is None or split is None:
+            self._memo[key] = {}
+            return {}
+        names = self._deck_section_names(split)
+        spec = self.knuckle_boss_spec()
+        r = spec.outer_diameter / 2.0
+        b = self.wall_bounds()
+        zp = self.parting_height()
+        margin = self.config.clearance.screw
+        z = self.deck_knuckle_z()
+        if z - r < zp + margin:
+            self._memo[key] = {name: [] for name in names}
+            return self._memo[key]
+        rects = [(rc, margin) for rc in self.assembly.keepout_rects(zp, z + r, self._base_placements())]
+        rects += [(self.column_rect(c), margin) for c in self.columns()]
+        rects += [(rc, margin) for rc, c in zip(self.cutout_rects(), self.cutouts())
+                  if c["z"] + c["height"] / 2.0 + self.config.corners.cutout_chamfer > zp]
+        rects += [(rc, 0.0) for rc in self._band_rects()]
+
+        def free(x: float) -> bool:
+            for (x0, x1, y0, y1), m in rects:
+                if x + r + m > x0 and x - r - m < x1 and b.y0 + spec.height + m > y0 and b.y0 - m < y1:
+                    return False
+            return True
+
+        bar0, bar1 = self.hinge.base_knuckle_span(self.size().width)
+        cuts = [s.x_range for s in split.seams()]
+        bounds = [(b.x0, cuts[0][0])] + [(hi, lo) for (_, hi), (lo, _) in zip(cuts, cuts[1:])]
+        bounds.append((cuts[-1][1], b.x1))
+        sites: dict[str, list[tuple[float, float]]] = {}
+        for name, (lo, hi) in zip(names, bounds):
+            lo, hi = max(lo, bar0), min(hi, bar1)
+            found: list[float] = []
+            x = lo + r + 1.0
+            while x <= hi - r - 1.0 and len(found) < 2:
+                if free(x) and all(abs(x - f) >= 2 * r + 2 * margin for f in found):
+                    found.append(x)
+                    x += 2 * r + 2 * margin
+                else:
+                    x += 0.5
+            sites[name] = [(fx, z) for fx in found]
+        self._memo[key] = sites
+        return sites
+
+    @staticmethod
+    def _deck_section_names(split) -> tuple[str, ...]:
+        n = len(split.seams()) + 1
+        return ("left", "center", "right") if n == 3 else ("left", "right") if n == 2 else ("all",)
+
+    def deck_knuckle_rects(self) -> list[tuple[float, float, float, float]]:
+        """Footprints ``(x0, x1, y0, y1)`` of the Deck knuckle bosses, for the Seam check."""
+        spec = self.knuckle_boss_spec()
+        r = spec.outer_diameter / 2.0
+        y0 = self.wall_bounds().y0
+        return [(x - r, x + r, y0, y0 + spec.height)
+                for pts in self.deck_knuckle_sites().values() for x, _ in pts]
 
     def knuckle_rects(self) -> list[tuple[float, float, float, float]]:
         r = self.knuckle_boss_spec().base_diameter / 2.0

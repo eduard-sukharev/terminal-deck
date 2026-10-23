@@ -462,3 +462,38 @@ def test_plate_has_eight_standoffs_and_the_seam_ones_clear_the_sbc():
         wx, wy, _ = kp.world_offset(h.x, h.y, 0.0)
         inside = sx0 < wx < sx1 and sy0 < wy < sy1
         assert not inside, f"plate standoff at ({wx:.1f}, {wy:.1f}) is inside the SBC"
+
+
+def _hinged_base():
+    from dataclasses import asdict
+    from components.hinge import Hinge
+    base, cfg = _base()
+    base.hinge = Hinge(asdict(cfg.hinge), wall_thickness=cfg.wall_thickness)
+    return base, cfg
+
+
+def test_every_deck_section_has_a_knuckle_screw_above_the_hub():
+    base, cfg = _hinged_base()
+    sites = base.deck_knuckle_sites()
+    assert set(sites) == {"left", "right"}
+    r = base.knuckle_boss_spec().outer_diameter / 2
+    zp = base.parting_height()
+    seam_x = cfg.split["deck"].seams()[0].x
+    for name, pts in sites.items():
+        assert pts, f"no knuckle screw into the {name} Deck Section"
+        for x, z in pts:
+            assert z - r >= zp  # the boss stands on the Parting plane, over the hub
+            assert (x < seam_x) == (name == "left")
+            assert abs(x - seam_x) > r  # clear of the Seam
+
+
+def test_deck_knuckle_screw_is_stock_and_engages_the_insert():
+    base, _ = _hinged_base()
+    screw = base.deck_knuckle_screw()
+    assert screw.size == "M3" and screw.engagement >= 3.0
+
+
+def test_deck_knuckle_bosses_clear_the_seam_check():
+    base, _ = _hinged_base()
+    names = [f.name for f in base.structural_features() if f.name.startswith("deck knuckle")]
+    assert len(names) == sum(len(p) for p in base.deck_knuckle_sites().values())

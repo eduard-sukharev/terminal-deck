@@ -495,20 +495,25 @@ class Base(BaseFastening):
         self.knuckle_report(report)
 
     def knuckle_report(self, report) -> None:
-        """Base knuckle mounting checks: HARD that it is screwed down at all, SOFT
-        for each Tray Section the rear strip leaves without a screw."""
+        """Base knuckle mounting checks: HARD that it is screwed down at all, HARD
+        that every Deck Section has a screw into its rear skirt, SOFT for each
+        Tray Section without a floor screw (the Deck columns hold it instead)."""
         sites = self.knuckle_screw_sites()
-        total = sum(len(v) for v in sites.values())
-        bare = [name for name, pts in sites.items() if not pts]
+        deck = self.deck_knuckle_sites()
+        total = sum(len(v) for v in sites.values()) + sum(len(v) for v in deck.values())
         report.add(
             "knuckle-screwed-to-tray", total >= 1,
-            f"{total} flange screw(s) into the Tray, per Section: "
-            + ", ".join(f"{n} {len(p)}" for n, p in sites.items()),
+            f"{sum(len(v) for v in sites.values())} floor screw(s) into the Tray ("
+            + ", ".join(f"{n} {len(p)}" for n, p in sites.items())
+            + f") and {sum(len(v) for v in deck.values())} into the Deck skirt ("
+            + ", ".join(f"{n} {len(p)}" for n, p in deck.items()) + ")",
         )
-        for name in bare:
-            report.warn(
-                f"Base knuckle has no screw into the {name} Tray Section: the rear strip "
-                "(hub, battery) leaves no room for a boss; it is held by the other Sections"
+        if deck:
+            bare = [n for n, pts in deck.items() if not pts]
+            report.add(
+                "knuckle-screwed-to-deck", not bare,
+                "every Deck Section has a knuckle screw" if not bare
+                else f"no knuckle screw into the Deck Section(s): {', '.join(bare)}",
             )
 
     # -- Tray -------------------------------------------------------------------
@@ -675,8 +680,13 @@ class Base(BaseFastening):
         cuts += [
             (c.x, c.y - rear_y, c.counterbore_diameter / 2.0 + 0.5) for c in self.columns()
         ]
+        side_screws = tuple(
+            (x, z - self.hinge_axis_z())
+            for pts in self.deck_knuckle_sites().values() for x, z in pts
+        )
         part = self.hinge.build_base_part(
-            size.width, self.knuckle_drop(), screws=screws, flange_cuts=tuple(cuts)
+            size.width, self.knuckle_drop(), screws=screws, flange_cuts=tuple(cuts),
+            side_screws=side_screws,
         )
         return cad_helpers.translate(part, 0.0, rear_y, self.hinge_axis_z())
 
@@ -697,7 +707,7 @@ class Base(BaseFastening):
             its Seam and relieves the concave joints on each.
         """
         from geometry import cutouts, fillet, well
-        from utilities import cad_helpers
+        from utilities import cad_helpers, fasteners
 
         cad_helpers.require_cad()
         config = self.config
@@ -774,11 +784,38 @@ class Base(BaseFastening):
             cutout = cad_helpers.translate(cutout, *pose)
             deck = cad_helpers.cut(deck, cutout)
 
+        # Knuckle screw bosses on the rear skirt: a horizontal insert boss on a
+        # solid block down to the Parting plane, so nothing overhangs.
+        kspec = self.knuckle_boss_spec()
+        insert = fasteners.heat_insert("M3")
+        rear_in = self.wall_bounds().y0
+        rear_out = rear_in - wall
+        for kx, kz in (pt for pts in self.deck_knuckle_sites().values() for pt in pts):
+            along_y = cad_helpers.rotate_x(cad_helpers.cylinder_centered(kspec.outer_diameter, kspec.height), 90)
+            block = cad_helpers.box_centered(kspec.outer_diameter, kspec.height, kz - zp)
+            boss_solid = cad_helpers.union(
+                cad_helpers.translate(along_y, kx, rear_in + kspec.height / 2.0, kz),
+                cad_helpers.translate(block, kx, rear_in + kspec.height / 2.0, (kz + zp) / 2.0),
+            )
+            deck = cad_helpers.union(deck, boss_solid)
+
         # Insert bores, opening on the Parting face.
         for col in columns:
             bore = cad_helpers.cylinder_centered(col.insert_diameter, col.insert_depth + 1.0)
             bore = cad_helpers.translate(bore, col.x, col.y, zp - 1.0 + (col.insert_depth + 1.0) / 2.0)
             deck = cad_helpers.cut(deck, bore)
+
+        # Insert bores of the knuckle bosses (open to the interior) and the
+        # screw's clearance bore through the wall.
+        screw = fasteners.screw("M3")
+        for kx, kz in (pt for pts in self.deck_knuckle_sites().values() for pt in pts):
+            bore = cad_helpers.rotate_x(cad_helpers.cylinder_centered(insert.printed_hole_diameter, insert.depth + 1.0), 90)
+            deck = cad_helpers.cut(deck, cad_helpers.translate(
+                bore, kx, rear_in + kspec.height - insert.depth / 2.0 + 0.5, kz))
+            lead = kspec.height - insert.depth + wall + 1.0
+            thru = cad_helpers.rotate_x(cad_helpers.cylinder_centered(screw.clearance, lead + 1.0), 90)
+            deck = cad_helpers.cut(deck, cad_helpers.translate(
+                thru, kx, rear_out - 1.0 + (lead + 1.0) / 2.0, kz))
 
         # Vents and connector cutouts that reach above the Parting plane.
         from geometry import vents

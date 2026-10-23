@@ -963,6 +963,7 @@ class BuildPipeline:
                     "deck": len(base.columns()),
                     "hinge_bolts": 2,
                     "hinge_flange": sum(len(v) for v in base.knuckle_screw_sites().values()),
+                    "hinge_deck": sum(len(v) for v in base.deck_knuckle_sites().values()),
                 },
                 "checks": {c.name + (f"#{i}" if sum(1 for d in fastening_report.checks if d.name == c.name) > 1 else ""): c.passed
                            for i, c in enumerate(fastening_report.checks)},

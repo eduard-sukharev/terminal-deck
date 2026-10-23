@@ -125,10 +125,14 @@ mirrors about it.
 Fitting the plate Seam standoffs meant moving the SBC 10.3 mm forward and 2 mm
 right in `config/layouts/clamshell.yaml` (and raising the plate by 0.8 mm to
 keep the board's clearance): a standoff runs floor to plate and cannot pass
-through the board. The Base knuckle's flange screws thread into Merged bosses
-on the rear wall; the hub and the battery sit against that wall, so only the
-centre Tray Section has room for them (reported as a SOFT warning for the
-others).
+through the board. The Base knuckle's flange screws thread into a Merged boss
+on the rear wall of the centre Tray Section; the hub and the battery sit
+against that wall elsewhere, and the Tray wall is only as tall as the Parting
+plane, so no boss fits above the hub. The left and right Sections are reached
+from the Deck instead: horizontal M3 screws through the knuckle web and the
+rear wall into heat-set insert bosses on the Deck's rear skirt (above the
+Parting plane, on a solid block so nothing overhangs), two per Deck Section.
+The build fails if a Deck Section has none.
 
 ## Review renders
 

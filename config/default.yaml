@@ -26,15 +26,19 @@ clearance:
 
 hinge:
   diameter: 13          # knuckle outer diameter (>= wire_tunnel + 2 * wall.thickness)
-  pin: 3                # hinge pin diameter
   wire_tunnel: 8        # display cable tunnel bore, through the Base knuckle
   lid_knuckle: 20       # length of each Lid corner knuckle
-  knuckle_gap: 0.5      # axial gap between Lid and Base knuckles
-  pin_land: 8           # solid pin-bearing length at each end of the Base knuckle
-  pin_clearance: 0.2    # pin bore oversize (diameter)
+  washer_stack: 1.2     # steel + spring washer between rubbing faces
+  land: 8               # solid bolt-bearing length at each Base knuckle end
+  end_cheek: 5          # thickness of each outer Base end cheek
+  flange: 4             # thickness of the Base knuckle's mounting flange (under the Tray floor;
+                        # holds an M3 head counterbore)
+  flange_depth: 9.5     # how far the flange reaches forward from the rear face
   cap_thickness: 2      # removable service cap head thickness
-  cap_plug: 4           # service cap plug depth into the pin bore
-  end_inset: 5          # hinge span inset from each case side
+  cap_plug: 4           # service cap plug depth into the bolt-head recess
+  end_inset: 9          # hinge span inset from each case side (keeps the Base knuckle part
+                        # inside the 220 mm build volume)
+  friction_bolt: M3     # bolt (head + nyloc nut both on the Base side)
 
 screws:
   body: M2              # case body screws (fastener library)

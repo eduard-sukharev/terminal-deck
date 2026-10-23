@@ -41,8 +41,8 @@ class Component(ABC):
 | `rp2040_zero.py`            | Waveshare RP2040-Zero: 23.5x18x8, 4x 2.0mm holes | verified |
 | `usb_breakout.py`           | `config/hardware.yaml` (usb_breakout)          | size real (TODO measure) |
 | `heatset_insert.py`         | `utilities/fasteners.py`                        | real |
-| `hinge.py`                  | `config/default.yaml` (hinge)                   | implemented (P6-style rework pending) |
-| `keyboard_plate.py`         | `config/keyboard.yaml` (calculated)             | implemented (split into Halves pending) |
+| `hinge.py`                  | `config/default.yaml` (hinge)                   | implemented (printed friction hinge, ADR 0004) |
+| `keyboard_plate.py`         | `config/keyboard.yaml` (calculated)             | implemented (split into Sections) |
 
 ## Measurement rules
 

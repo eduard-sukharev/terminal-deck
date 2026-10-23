@@ -197,7 +197,7 @@ class BuildPipeline:
         import math
 
         from utilities.validation import (
-            ValidationReport, check_plate_seam_screws, check_seams,
+            check_plate_seam_screws, check_seams,
         )
 
         report = ValidationReport()
@@ -226,6 +226,7 @@ class BuildPipeline:
             assembly=assembly, interior_placements=self._lid_interior(placements, components),
         )
         lid.fastening_report(report)
+        self._data_lid = lid
         if plate_local is not None:
             depth = keyboard.plate_model().metadata.height
             check_plate_seam_screws(
@@ -375,6 +376,7 @@ class BuildPipeline:
         from case.lid import Lid
         from exports import EXPORTERS
         from utilities import cad_helpers
+        from utilities.colors import color_for
         from utilities.targets import SECTION_NAMES, requested_sections, resolve_targets
 
         cad_helpers.require_cad()
@@ -400,7 +402,7 @@ class BuildPipeline:
         # Keyboard placement is needed for base and hinge.
         needs_keyboard_placement = (
             "base" in buckets or "base_bottom" in buckets or "base_top" in buckets
-            or "hinge" in buckets
+            or "hinge" in buckets or "base_knuckle" in buckets
         )
         keyboard_placement = None
         if needs_keyboard_placement and "keyboard" in components:
@@ -411,11 +413,13 @@ class BuildPipeline:
         # Base bottom, top, and combined assembly.
         base_obj = None
         needs_lid = "lid" in buckets or "lid_shell" in buckets or "lid_bezel" in buckets
-        if needs_lid or "base" in buckets or "base_bottom" in buckets or "base_top" in buckets or "hinge" in buckets:
+        needs_base = (
+            "base" in buckets or "base_bottom" in buckets or "base_top" in buckets
+            or "hinge" in buckets or "base_knuckle" in buckets
+        )
+        if needs_lid or needs_base:
             base_obj = base
-        if base_obj is not None and (
-            "base" in buckets or "base_bottom" in buckets or "base_top" in buckets or "hinge" in buckets
-        ):
+        if base_obj is not None and needs_base:
             # Bosses (component mounting bosses and deck-mount standoffs)
             # are case-build-time geometry, never placed components, so the
             # ordinary collision system never sees them — check them here,
@@ -491,7 +495,7 @@ class BuildPipeline:
         # Display placement is needed for lid and hinge.
         needs_display_placement = (
             "lid" in buckets or "lid_shell" in buckets or "lid_bezel" in buckets
-            or "hinge" in buckets
+            or "hinge" in buckets or "base_knuckle" in buckets
         )
         if needs_display_placement:
             display = next(p for p in placements if p.component is components["display"])
@@ -554,6 +558,26 @@ class BuildPipeline:
                     axis_z - hinge.diameter / 2.0, axis_z + hinge.diameter / 2.0,
                 ),
                 placements, visor_report,
+                extra_boxes={
+                    f"{side} end cheek": (
+                        c0, c1, rear_y, rear_y + config.wall_thickness,
+                        axis_z - hinge.diameter / 2.0, axis_z + hinge.diameter / 2.0,
+                    )
+                    for side, (c0, c1) in zip(("left", "right"), hinge.cheek_spans(size.width))
+                } | {
+                    "flange": (
+                        hinge.part_span(size.width)[0], hinge.part_span(size.width)[1],
+                        rear_y, rear_y + hinge.flange_depth,
+                        -config.wall_thickness - hinge.flange, 0.0,
+                    )
+                },
+            )
+            from utilities.validation import check_hinge_sweep
+
+            check_hinge_sweep(
+                hinge.cheek_spans(size.width), hinge.base_knuckle_span(size.width),
+                hinge.lid_notch_spans(size.width),
+                -(hinge.radius + 0.5), hinge.radius, visor_report,
             )
             print("[pipeline] closed-device validation:")
             print(visor_report.summary())
@@ -585,11 +609,41 @@ class BuildPipeline:
                     extra_parts=[("case", cad_helpers.union(lid_shell_solid, lid_bezel_solid))],
                 )
 
+        if "base_knuckle" in buckets or "hinge" in buckets:
+            knuckle_solid = base_obj.build_knuckle()
+        if "base_knuckle" in buckets:
+            parts["base_knuckle"] = knuckle_solid
+            gltf_parts["base_knuckle"] = cad_helpers.new_assembly()
+            cad_helpers.assembly_add(
+                gltf_parts["base_knuckle"], knuckle_solid, "Base knuckle",
+                color_for("base_knuckle"),
+            )
+
         if "hinge" in buckets:
             hinge_z = base_obj.hinge_axis_z()
-            hinge_solid = hinge.build_hardware(size.width)
-            hinge_solid = cad_helpers.translate(hinge_solid, 0.0, -size.depth / 2.0, hinge_z)
-            parts["hinge"] = hinge_solid
+            on_axis = lambda s: cad_helpers.translate(s, 0.0, -size.depth / 2.0, hinge_z)
+            hardware = on_axis(hinge.build_hardware(size.width))
+            lid_knuckles = on_axis(hinge.build_lid_knuckles(size.width))
+            parts["hinge"] = cad_helpers.union(hardware, lid_knuckles, knuckle_solid)
+            # One color per hinge piece: the Base knuckle part, its end cheeks,
+            # the Lid knuckles and the bolts/nuts/washers/caps.
+            colored = cad_helpers.new_assembly()
+            cheeks = []
+            for c0, c1 in hinge.cheek_spans(size.width):
+                box = cad_helpers.translate(
+                    cad_helpers.box_centered(c1 - c0, 4 * hinge.diameter, 4 * hinge.diameter),
+                    (c0 + c1) / 2.0, -size.depth / 2.0, hinge_z,
+                )
+                cheeks.append(cad_helpers.intersect(knuckle_solid, box))
+            cheek_solid = cad_helpers.union(*cheeks)
+            for role, label, shape in (
+                ("base_knuckle", "Base knuckle", cad_helpers.cut(knuckle_solid, cheek_solid)),
+                ("end_cheek", "End cheeks", cheek_solid),
+                ("lid_knuckle", "Lid knuckles", lid_knuckles),
+                ("hinge_hardware", "Bolts, nuts, washers, caps", hardware),
+            ):
+                cad_helpers.assembly_add(colored, shape, label, color_for(role))
+            gltf_parts["hinge"] = colored
 
         # ── Opened assembly: base in ZX plane, lid upward, LCD faces +Z ──
         if "assembly_opened" in buckets:
@@ -656,7 +710,7 @@ class BuildPipeline:
             #   Hinge at (0, -depth/2, hinge_z) → (0, hinge_z, depth/2)
             base_u = cad_helpers.rotate_x(base_solid, -90)
             lid_u = cad_helpers.rotate_x(lid_solid, -90)
-            hinge_u = hinge.build(case_depth=size.width)
+            hinge_u = hinge.build(case_depth=size.width, drop=base_obj.knuckle_drop())
             hinge_u = cad_helpers.translate(
                 hinge_u, 0.0, -depth / 2.0, hinge_z
             )
@@ -701,7 +755,7 @@ class BuildPipeline:
         # printer, so they are validated here and exported with the rest.
         from geometry import edge_treatment
         from geometry.printability import (
-            BED_DOWN, check_bed_face, overhang_faces,
+            BED_DOWN, bed_face_area, check_bed_face, overhang_faces,
         )
         from geometry.split import check_build_volume, check_sections, split_sections
 
@@ -748,13 +802,17 @@ class BuildPipeline:
             split_plans["keyboard_plate"] = ([plate_cfg], plate_model.metadata.height)
         section_report = ValidationReport()
         section_info: dict[str, dict] = {}
+        bed_areas: dict[str, float] = {}
         for part_name, (seams, part_depth) in split_plans.items():
             if part_name not in parts:
                 continue
             sections = split_sections(parts[part_name], seams, part_depth)
             names = SECTION_NAMES[part_name]
             errors = check_sections(parts[part_name], sections)
-            section_info[part_name] = {"sections": len(sections), "valid": not errors}
+            section_info[part_name] = {
+                "sections": len(sections), "rejoin": not errors,
+                "names": [f"{part_name}_{n}" for n in names],
+            }
             for section_name, section in zip(names, sections):
                 full = f"{part_name}_{section_name}"
                 # Edge treatment goes on each Section after the lossless rejoin
@@ -774,6 +832,7 @@ class BuildPipeline:
                 check_bed_face(
                     full, section, BED_DOWN, config.material.min_bed_face_area, section_report
                 )
+                bed_areas[full] = bed_face_area(section, BED_DOWN)
                 for face in overhang_faces(section, BED_DOWN)[:1]:
                     section_report.warn(
                         f"{full}: overhang {face.angle_from_vertical:.0f} deg from vertical "
@@ -781,6 +840,11 @@ class BuildPipeline:
                     )
                 parts[full] = section
                 printable[full] = section
+                colored_section = cad_helpers.new_assembly()
+                cad_helpers.assembly_add(
+                    colored_section, section, full, color_for(f"section_{section_name}")
+                )
+                gltf_parts[full] = colored_section
             if errors:
                 print(f"[pipeline] {part_name} Sections: FAIL")
                 for error in errors:
@@ -885,6 +949,26 @@ class BuildPipeline:
         if metrics_path is not None:
             import json
 
+            # Pipeline-level results next to the per-target shape metrics: how
+            # each part was split, what it prints on, how many screws of each
+            # kind hold the case together, and the HARD/SOFT check outcomes.
+            lid_data = getattr(self, "_data_lid", None)
+            metrics["_pipeline"] = {
+                "sections": section_info,
+                "print_orientation": {n: list(BED_DOWN.normal) for n in printable},
+                "bed_face_mm2": bed_areas,
+                "screws": {
+                    "plate": len(components["keyboard"].mounting_holes()),
+                    "bezel": len(lid_data.screw_positions()) if lid_data else 0,
+                    "deck": len(base.columns()),
+                    "hinge_bolts": 2,
+                    "hinge_flange": sum(len(v) for v in base.knuckle_screw_sites().values()),
+                },
+                "checks": {c.name + (f"#{i}" if sum(1 for d in fastening_report.checks if d.name == c.name) > 1 else ""): c.passed
+                           for i, c in enumerate(fastening_report.checks)},
+                "hard_failures": len(fastening_report.failures) + len(section_report.failures),
+                "soft_warnings": len(fastening_report.warnings) + len(section_report.warnings),
+            }
             Path(metrics_path).write_text(json.dumps(metrics, indent=2, sort_keys=True))
             print(f"[pipeline] wrote metrics -> {metrics_path}")
 

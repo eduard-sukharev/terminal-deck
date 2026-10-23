@@ -107,17 +107,32 @@ runs along print Z. The bed-face outer edge gets a 0.5 mm chamfer against
 elephant's foot. Where an edge treatment doesn't fit it is skipped with a
 SOFT warning.
 
-The Tray and Lid shell are joined by two lugs each (`geometry/seam_joint.py`):
-a lug straddles the Seam on the floor, and a horizontal M2 screw runs along X
-from a clearance bore in the left Half into a heat-set insert pocket in the
-right Half. Sites are tried front segment, rear segment, then the interior
-segments, skipping any whose lug would touch the components inside; the build
-fails if fewer than two clear sites exist. Deck Sections are joined through
-the Tray (see Base); Bezel Sections through the Lid shell bosses.
+Each Seam of the Tray and the Lid shell is joined by two lugs
+(`geometry/seam_joint.py`): a lug straddles the Seam on the floor, and a
+horizontal M2 screw runs along X from a clearance bore in one Section into a
+heat-set insert pocket in the next. Sites are tried at the Seam's end segments,
+then the interior ones, skipping any whose lug would touch the components
+inside, a boss, column, cradle or connector cutout; the build fails if fewer
+than two clear sites exist on a Seam. Ribs are laid out between the Seam bands
+and the lugs. Deck Sections are joined through the Tray (see Base); Bezel
+Sections through the Lid shell bosses.
+
+Seam defaults are tuned per part: the Tray's sit at ±59 mm (clear of the SBC
+bosses, the battery cradles and the rear-wall connector cutouts); the Lid
+shell's at ±40 mm. Stepped Seams jog away from the centerline, so the pair
+mirrors about it.
+
+Fitting the plate Seam standoffs meant moving the SBC 10.3 mm forward and 2 mm
+right in `config/layouts/clamshell.yaml` (and raising the plate by 0.8 mm to
+keep the board's clearance): a standoff runs floor to plate and cannot pass
+through the board. The Base knuckle's flange screws thread into Merged bosses
+on the rear wall; the hub and the battery sit against that wall, so only the
+centre Tray Section has room for them (reported as a SOFT warning for the
+others).
 
 ## Review renders
 
 Every assembly target is also exported as glTF with one color per component,
-and the Base/Lid shells translucent, so the Halves, Seams and internal parts
+and the Base/Lid shells translucent, so the Sections, Seams and internal parts
 can be told apart when reviewing a design. New parts (Visor, hinge knuckles,
-service caps, each Half) need their own entry in `utilities/colors.py`.
+service caps, each Section) need their own entry in `utilities/colors.py`.

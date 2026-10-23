@@ -31,7 +31,7 @@ Frozen dataclasses nested under `Config`:
 * `Bezel(inset, thickness)` and `Glass(recess_depth)` — lid front.
 * `Keyboard(columns, rows, pitch, layout, keycap)` — the 40% board; `keycap`
   holds `{profile: xda, enabled: true}`.
-* `Hinge(diameter, pin, wire_tunnel)` — hinge subsystem geometry.
+* `Hinge(diameter, wire_tunnel, lid_knuckle, washer_stack, land, end_cheek, flange, flange_depth, cap_*, end_inset, friction_bolt)` — hinge subsystem geometry.
 * `Screws(body, standoff)` — screw library references.
 * `Material(name, layer_height, minimum_feature)` — printer limits used by
   validation.

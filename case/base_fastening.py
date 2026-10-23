@@ -133,7 +133,6 @@ class BaseFastening:
 
     def _column_keepouts(self):
         """Everything a column must clear: ``(rect, margin)`` pairs plus circles."""
-        wall = self.config.wall_thickness
         z_top = self.parting_height()
         margin = self.config.clearance.screw
         rects = [
@@ -383,7 +382,7 @@ class BaseFastening:
                 for bx, by, spec_b in self.assembly.bosses(self._base_placements())
             ]
             keepouts += [self.column_rect(c) for c in self.columns()]
-            keepouts += self.cradle_rects() + self.cutout_rects()
+            keepouts += self.cradle_rects() + self.cutout_rects() + self.knuckle_rects()
             for i, seam in enumerate(split.seams()):
                 sites[f"tray:{i}"] = seam_joint.plan_joints(
                     seam, size.depth, wall, spec, floor_top=0.0,
@@ -419,11 +418,14 @@ class BaseFastening:
         """X ranges the rear-wall vent slots keep clear of (mm): Seam bands,
         columns merged into the rear wall, and connector cutouts."""
         chamfer = self.config.corners.cutout_chamfer
-        size = self.size()
+        self.size()
         ranges = [(r[0], r[1]) for r in self._band_rects()]
         for c in self.cutouts():
             if c["direction"][1] < 0 and abs(c["direction"][1]) >= abs(c["direction"][0]):
                 ranges.append((c["x"] - c["width"] / 2 - chamfer, c["x"] + c["width"] / 2 + chamfer))
+        r = self.knuckle_boss_spec().outer_diameter / 2.0
+        for pts in self.knuckle_screw_sites().values():
+            ranges += [(x - r - chamfer, x + r + chamfer) for x, _ in pts]
         for col in self.columns():
             if "rear" in col.walls:
                 r = col.base_diameter / 2.0
@@ -448,6 +450,8 @@ class BaseFastening:
             features.append(Feature("column", f"({col.x:.1f}, {col.y:.1f})", x0, x1, y0, y1))
         for i, (x0, x1, y0, y1) in enumerate(self.cradle_rects()):
             features.append(Feature("cradle", f"#{i}", x0, x1, y0, y1, part="tray"))
+        for i, (x0, x1, y0, y1) in enumerate(self.knuckle_rects()):
+            features.append(Feature("boss", f"knuckle screw #{i}", x0, x1, y0, y1, part="tray"))
         for i, (x0, x1, y0, y1) in enumerate(self.vent_rects(vents, vent_width)):
             features.append(Feature("vent", f"#{i}", x0, x1, y0, y1))
         zp = self.parting_height()
@@ -481,3 +485,73 @@ class BaseFastening:
                 bx, by, _ = placement.world_offset(hole.x, hole.y, 0.0)
                 out.append((bx, by, spec, component))
         return out
+
+    # -- Base knuckle screws ----------------------------------------------------
+
+    def knuckle_boss_spec(self) -> BossSpec:
+        """The Tray boss the Base knuckle's flange screws thread into (M3 insert)."""
+        insert = fasteners.heat_insert("M3")
+        wall = self.config.wall_thickness
+        return BossSpec(
+            hole_diameter=insert.printed_hole_diameter,
+            outer_diameter=insert.printed_hole_diameter + 2 * COLUMN_SLEEVE,
+            height=insert.depth + 1.0, wall_thickness=wall,
+        )
+
+    def knuckle_screw_sites(self) -> dict[str, list[tuple[float, float]]]:
+        """Flange-screw positions per Tray Section (``"left"``/``"center"``/``"right"``).
+
+        Merged bosses on the rear wall's inner face, up to two per Section,
+        where the rear strip leaves room (the hub and the battery sit against
+        the rear wall, so a Section may have none: reported as SOFT).
+        """
+        key = "knuckle_sites"
+        if key in self._memo:
+            return self._memo[key]
+        spec = self.knuckle_boss_spec()
+        b = self.wall_bounds()
+        r = spec.outer_diameter / 2.0
+        y = b.y0 + spec.hole_diameter / 2.0 + self.config.merged_boss.bore_margin
+        margin = self.config.clearance.screw
+        top = spec.height
+        rects = [(rc, margin) for rc in self.assembly.keepout_rects(0.0, top, self._base_placements())]
+        rects += [(rc, margin) for rc in self.cradle_rects() + self.cutout_rects()]
+        rects += [(self.column_rect(c), margin) for c in self.columns()]
+        rects += [(rc, 0.0) for rc in self._band_rects()]
+        circles = [
+            (bx, by, bspec.base_diameter / 2.0 + margin)
+            for bx, by, bspec, _ in self.component_boss_specs()
+        ]
+
+        def free(x: float) -> bool:
+            for (x0, x1, y0, y1), m in rects:
+                if x + r + m > x0 and x - r - m < x1 and y + r + m > y0 and y - r - m < y1:
+                    return False
+            return all(math.hypot(x - bx, y - by) >= r + br for bx, by, br in circles)
+
+        split = self._split("tray")
+        seams = split.seams() if split is not None else []
+        cuts = [s.x_range for s in seams]
+        bounds = [(b.x0, cuts[0][0] if cuts else b.x1)]
+        for (_, hi), (lo, _) in zip(cuts, cuts[1:]):
+            bounds.append((hi, lo))
+        if cuts:
+            bounds.append((cuts[-1][1], b.x1))
+        names = ("left", "center", "right") if len(bounds) == 3 else ("left", "right") if len(bounds) == 2 else ("all",)
+        sites: dict[str, list[tuple[float, float]]] = {}
+        for name, (lo, hi) in zip(names, bounds):
+            found: list[float] = []
+            x = lo + r + 1.0
+            while x <= hi - r - 1.0 and len(found) < 2:
+                if free(x) and all(abs(x - f) >= 2 * r + 2 * margin for f in found):
+                    found.append(x)
+                    x += 2 * r + 2 * margin
+                else:
+                    x += 0.5
+            sites[name] = [(fx, y) for fx in found]
+        self._memo[key] = sites
+        return sites
+
+    def knuckle_rects(self) -> list[tuple[float, float, float, float]]:
+        r = self.knuckle_boss_spec().base_diameter / 2.0
+        return [(x - r, x + r, y - r, y + r) for pts in self.knuckle_screw_sites().values() for x, y in pts]

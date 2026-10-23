@@ -2,7 +2,7 @@
 
 import pytest
 
-from utilities.config_loader import Seam, Split, build_config, load_config
+from utilities.config_loader import Split, load_config
 from utilities.targets import SECTION_NAMES, requested_sections, resolve_targets
 
 

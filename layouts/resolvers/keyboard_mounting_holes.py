@@ -20,9 +20,8 @@ from keyboard.geometry.mounting import generate_mounting_holes
 from keyboard.geometry.seam import plate_seam
 from keyboard.geometry.seam_holes import seam_holes
 from layouts.base import volume_footprint, volume_z_span
-from layouts.composer import ConstraintResolver, ResolverResult
+from layouts.composer import ResolverResult
 from layouts.constraints import KeyboardMountingHoles
-from utilities import fasteners
 
 
 def _buried_volumes(components: dict[str, Any], current: dict[str, Any], subject: str, z1: float):

@@ -14,6 +14,10 @@ The baseline was recorded on ``main`` at commit a1a273e with:
 
 Re-record it (deliberately, when a geometry change is intended) the same way.
 
+It was re-recorded for the ADR 0003/0004 case redesign (Sections, Parting
+plane, Deck columns, Seam fastening, Merged bosses, edge treatment, friction
+hinge): every case target changed, the Core components did not.
+
 The five ``component_*`` bounding boxes were updated after the build123d port:
 volume and center of mass still matched to 1e-6, but build123d measures a
 tighter box than CadQuery did (CadQuery padded by shape tolerance, ~0.0005 mm,
@@ -86,31 +90,66 @@ def baseline_metrics() -> dict:
     return json.loads(BASELINE_PATH.read_text())
 
 
-SPLIT_PARTS = ("base_bottom", "base_top", "lid_shell", "lid_bezel")
+#: Sections per split part (ADR 0003), left to right.
+SECTIONS = {
+    "base_bottom": ("left", "center", "right"),
+    "base_top": ("left", "right"),
+    "lid_shell": ("left", "center", "right"),
+    "lid_bezel": ("left", "right"),
+    "keyboard_plate": ("left", "right"),
+}
 BUILD_BED = (220.0, 220.0)
 BUILD_HEIGHT = 256.0
 
 
-def test_every_split_part_has_two_connected_halves(rebuilt_metrics):
-    for part in SPLIT_PARTS:
-        for side in ("left", "right"):
-            half = rebuilt_metrics[f"{part}_{side}"]
-            assert half["n_solids"] == 1, f"{part}_{side} is {half['n_solids']} solids"
+def _section_names():
+    return [f"{part}_{s}" for part, names in SECTIONS.items() for s in names]
 
 
-def test_every_half_fits_the_build_volume(rebuilt_metrics):
-    for part in SPLIT_PARTS:
-        for side in ("left", "right"):
-            x, y, z = rebuilt_metrics[f"{part}_{side}"]["bbox"]
-            assert sorted((x, y)) <= sorted(BUILD_BED), f"{part}_{side} footprint {x} x {y}"
-            assert z <= BUILD_HEIGHT
+def test_every_part_is_split_into_its_sections(rebuilt_metrics):
+    info = rebuilt_metrics["_pipeline"]["sections"]
+    for part, names in SECTIONS.items():
+        assert info[part]["sections"] == len(names), part
 
 
-def test_halves_rejoin_to_their_part(rebuilt_metrics):
-    for part in SPLIT_PARTS:
-        whole = rebuilt_metrics[part]["volume"]
-        halves = sum(rebuilt_metrics[f"{part}_{s}"]["volume"] for s in ("left", "right"))
-        assert _rel_close(whole, halves), f"{part}: {whole} != {halves}"
+def test_every_section_is_one_connected_solid(rebuilt_metrics):
+    for name in _section_names():
+        assert rebuilt_metrics[name]["n_solids"] == 1, name
+
+
+def test_every_section_fits_the_build_volume(rebuilt_metrics):
+    for name in _section_names() + ["base_knuckle"]:
+        x, y, z = rebuilt_metrics[name]["bbox"]
+        assert sorted((x, y)) <= sorted(BUILD_BED), f"{name} footprint {x} x {y}"
+        assert z <= BUILD_HEIGHT
+
+
+def test_sections_rejoin_to_their_part(rebuilt_metrics):
+    # Checked on the untreated split (edge treatment follows it, see main.py).
+    for part, info in rebuilt_metrics["_pipeline"]["sections"].items():
+        assert info["rejoin"], part
+
+
+def test_every_section_declares_an_orientation_and_has_a_bed_face(rebuilt_metrics):
+    pipe = rebuilt_metrics["_pipeline"]
+    for name in _section_names():
+        assert pipe["print_orientation"][name] == [0.0, 0.0, -1.0], name
+        assert pipe["bed_face_mm2"][name] > 0.0, name
+
+
+def test_screw_counts(rebuilt_metrics):
+    screws = rebuilt_metrics["_pipeline"]["screws"]
+    assert screws["plate"] == 8
+    assert screws["bezel"] == 8
+    assert screws["deck"] >= 2
+    assert screws["hinge_bolts"] == 2
+    assert screws["hinge_flange"] >= 1
+
+
+def test_no_hard_check_fails(rebuilt_metrics):
+    pipe = rebuilt_metrics["_pipeline"]
+    assert pipe["hard_failures"] == 0
+    assert all(pipe["checks"].values()), [k for k, v in pipe["checks"].items() if not v]
 
 
 def test_baseline_covers_expected_targets(baseline_metrics):
@@ -118,13 +157,15 @@ def test_baseline_covers_expected_targets(baseline_metrics):
     # case/lid/assembly target. If this shrinks, the baseline is stale.
     expected = {
         "assembly", "assembly_opened", "base", "base_bottom", "base_top",
-        "display", "hinge", "lid", "lid_shell", "lid_bezel",
+        "base_knuckle", "display", "hinge", "lid", "lid_shell", "lid_bezel",
     }
     missing = expected - set(baseline_metrics)
     assert not missing, f"baseline is missing targets: {sorted(missing)}"
 
 
 def test_geometry_matches_baseline(rebuilt_metrics, baseline_metrics):
+    # "_pipeline" holds pipeline results, not shape metrics (see the tests above).
+    baseline_metrics = {k: v for k, v in baseline_metrics.items() if not k.startswith("_")}
     missing = set(baseline_metrics) - set(rebuilt_metrics)
     extra = set(rebuilt_metrics) - set(baseline_metrics)
     assert not missing, f"targets missing from rebuild: {sorted(missing)}"

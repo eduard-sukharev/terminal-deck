@@ -71,7 +71,8 @@ booleans (the base shell takes ~1 min).
 | `lid` | Combined lid: lid_shell + display_assembly + lid_bezel |
 | `lid_shell` | Rear shell tray only |
 | `lid_bezel` | Front plate with glass cutout only |
-| `hinge` | Hinge pins + service caps (knuckles ship with the shells) |
+| `hinge` | Base knuckle part + Lid knuckles + bolts/nuts/washers/caps (colored per piece) |
+| `base_knuckle` | The separate Base knuckle part |
 | `display` | LCD panel + HDMI driver combined (fast) |
 | `components` | All per-component debug STLs |
 | `comp:<role>` | Single component's raw STL (e.g. `comp:driver`) |
@@ -87,7 +88,7 @@ Makefile convenience targets: `make display`, `make base_bottom`, `make base_top
 
 ## Failure mode
 
-A failed hard check (build volume, Half connectivity/rejoin, Seams, Visor, hinge)
+A failed hard check (build volume, Section connectivity/rejoin, bed face, Seams, Visor, hinge)
 aborts the build; `make build IGNORE_VALIDATION=1` exports anyway.
 
 See [[data-layer]] and [[cad-generation]] for what each half of the pipeline does,

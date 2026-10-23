@@ -139,8 +139,29 @@ SCREWS: dict[str, Screw] = {
 STANDARD_LENGTHS: dict[str, tuple[int, ...]] = {
     "M2": (4, 5, 6, 8, 10, 12, 16),
     "M2.5": (5, 6, 8, 10, 12, 16, 20),
-    "M3": (5, 6, 8, 10, 12, 16, 20, 25),
+    "M3": (5, 6, 8, 10, 12, 16, 20, 25, 30),
 }
+
+
+#: Nyloc nuts (ISO 10511): across flats and height, with a slip-fit clearance.
+NUT_TRAPS: dict[str, NutTrap] = {
+    "M3": NutTrap(across_flats=5.5, height=4.0, clearance=0.2),
+}
+
+#: Flat washers (ISO 7089): outer diameter and thickness.
+WASHERS: dict[str, WasherRecess] = {
+    "M3": WasherRecess(diameter=7.0, depth=0.5),
+}
+
+
+def nut_trap(size: str) -> NutTrap:
+    """The nyloc nut pocket for ``size``, e.g. ``"M3"``."""
+    return NUT_TRAPS[size]
+
+
+def washer(size: str) -> WasherRecess:
+    """The flat washer for ``size`` (``diameter`` outer, ``depth`` thickness)."""
+    return WASHERS[size]
 
 
 def screw(size: str) -> Screw:

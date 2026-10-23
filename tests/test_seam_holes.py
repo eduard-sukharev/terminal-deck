@@ -4,11 +4,10 @@ import json
 import math
 from pathlib import Path
 
-import pytest
 
 from keyboard import parse_layout
 from keyboard.geometry.plate import generate
-from keyboard.geometry.seam import _rows, _x_span, _y_span, plate_seam
+from keyboard.geometry.seam import _x_span, _y_span, plate_seam
 from keyboard.geometry.seam_holes import CUTOUT_MARGIN, seam_holes
 
 UNIT = 19.05

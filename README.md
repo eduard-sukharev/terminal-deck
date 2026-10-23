@@ -64,6 +64,7 @@ python main.py --config config/default.yaml --steps all
 CAD generation is implemented on build123d. Create the env once with
 `conda create -n cyberdeck python=3.12 && conda activate cyberdeck &&
 pip install -r requirements.txt`. The case is a symmetric clamshell (Lid has the
-Base's footprint, Visor closes the Deck slope, P6-style three-knuckle hinge);
-every wide part is exported as left/right Halves that fit the 220 × 220 × 256 mm
-build volume. See `docs/form_factor.md`, `docs/adr/`, and `CONTEXT.md`.
+Base's footprint, Visor closes the Deck slope, printed friction hinge with a separate Base knuckle);
+every wide part is exported as 2–3 Sections (left/center/right) that fit the
+220 × 220 × 256 mm build volume, with a horizontal Parting plane between Tray
+and Deck. See `docs/form_factor.md`, `docs/adr/`, and `CONTEXT.md`.

@@ -56,6 +56,11 @@ solids. Full run takes ~1 min (boolean-heavy base shell). There is one
 layout, `compact` (the default); `--layout-recipe <path>` runs an arbitrary
 YAML recipe file through the same composer instead of the built-in one.
 
+**Edge treatment runs per Section** (after the lossless rejoin check): OCC can
+segfault on a chamfer, so `cad_helpers` runs each attempt in a child process
+(`utilities/_cad_worker.py`); a failing edge is skipped with a SOFT warning.
+A full `make all` takes ~8 minutes for that reason.
+
 **Selective build targets** (`--targets`, comma-separated):
 - `assembly` — full union of all placements
 - `base` — combined base assembly: base_bottom + keyboard + base_top
@@ -64,14 +69,19 @@ YAML recipe file through the same composer instead of the built-in one.
 - `lid` — combined lid assembly: lid_shell + display + lid_bezel
 - `lid_shell` — lid rear shell tray
 - `lid_bezel` — lid front plate with glass cutout
-- `<part>_left` / `<part>_right` — one Half of `base_bottom`, `base_top`,
-  `lid_shell`, `lid_bezel`. Every wide part is always split and exported as
-  Halves alongside the whole part (ADR 0001); seams come from the `split:`
-  section of `config/default.yaml` and the run fails if a Half is
-  disconnected, doesn't rejoin, or exceeds the build volume.
-  Naming a Half on its own (e.g. `--targets lid_shell_left`) exports only
-  that Half; naming the part or a bucket containing it exports all Halves.
-- `hinge` — hinge barrels + pin + wire tunnel
+- `<part>_left` / `<part>_center` / `<part>_right` — one Section of
+  `base_bottom`, `lid_shell` (three Sections) or `base_top`, `lid_bezel`,
+  `keyboard_plate` (two; no `_center`). Every wide part is always split and
+  exported as Sections alongside the whole part (ADR 0003, superseding 0001);
+  Seams come from the per-part `split:` section of `config/default.yaml`
+  (`sections`, `x`, `style`, `step`, `steps`) and the run fails if a Section is
+  disconnected, doesn't rejoin, exceeds the build volume or has no flat bed
+  face. Naming a Section on its own (e.g. `--targets lid_shell_center`)
+  exports only that Section; naming the part or a bucket containing it exports
+  all of them.
+- `base_knuckle` — the separate Base knuckle part of the hinge (ADR 0004)
+- `hinge` — Lid knuckles, bolts, nuts, washers, service caps and the Base
+  knuckle, one color per piece
 - `display` — LCD panel + HDMI driver combined (the sub-assembly, fast)
 - `components` — all per-component debug STLs
 - `comp:<role>` — a single component's raw STL (e.g. `comp:driver`, `comp:display`)
@@ -97,10 +107,12 @@ intuition. Wire-up for the full pipeline lives in `main.py` (`BuildPipeline`,
   switch/stabilizer libraries → plate geometry model + its own validation).
 - **CAD generation (implemented, requires build123d):** `Assembly.build()`
   unions component solids at their placements; `case.Base.build_bottom()` and
-  `case.Base.build_top()` produce the base bottom tray (bosses/ribs/vents/
-  cutouts) and the top deck with keyboard cutout; `case.Lid.build_shell()` and
+  `case.Base.build_top()` produce the Tray (bosses/columns/ribs/vents/cutouts,
+  up to the Parting plane) and the Deck (skirt, slab, Well, keyboard cutout,
+  insert bosses); `case/base_fastening.py` holds their CAD-free fastening data
+  (Parting plane, Deck columns, Seam bands/lugs, knuckle screws); `case.Lid.build_shell()` and
   `case.Lid.build_bezel()` produce the lid rear tray and front bezel (glass
-  opening); `components/hinge.py` builds the barrels, pin, and wire tunnel;
+  opening); `components/hinge.py` builds the Lid knuckles, the Base knuckle part (bar, cheeks, web, flange, cable tunnel) and the bolt hardware;
   `geometry/*` hold the primitives.
 - `utilities/cad_helpers.py` is the **only** CAD adapter (build123d); it imports
   lazily so the data layer stays importable without a CAD library. Geometry

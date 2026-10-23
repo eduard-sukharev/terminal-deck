@@ -492,6 +492,24 @@ class Base(BaseFastening):
             [(c.x, c.y, c.counterbore_diameter / 2.0) for c in columns], feet, report
         )
         check_seam_clearance(self.seam_bands(), self.seam_features(), report)
+        self.knuckle_report(report)
+
+    def knuckle_report(self, report) -> None:
+        """Base knuckle mounting checks: HARD that it is screwed down at all, SOFT
+        for each Tray Section the rear strip leaves without a screw."""
+        sites = self.knuckle_screw_sites()
+        total = sum(len(v) for v in sites.values())
+        bare = [name for name, pts in sites.items() if not pts]
+        report.add(
+            "knuckle-screwed-to-tray", total >= 1,
+            f"{total} flange screw(s) into the Tray, per Section: "
+            + ", ".join(f"{n} {len(p)}" for n, p in sites.items()),
+        )
+        for name in bare:
+            report.warn(
+                f"Base knuckle has no screw into the {name} Tray Section: the rear strip "
+                "(hub, battery) leaves no room for a boss; it is held by the other Sections"
+            )
 
     # -- Tray -------------------------------------------------------------------
 
@@ -512,7 +530,7 @@ class Base(BaseFastening):
         """
         from components.battery import Battery
         from geometry import cradle, cutouts, ribs, seam_joint, vents
-        from utilities import cad_helpers
+        from utilities import cad_helpers, fasteners
 
         cad_helpers.require_cad()
         config = self.config
@@ -556,6 +574,12 @@ class Base(BaseFastening):
                     wx, wy, _ = p.world_offset(cx, cy_end, 0.0)
                     features.append(cad_helpers.translate(saddle, wx, wy, 0.0))
 
+        # Base knuckle screw bosses: M3 insert bosses merged into the rear wall.
+        kspec = self.knuckle_boss_spec()
+        for pts in self.knuckle_screw_sites().values():
+            for kx, ky in pts:
+                features.append(self._boss_with_hull(kspec, kx, ky, bore=False))
+
         # Stiffening ribs, kept clear of every boss: a rib crossing a bore
         # would plug the screw hole. Cradles are deliberately not cleared (no
         # bore to plug).
@@ -563,6 +587,10 @@ class Base(BaseFastening):
         rib_solids = ribs.build(rspec, interior_w, interior_d)
         keepouts = [(x, y, spec.base_diameter) for x, y, spec, _ in self.component_boss_specs()]
         keepouts += [(c.x, c.y, c.base_diameter) for c in self.columns()]
+        keepouts += [
+            (kx, ky, kspec.base_diameter)
+            for pts in self.knuckle_screw_sites().values() for kx, ky in pts
+        ]
         for bx, by, diameter in keepouts:
             clearance_cyl = cad_helpers.cylinder_centered(diameter + wall, rspec.height)
             clearance_cyl = cad_helpers.translate(clearance_cyl, bx, by, rspec.height / 2.0)
@@ -580,6 +608,15 @@ class Base(BaseFastening):
             through = cad_helpers.cylinder_centered(col.bore_diameter, zp + wall + 1.0)
             through = cad_helpers.translate(through, col.x, col.y, (zp - wall) / 2.0)
             body = cad_helpers.cut(body, cb, through)
+
+        # Insert bores of the knuckle bosses.
+        insert = fasteners.heat_insert("M3")
+        for pts in self.knuckle_screw_sites().values():
+            for kx, ky in pts:
+                bore = cad_helpers.cylinder_centered(insert.printed_hole_diameter, insert.depth)
+                body = cad_helpers.cut(
+                    body, cad_helpers.translate(bore, kx, ky, kspec.height - insert.depth / 2.0)
+                )
 
         # Vents and connector cutouts through the walls.
         slots = vents.build(self.vent_spec(), wall)
@@ -606,7 +643,42 @@ class Base(BaseFastening):
         for fx, fy in self.foot_positions():
             recess = cad_helpers.cylinder_centered(feet.diameter, 2 * feet.depth)
             body = cad_helpers.cut(body, cad_helpers.translate(recess, fx, fy, -wall))
-        return self._mount_hinge(body)
+        return body
+
+    # -- Base knuckle -----------------------------------------------------------
+
+    def knuckle_drop(self) -> float:
+        """Hinge axis height above the Tray floor's outer face (mm)."""
+        return self.hinge_axis_z() + self.config.wall_thickness
+
+    def build_knuckle(self):
+        """The Base knuckle part, in world position (ADR 0004).
+
+        D-bar with the display cable tunnel, outer end cheeks, a web behind the
+        rear face and a flange under the Tray floor, screwed from below into
+        the Tray's knuckle bosses. Flange cuts clear the rubber feet and the
+        Deck screw heads. Prints flange down.
+        """
+        from utilities import cad_helpers
+
+        if self.hinge is None:
+            raise ValueError("no hinge configured")
+        size = self.size()
+        rear_y = -size.depth / 2.0
+        screws = tuple(
+            (x, y - rear_y) for pts in self.knuckle_screw_sites().values() for x, y in pts
+        )
+        cuts = [
+            (fx, fy - rear_y, self.config.feet.diameter / 2.0 + 0.5)
+            for fx, fy in self.foot_positions()
+        ]
+        cuts += [
+            (c.x, c.y - rear_y, c.counterbore_diameter / 2.0 + 0.5) for c in self.columns()
+        ]
+        part = self.hinge.build_base_part(
+            size.width, self.knuckle_drop(), screws=screws, flange_cuts=tuple(cuts)
+        )
+        return cad_helpers.translate(part, 0.0, rear_y, self.hinge_axis_z())
 
     # -- Deck -------------------------------------------------------------------
 

@@ -310,23 +310,60 @@ def check_hinge_clearance(
     knuckle_box: tuple[float, float, float, float, float, float],
     placements: list[Any],
     report: ValidationReport,
+    extra_boxes: dict[str, tuple[float, float, float, float, float, float]] | None = None,
 ) -> None:
-    """Fail if a placed component intrudes on the Base knuckle's reach.
+    """Fail if a placed component intrudes on the Base knuckle part's reach.
 
     ``knuckle_box`` is ``(x0, x1, y0, y1, z0, z1)`` in world coordinates: the
-    part of the knuckle that sits inside the case.     """
-    kx0, kx1, ky0, ky1, kz0, kz1 = knuckle_box
+    part of the Base knuckle bar that sits inside the case. ``extra_boxes``
+    names the rest of the part (the end cheeks, the flange) the same way.
+    """
+    boxes = {"Base knuckle": knuckle_box, **(extra_boxes or {})}
     hits = []
-    for p in placements:
-        x0, y0, x1, y1 = p.box
-        z0, z1 = p.z_bounds()
-        if x0 < kx1 and x1 > kx0 and y0 < ky1 and y1 > ky0 and z0 < kz1 and z1 > kz0:
-            hits.append(p.component.__class__.__name__)
+    for label, (kx0, kx1, ky0, ky1, kz0, kz1) in boxes.items():
+        for p in placements:
+            x0, y0, x1, y1 = p.box
+            z0, z1 = p.z_bounds()
+            if x0 < kx1 and x1 > kx0 and y0 < ky1 and y1 > ky0 and z0 < kz1 and z1 > kz0:
+                hits.append(f"{p.component.__class__.__name__} in {label}")
     report.add(
         "hinge-clears",
         not hits,
-        f"components inside Base knuckle reach: {', '.join(hits)}" if hits
-        else "no component inside Base knuckle reach",
+        f"components inside the Base knuckle part's reach: {', '.join(hits)}" if hits
+        else "no component inside the Base knuckle part's reach",
+    )
+
+
+def check_hinge_sweep(
+    cheek_spans: tuple[tuple[float, float], ...],
+    bar_span: tuple[float, float],
+    lid_notches: tuple[tuple[float, float], ...],
+    web_top: float,
+    swing_radius: float,
+    report: ValidationReport,
+) -> None:
+    """Fail unless the Lid's opening sweep clears the Base knuckle part.
+
+    The Lid swings about the hinge axis, so every Base-side piece within the
+    Lid's width must lie in a Lid shell notch (the end cheeks and the bar), and
+    the web and flange below the axis must stay under the swing circle
+    (``web_top`` is its top relative to the axis, negative).
+    """
+    uncovered = [
+        f"{kind} {lo:g}..{hi:g}"
+        for kind, (lo, hi) in [("cheek", c) for c in cheek_spans] + [("bar", bar_span)]
+        if not any(n0 <= lo + 1e-9 and hi <= n1 + 1e-9 for n0, n1 in lid_notches)
+    ]
+    low_web = web_top > -swing_radius + 1e-9
+    problems = []
+    if uncovered:
+        problems.append(f"not inside a Lid notch: {', '.join(uncovered)}")
+    if low_web:
+        problems.append(f"web top {web_top:g} mm is inside the Lid's {swing_radius:g} mm swing")
+    report.add(
+        "hinge-sweep-clears", not problems,
+        "; ".join(problems) if problems
+        else "end cheeks, bar, web and flange clear the Lid's opening sweep",
     )
 
 
@@ -583,7 +620,6 @@ def check_plate_seam_screws(
     """
     y_mid = (min(s[0] for s in seam) + max(s[1] for s in seam)) / 2.0
     covered: set[tuple[str, str]] = set()
-    far: list[str] = []
     for x, y in holes:
         gap, side = _point_seam_gap(x, y, seam)
         if gap > unit + 1e-9:

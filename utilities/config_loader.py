@@ -133,16 +133,26 @@ class Keyboard:
 
 @dataclass(frozen=True)
 class Hinge:
-    diameter: float
-    pin: float
-    wire_tunnel: float
+    """Printed friction hinge (ADR 0004). Lengths in mm along the hinge axis.
+
+    From each end of the span inward: an end cheek, a Lid knuckle, then the
+    Base knuckle; ``washer_stack`` separates the rubbing faces. An M3 bolt
+    (``friction_bolt``) runs cheek -> Lid knuckle -> Base knuckle land into a
+    captive nyloc nut; its head sits under a removable service cap.
+    """
+
+    diameter: float               # knuckle outer diameter (>= wire_tunnel + 2 * wall)
+    wire_tunnel: float            # display cable tunnel bore through the Base knuckle
     lid_knuckle: float = 20.0     # length of each Lid corner knuckle
-    knuckle_gap: float = 0.5      # axial gap between Lid and Base knuckles
-    pin_land: float = 8.0         # solid pin-bearing length at each Base knuckle end
-    pin_clearance: float = 0.2    # pin bore oversize (diameter)
-    cap_thickness: float = 2.0    # service cap head thickness
-    cap_plug: float = 4.0         # service cap plug depth into the pin bore
-    end_inset: float = 5.0        # hinge span inset from each case side
+    washer_stack: float = 1.2     # steel + spring washer between rubbing faces
+    land: float = 8.0             # solid bolt-bearing length at each Base knuckle end
+    end_cheek: float = 5.0        # thickness of each outer Base end cheek
+    flange: float = 4.0           # thickness of the Base knuckle's mounting flange
+    flange_depth: float = 9.5     # how far the flange reaches under the Tray floor
+    cap_thickness: float = 2.0    # removable service cap head thickness
+    cap_plug: float = 4.0         # service cap plug depth into the head recess
+    end_inset: float = 9.0        # hinge span inset from each case side
+    friction_bolt: str = "M3"     # bolt size (fastener library)
 
 
 @dataclass(frozen=True)
@@ -425,7 +435,9 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
             keycap=keyboard.get("keycap"),
             controller=keyboard.get("controller"),
         ),
-        hinge=Hinge(**{k: float(v) for k, v in hinge.items()}),
+        hinge=Hinge(**{
+            k: (str(v) if k == "friction_bolt" else float(v)) for k, v in hinge.items()
+        }),
         screws=Screws(
             body=str(screws["body"]), standoff=str(screws["standoff"]),
             deck=str(screws.get("deck", "M3")),

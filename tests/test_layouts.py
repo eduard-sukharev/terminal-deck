@@ -9,7 +9,7 @@ from main import BuildPipeline
 
 def _components():
     p = BuildPipeline("config/default.yaml")
-    cfg = p.load_config()
+    p.load_config()
     return p.load_components()
 
 
@@ -92,7 +92,6 @@ def test_world_offset_no_transform():
 def test_bosses_rotation_and_flip():
     from pytest import approx
     from assemblies.assembly import Assembly
-    from utilities.config_loader import load_config
     comps = _components()
     cfg = load_config("config/default.yaml")
     layout = make_layout("compact", comps, config=cfg)
@@ -220,7 +219,7 @@ def test_lid_clears_the_tilted_keyboard():
     """The lid is derived from the keyboard's real top, not its nominal height."""
     base, cfg = _base()
     kb = base._keyboard_placement()
-    display = _placement(base.assembly.placements, 'Display 8.8" 1920x480')
+    _placement(base.assembly.placements, 'Display 8.8" 1920x480')
     driver = _placement(base.assembly.placements, "HDMI Driver Board")
     # The rear keycaps rise above the nominal component height...
     assert kb.z_bounds()[1] > kb.component.size().height
@@ -281,7 +280,7 @@ def test_plug_is_centred_on_its_port_not_offset_from_it():
     p = BuildPipeline("config/default.yaml")
     p.load_config()
     comps = p.load_components()
-    plug, sbc = comps["sbc_plug"], comps["sbc"]
+    plug, _sbc = comps["sbc_plug"], comps["sbc"]
     conn = plug.host_connector()
     ox, oy, oz = plug.reference_origin()
     # Origin sits a full half-length beyond the port face, i.e. at the centre.
@@ -338,7 +337,7 @@ def test_clearance_resolver_matches_collision_check_under_tilt():
     from components.battery import Battery
     base, _ = _base()
     kb = base._keyboard_placement()
-    dummy = Placement(Battery({}), 0.0, kb.y, 0.0, kb.z, False, kb.tilt_x)
+    Placement(Battery({}), 0.0, kb.y, 0.0, kb.z, False, kb.tilt_x)
     for ax, ay, az, box in kb.component.occupied_volumes()[:4]:
         wx, wy, wz = kb.world_offset(ax, ay, az)
         z0, z1 = volume_z_span(kb, box, wz)
@@ -402,51 +401,64 @@ def test_controller_clears_the_keyboard_plates_own_mounting_bosses():
         )
 
 
-def test_deck_standoffs_clear_every_base_floor_component():
-    """No deck-mount standoff's XY may land inside a base-floor component's
-    footprint — it runs the full height to the deck and would punch
-    straight through the part regardless of Z.
+def test_deck_columns_clear_every_base_floor_component():
+    """No Deck column may land on a base-floor component's solid volume: it
+    runs from the floor to the Parting plane and would punch through the part.
+    """
+    base, cfg = _base()
+    r = base.column_geometry()["outer"] / 2
+    columns = base.columns()
+    assert len(columns) >= 4, "fewer Deck columns than the flat-deck baseline"
+    rects = base.assembly.keepout_rects(0.0, base.parting_height(), base._base_placements())
+    for col in columns:
+        for x0, x1, y0, y1 in rects:
+            hit = col.x + r > x0 and col.x - r < x1 and col.y + r > y0 and col.y - r < y1
+            assert not hit, f"column ({col.x:.1f},{col.y:.1f}) lands on a component"
+
+
+def test_deck_columns_are_not_squeezed_together():
+    """Two columns snapped into the same tight gap must still be far enough
+    apart to exist as separate printed posts.
     """
     import math
     base, cfg = _base()
-    standoff_r = base._corner_standoff_outer_diameter() / 2
-    positions = base._corner_positions()
-    assert len(positions) >= 4, "fewer standoffs than the flat-deck baseline"
-    for cx, cy in positions:
-        for pp in base._base_placements():
-            x0, y0, x1, y1 = pp.box
-            nx = min(max(cx, x0), x1)
-            ny = min(max(cy, y0), y1)
-            d = math.hypot(cx - nx, cy - ny)
-            assert d >= standoff_r, (
-                f"standoff ({cx:.1f},{cy:.1f}) lands inside {pp.component.name}"
-            )
+    od = base.column_geometry()["outer"]
+    columns = base.columns()
+    for i in range(len(columns)):
+        for j in range(i + 1, len(columns)):
+            d = math.hypot(columns[i].x - columns[j].x, columns[i].y - columns[j].y)
+            assert d >= od, f"columns {i} and {j} nearly touch"
 
 
-def test_deck_standoffs_are_not_squeezed_together():
-    """Two standoffs snapped into the same tight gap must still end up far
-    enough apart to exist as separate printed bosses, not nearly fused.
-    """
-    import math
+def test_deck_columns_spread_across_most_of_the_case_width():
+    """Columns should support the Deck across a meaningful part of the width,
+    not cluster on one side."""
     base, cfg = _base()
-    od = base._corner_standoff_outer_diameter()
-    positions = base._corner_positions()
-    for i in range(len(positions)):
-        for j in range(i + 1, len(positions)):
-            d = math.hypot(
-                positions[i][0] - positions[j][0], positions[i][1] - positions[j][1]
-            )
-            assert d >= od, f"standoffs {positions[i]} and {positions[j]} nearly touch"
-
-
-def test_deck_standoffs_spread_across_most_of_the_case_width():
-    """A meaningful fraction of the case width should have standoff support
-    somewhere along it — regression for the search only ever finding
-    points on one side and leaving the rest of the deck unsupported.
-    """
-    base, cfg = _base()
-    positions = base._corner_positions()
-    xs = [x for x, _ in positions]
+    xs = [c.x for c in base.columns()]
     size = base.size()
-    span = max(xs) - min(xs)
-    assert span >= 0.5 * (size.width - 2 * cfg.wall_thickness)
+    assert max(xs) - min(xs) >= 0.5 * (size.width - 2 * cfg.wall_thickness)
+
+
+def test_every_deck_section_has_a_column_near_its_seam():
+    base, cfg = _base()
+    reach = cfg.deck.seam_screw_reach
+    seam_x = cfg.split["deck"].seams()[0].x
+    xs = [c.x for c in base.columns()]
+    assert any(seam_x - reach <= x < seam_x for x in xs)
+    assert any(seam_x < x <= seam_x + reach for x in xs)
+
+
+def test_plate_has_eight_standoffs_and_the_seam_ones_clear_the_sbc():
+    """Four edge + four Seam standoffs; the Seam ones stand clear of the board
+    buried under the plate (they run floor to plate)."""
+    base, cfg = _base()
+    kb = base._keyboard_placement().component
+    holes = kb.mounting_holes()
+    assert len(holes) == 8
+    sbc = _placement(base.assembly.placements, "Orange Pi Zero 2W")
+    sx0, sy0, sx1, sy1 = sbc.box
+    kp = base._keyboard_placement()
+    for h in holes:
+        wx, wy, _ = kp.world_offset(h.x, h.y, 0.0)
+        inside = sx0 < wx < sx1 and sy0 < wy < sy1
+        assert not inside, f"plate standoff at ({wx:.1f}, {wy:.1f}) is inside the SBC"

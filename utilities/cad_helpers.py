@@ -644,7 +644,10 @@ def _pool() -> Any:
         import multiprocessing
         from concurrent.futures import ProcessPoolExecutor
 
+        import atexit
+
         _POOL = ProcessPoolExecutor(max_workers=1, mp_context=multiprocessing.get_context("spawn"))
+        atexit.register(_POOL.shutdown, wait=False, cancel_futures=True)
     return _POOL
 
 

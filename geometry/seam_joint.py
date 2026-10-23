@@ -1,10 +1,14 @@
-"""Screw joints that hold the two Halves of a part together (ADR 0001).
+"""Screw joints that hold adjacent Sections of a part together (ADR 0003).
 
 A joint is a square lug that straddles the Seam and grows from the part's
 floor and the wall at the end of the Seam. A horizontal M2 screw runs along X
 through it: a clearance bore on the left side, a heat-set insert pocket on
 the right. The lug is added to the whole part before it is split, so each
-Half receives its share, and both stay connected to the floor.
+Section receives its share, and both stay connected to the floor. A part with
+three Sections gets its own pair of lugs on each Seam.
+
+Sites are chosen clear of the components inside and of the structural
+features (bosses, standoffs, columns, cradles) given as ``keepouts``.
 """
 
 from __future__ import annotations
@@ -85,6 +89,60 @@ def joint_sites(
     return sites
 
 
+def lug_footprint(
+    spec: JointSpec, sx: float, sy: float, wall: float, backed: bool
+) -> tuple[float, float, float, float]:
+    """``(x0, x1, y0, y1)`` of the lug box at a site (mm)."""
+    total = spec.left_length + spec.right_length
+    cx = sx + (spec.right_length - spec.left_length) / 2.0
+    width = spec.size + (wall if backed else 0.0)
+    cy = sy + ((wall if sy > 0 else -wall) / 2.0 if backed else 0.0)
+    return (cx - total / 2.0, cx + total / 2.0, cy - width / 2.0, cy + width / 2.0)
+
+
+def _overlaps(a: tuple[float, float, float, float], b: tuple[float, float, float, float], grow: float) -> bool:
+    return a[0] < b[1] + grow and a[1] > b[0] - grow and a[2] < b[3] + grow and a[3] > b[2] - grow
+
+
+def plan_joints(
+    seam,
+    depth: float,
+    wall: float,
+    spec: JointSpec,
+    floor_top: float,
+    obstacles=None,
+    clearance: float = 0.0,
+    count: int = 2,
+    keepouts=(),
+) -> list[tuple[float, float, bool]]:
+    """Choose ``count`` joint sites on ``seam``.
+
+    ``floor_top`` is the Z of the floor's inner face; the lugs sit on it. A
+    site is skipped when its lug, grown by ``clearance``, would touch
+    ``obstacles`` (a solid of whatever else occupies the interior) or an XY
+    ``keepouts`` rectangle ``(x0, x1, y0, y1)`` (structural features). Raises
+    ``ValueError`` if fewer than ``count`` free sites exist.
+    """
+    z = floor_top + spec.size / 2.0
+    chosen = []
+    for sx, sy, backed in joint_sites(seam, depth, wall, spec):
+        if len(chosen) == count:
+            break
+        rect = lug_footprint(spec, sx, sy, wall, backed)
+        if any(_overlaps(rect, k, clearance) for k in keepouts):
+            continue
+        if obstacles is not None:
+            probe = _lug(spec, sx, sy, z, wall, backed, grow=clearance)
+            if cad_helpers.volume_mm3(cad_helpers.intersect(probe, obstacles)) > 1e-6:
+                continue
+        chosen.append((sx, sy, backed))
+    if len(chosen) < count:
+        raise ValueError(
+            f"only {len(chosen)} of {count} Seam joints fit clear of the interior"
+        )
+    return chosen
+
+
 def add_joints(
     body,
     seam,
@@ -95,28 +153,18 @@ def add_joints(
     obstacles=None,
     clearance: float = 0.0,
     count: int = 2,
+    keepouts=(),
+    sites=None,
 ):
-    """Add up to ``count`` Seam-straddling lugs (with bores) to ``body``.
+    """Add ``count`` Seam-straddling lugs (with bores) to ``body``.
 
-    ``floor_top`` is the Z of the floor's inner face; the lugs sit on it. A
-    site whose lug (grown by ``clearance``) would touch ``obstacles`` — a
-    solid of whatever else occupies the interior — is skipped. Raises
-    ``ValueError`` if fewer than ``count`` free sites exist.
+    The sites come from :meth:`plan_joints` unless given as ``sites`` (a
+    caller that needs the footprints first plans, then adds).
     """
     z = floor_top + spec.size / 2.0
-    chosen = []
-    for sx, sy, backed in joint_sites(seam, depth, wall, spec):
-        if len(chosen) == count:
-            break
-        if obstacles is not None:
-            probe = _lug(spec, sx, sy, z, wall, backed, grow=clearance)
-            if cad_helpers.volume_mm3(cad_helpers.intersect(probe, obstacles)) > 1e-6:
-                continue
-        chosen.append((sx, sy, backed))
-    if len(chosen) < count:
-        raise ValueError(
-            f"only {len(chosen)} of {count} Seam joints fit clear of the interior"
-        )
+    chosen = sites if sites is not None else plan_joints(
+        seam, depth, wall, spec, floor_top, obstacles, clearance, count, keepouts
+    )
     for sx, sy, backed in chosen:
         body = cad_helpers.union(body, _lug(spec, sx, sy, z, wall, backed))
     for sx, sy, _ in chosen:

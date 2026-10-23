@@ -83,10 +83,12 @@ class KeyboardMountingHoles(Constraint):
     """Position mounting holes between keyboard rows, near wide keys.
 
     Two holes on the left side (between row 0-1 and row 2-3) and two on
-    the right side, placed in gaps near wide keys (>1u).
+    the right side, placed in gaps near wide keys (>1u), plus two per plate
+    Section within one key unit of the plate Seam (ADR 0003).
 
     The resolver reads the keyboard layout (keys, pitch) and computes
-    positions that avoid switch/stabilizer cutouts.
+    positions that avoid switch/stabilizer cutouts and, for the Seam holes,
+    the parts buried under the plate: place it after those parts.
     """
     kind: str = field(default="keyboard_mounting_holes", init=False)
     subject: str = "keyboard"

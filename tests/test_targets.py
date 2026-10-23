@@ -90,25 +90,25 @@ def test_half_target_resolves_to_its_part():
     assert buckets == {"lid_shell", "base_top"}
 
 
-def test_requested_halves_collects_only_half_tokens():
-    from utilities.targets import requested_halves
+def test_requested_sections_collects_only_half_tokens():
+    from utilities.targets import requested_sections
 
-    assert requested_halves(["lid_shell_left", "hinge", "base_top_right"]) == {
+    assert requested_sections(["lid_shell_left", "hinge", "base_top_right"]) == {
         "lid_shell_left", "base_top_right",
     }
 
 
 def test_whole_part_cancels_half_filter():
-    from utilities.targets import requested_halves
+    from utilities.targets import requested_sections
 
     # Asking for the part itself (or a bucket containing it) wants every Half.
-    assert requested_halves(["lid_shell_left", "lid_shell"]) == set()
-    assert requested_halves(["lid_shell_left", "lid"]) == set()
-    assert requested_halves(["base_top_left", "base"]) == set()
-    assert requested_halves(["base_top_left", "all"]) == set()
+    assert requested_sections(["lid_shell_left", "lid_shell"]) == set()
+    assert requested_sections(["lid_shell_left", "lid"]) == set()
+    assert requested_sections(["base_top_left", "base"]) == set()
+    assert requested_sections(["base_top_left", "all"]) == set()
 
 
 def test_base_bucket_does_not_cancel_plate_half():
-    from utilities.targets import requested_halves
+    from utilities.targets import requested_sections
 
-    assert requested_halves(["keyboard_plate_left", "base"]) == {"keyboard_plate_left"}
+    assert requested_sections(["keyboard_plate_left", "base"]) == {"keyboard_plate_left"}

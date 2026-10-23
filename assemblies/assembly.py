@@ -223,6 +223,31 @@ class Assembly:
                     cutouts.append(cutout)
         return cutouts
 
+    def keepout_rects(
+        self,
+        z0: float,
+        z1: float,
+        placements: list[Placement] | None = None,
+    ) -> list[tuple[float, float, float, float]]:
+        """XY rectangles ``(x0, x1, y0, y1)`` of component volumes in ``[z0, z1]``.
+
+        One rectangle per solid sub-volume (``Component.occupied_volumes``)
+        whose world Z span overlaps the band, so a feature standing in that
+        band (a lug, a column) can be kept clear of what is really there
+        instead of each component's full bounding box. Pure data: no CAD.
+        """
+        selected = placements if placements is not None else self.placements
+        rects = []
+        for placement in selected:
+            for vx, vy, vz, box in placement.component.occupied_volumes():
+                wx, wy, wz = placement.world_offset(vx, vy, vz)
+                lo, hi = volume_z_span(placement, box, wz)
+                if hi <= z0 or lo >= z1:
+                    continue
+                w, d = volume_footprint(placement, box)
+                rects.append((wx - w / 2, wx + w / 2, wy - d / 2, wy + d / 2))
+        return rects
+
     def max_component_height(self) -> float:
         """Height of the highest component stack above z=0 (mm)."""
         return max(

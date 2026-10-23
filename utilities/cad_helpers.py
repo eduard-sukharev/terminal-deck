@@ -463,3 +463,228 @@ def extrude_profile_x(vertices_yz: list[tuple[float, float]], length: float) -> 
     b3d = require_cad()
     wire = b3d.Wire.make_polygon([(0.0, vy, vz) for vy, vz in vertices_yz], close=True)
     return b3d.extrude(b3d.Face(wire), amount=length / 2.0, both=True)
+
+
+# -- Face queries (printability, edge treatment) ------------------------------
+
+def faces(shape: Any) -> list[Any]:
+    """Every face of ``shape``."""
+    return list(shape.faces())
+
+
+def is_planar(face: Any) -> bool:
+    """True for a planar face."""
+    return face.is_planar
+
+
+def face_area(face: Any) -> float:
+    return face.area
+
+
+def face_center(face: Any) -> tuple[float, float, float]:
+    c = face.center()
+    return (c.X, c.Y, c.Z)
+
+
+def face_normal(face: Any) -> tuple[float, float, float]:
+    """Outward unit normal of a planar face."""
+    n = face.normal_at()
+    return (n.X, n.Y, n.Z)
+
+
+def face_sample_normals(face: Any, grid: int = 3) -> list[tuple[float, float, float]]:
+    """Outward unit normals sampled across ``face`` (one for a planar face)."""
+    if face.is_planar:
+        return [face_normal(face)]
+    out = []
+    for i in range(grid):
+        for j in range(grid):
+            u, v = (i + 0.5) / grid, (j + 0.5) / grid
+            try:
+                n = face.normal_at(face.position_at(u, v))
+            except Exception:  # degenerate parametrisation: skip the sample
+                continue
+            out.append((n.X, n.Y, n.Z))
+    return out or [face_normal(face)]
+
+
+# -- Edge queries and treatment (geometry.edge_treatment) -----------------------
+
+@dataclass(frozen=True)
+class EdgeInfo:
+    """An edge located by where it is, so it can be found again after a boolean.
+
+    ``key`` is the edge midpoint and length, rounded to a micron; ``tangent``
+    is the unit tangent at the midpoint.
+    """
+
+    key: tuple[float, float, float, float]
+    length: float
+    tangent: tuple[float, float, float]
+
+    @property
+    def midpoint(self) -> tuple[float, float, float]:
+        return self.key[:3]
+
+
+def _edge_key(edge: Any) -> tuple[float, float, float, float]:
+    p = edge.position_at(0.5)
+    return (round(p.X, 3), round(p.Y, 3), round(p.Z, 3), round(edge.length, 3))
+
+
+def _unit(v: Any) -> tuple[float, float, float]:
+    n = v.length or 1.0
+    return (v.X / n, v.Y / n, v.Z / n)
+
+
+def _is_concave(shape: Any, edge: Any, faces: list[Any]) -> bool:
+    """True where the two faces at ``edge`` meet at an inside corner of ``shape``.
+
+    Walk off the edge along face 1 (in its plane, away from the edge): if face
+    2's outward normal points the way we walked, the material wraps around the
+    edge, i.e. it is concave.
+    """
+    b3d = require_cad()
+    f1, f2 = faces
+    mid = edge.position_at(0.5)
+    t = edge.tangent_at(0.5)
+    n1 = f1.normal_at(mid)
+    n2 = f2.normal_at(mid)
+    d = n1.cross(t)
+    if d.length < 1e-9:
+        return False
+    d = d.normalized()
+    for sign in (1.0, -1.0):
+        probe = mid + d * (0.01 * sign)
+        if f1.distance_to(b3d.Vertex(probe.X, probe.Y, probe.Z)) < 1e-4:
+            return (d * sign).dot(n2) > 1e-6
+    return False
+
+
+def _edge_faces(shape: Any) -> list[tuple[Any, list[Any]]]:
+    """``(edge, [faces at that edge])`` for every edge of ``shape``."""
+    from OCP.TopAbs import TopAbs_EDGE, TopAbs_FACE
+    from OCP.TopExp import TopExp
+    from OCP.TopoDS import TopoDS
+    from OCP.TopTools import TopTools_IndexedDataMapOfShapeListOfShape
+
+    b3d = require_cad()
+    table = TopTools_IndexedDataMapOfShapeListOfShape()
+    TopExp.MapShapesAndAncestors_s(shape.wrapped, TopAbs_EDGE, TopAbs_FACE, table)
+    pairs = []
+    for i in range(1, table.Extent() + 1):
+        edge = b3d.Edge(TopoDS.Edge_s(table.FindKey(i)))
+        faces = [b3d.Face(TopoDS.Face_s(f)) for f in table.FindFromIndex(i)]
+        pairs.append((edge, faces))
+    return pairs
+
+
+def concave_edges(shape: Any) -> list[EdgeInfo]:
+    """Every inside-corner edge of ``shape``."""
+    found = []
+    for edge, faces in _edge_faces(shape):
+        if len(faces) != 2:
+            continue
+        try:
+            if not _is_concave(shape, edge, faces):
+                continue
+        except Exception:  # a degenerate edge: leave it alone
+            continue
+        found.append(EdgeInfo(
+            key=_edge_key(edge), length=edge.length, tangent=_unit(edge.tangent_at(0.5)),
+        ))
+    return found
+
+
+def bed_boundary_edges(shape: Any, normal: tuple[float, float, float], tol: float = 1e-3) -> list[EdgeInfo]:
+    """Outer-boundary edges of the planar face(s) lying on the bed (convex or not)."""
+    extreme = max(
+        sum(c * n for c, n in zip((x, y, z), normal))
+        for x in (shape.bounding_box().min.X, shape.bounding_box().max.X)
+        for y in (shape.bounding_box().min.Y, shape.bounding_box().max.Y)
+        for z in (shape.bounding_box().min.Z, shape.bounding_box().max.Z)
+    )
+    found = []
+    for face in shape.faces():
+        if not face.is_planar:
+            continue
+        fn = face.normal_at()
+        if fn.X * normal[0] + fn.Y * normal[1] + fn.Z * normal[2] < 1.0 - 1e-4:
+            continue
+        c = face.center()
+        if abs(c.X * normal[0] + c.Y * normal[1] + c.Z * normal[2] - extreme) > tol:
+            continue
+        for edge in face.outer_wire().edges():
+            found.append(EdgeInfo(
+                key=_edge_key(edge), length=edge.length,
+                tangent=_unit(edge.tangent_at(0.5)),
+            ))
+    return found
+
+
+def _locate(shape: Any, infos: list[EdgeInfo]) -> list[Any]:
+    wanted = {info.key for info in infos}
+    return [edge for edge in shape.edges() if _edge_key(edge) in wanted]
+
+
+def _checked(before: Any, after: Any) -> Any:
+    if after is None or not after.is_valid or len(after.solids()) < 1:
+        raise ValueError("edge treatment produced an invalid solid")
+    if len(after.solids()) != len(before.solids()):
+        raise ValueError("edge treatment changed the solid count")
+    return after
+
+
+_POOL: Any = None
+
+
+def _pool() -> Any:
+    global _POOL
+    if _POOL is None:
+        import multiprocessing
+        from concurrent.futures import ProcessPoolExecutor
+
+        _POOL = ProcessPoolExecutor(max_workers=1, mp_context=multiprocessing.get_context("spawn"))
+    return _POOL
+
+
+def _isolated(shape: Any, infos: list[EdgeInfo], size: float, mode: str) -> Any:
+    """Chamfer/fillet in a child process, so an OCC segfault only fails the attempt."""
+    import os
+    import tempfile
+    from concurrent.futures.process import BrokenProcessPool
+
+    from utilities import _cad_worker
+
+    global _POOL
+    b3d = require_cad()
+    with tempfile.TemporaryDirectory() as tmp:
+        src, dst = os.path.join(tmp, "in.brep"), os.path.join(tmp, "out.brep")
+        b3d.export_brep(shape, src)
+        future = _pool().submit(_cad_worker.treat, src, dst, mode, [list(i.key) for i in infos], size)
+        try:
+            future.result(timeout=120)
+        except BrokenProcessPool as exc:
+            _POOL = None
+            raise ValueError("OCC crashed on this edge treatment") from exc
+        except Exception as exc:
+            raise ValueError(f"edge treatment failed: {exc}") from exc
+        result = b3d.import_brep(dst)
+    solids = result.solids()
+    if len(solids) != len(shape.solids()):
+        raise ValueError("edge treatment changed the solid count")
+    return solids[0] if len(solids) == 1 else result
+
+
+def chamfer_edges(shape: Any, infos: list[EdgeInfo], size: float) -> Any:
+    """Chamfer the edges at ``infos`` by ``size`` mm; raises if OCC cannot."""
+    if not _locate(shape, infos):
+        return shape
+    return _isolated(shape, infos, size, "chamfer")
+
+
+def fillet_edges(shape: Any, infos: list[EdgeInfo], size: float) -> Any:
+    """Fillet the edges at ``infos`` by ``size`` mm; raises if OCC cannot."""
+    if not _locate(shape, infos):
+        return shape
+    return _isolated(shape, infos, size, "fillet")

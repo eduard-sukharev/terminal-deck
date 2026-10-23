@@ -52,6 +52,7 @@ def rib_layout(
     pitch: float | None = None,
     rib_thickness: float | None = None,
     rib_height: float | None = None,
+    avoid: tuple[tuple[float, float], ...] = (),
 ) -> RibSpec:
     """Compute a rib layout across a panel.
 
@@ -69,6 +70,10 @@ def rib_layout(
         Defaults to ``wall_thickness * 0.6``.
     rib_height : float or None
         Defaults to ``wall_thickness * 2``.
+    avoid : tuple[tuple[float, float], ...]
+        ``(x0, x1)`` ranges no rib may touch — the Seam bands (ADR 0003). A
+        rib whose nominal spot touches one slides to the nearest clear spot
+        (just outside the range); if none exists it is dropped.
 
     Returns
     -------
@@ -82,10 +87,43 @@ def rib_layout(
     # Ribs run along Y, spaced across X. Insets at the panel edges.
     margin = pitch / 2
     count = max(0, int((panel_width - 2 * margin) // pitch))
-    positions = tuple(
+    nominal = [
         -panel_width / 2 + margin + pitch / 2 + i * pitch for i in range(count)
-    )
+    ]
+    positions = _clear_of(nominal, avoid, thickness, panel_width)
     return RibSpec(thickness=thickness, height=height, pitch=pitch, positions=positions)
+
+
+def _touches(pos: float, thickness: float, avoid) -> bool:
+    return any(pos + thickness / 2 > lo and pos - thickness / 2 < hi for lo, hi in avoid)
+
+
+def _clear_of(
+    nominal: list[float], avoid, thickness: float, panel_width: float
+) -> tuple[float, ...]:
+    """Slide each rib off the ``avoid`` ranges, keeping them apart and in the panel."""
+    if not avoid:
+        return tuple(nominal)
+    limit = panel_width / 2 - thickness / 2
+    placed: list[float] = []
+    for pos in nominal:
+        if not _touches(pos, thickness, avoid):
+            placed.append(pos)
+            continue
+        candidates = sorted(
+            (c for lo, hi in avoid for c in (lo - thickness / 2, hi + thickness / 2)),
+            key=lambda c: abs(c - pos),
+        )
+        for cand in candidates:
+            if (
+                abs(cand) < limit
+                and not _touches(cand, thickness, avoid)
+                and all(abs(cand - other) >= 2 * thickness for other in placed)
+                and all(abs(cand - other) >= 2 * thickness for other in nominal if other != pos and not _touches(other, thickness, avoid))
+            ):
+                placed.append(cand)
+                break
+    return tuple(sorted(placed))
 
 
 def build(spec: RibSpec, panel_width: float, panel_depth: float):

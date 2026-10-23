@@ -15,6 +15,9 @@ deck:
                         # the keyboard its ergonomic tilt and opens up rear
                         # interior height for the SBC and battery cells.
                         # 0 = flat deck (the pre-slope geometry).
+  seam_screw_reach: 15.0  # every Deck Section needs a Deck screw within this many
+                        # mm of the Deck Seam, so the straight Seam is clamped on
+                        # both sides (ADR 0003).
 
 clearance:
   shell: 0.35           # air gap between a component and the shell interior
@@ -36,21 +39,57 @@ hinge:
 screws:
   body: M2              # case body screws (fastener library)
   standoff: M2.5        # board standoff screws
+  deck: M3              # Deck screws, from below through Tray columns into heat-set inserts
 
 material:
   name: PLA
   layer_height: 0.2
   minimum_feature: 0.6  # printable minimum wall/feature thickness
+  min_bed_face_area: 100.0  # mm^2; every Section needs a flat face at least this big on the bed
 
-# Left/right Halves (ADR 0001). Every wide part prints as two Halves split
-# along X. Seam positions are staggered between parts so no single line runs
-# through the closed device; each Seam is stepped in plan view (__--__--__):
-# `step` is the jog in X, `steps` the number of segments along Y.
+# Sections (ADR 0003). Every wide part prints as 2 or 3 Sections split along X.
+# `x` is the Seam position: one Seam at x for two Sections, a mirrored pair at
+# -|x| and +|x| for three. `style: stepped` jogs the Seam in plan view
+# (__--__--__): `step` is the jog in X (toward the centerline on a pair),
+# `steps` the number of segments along Y. Bezel and Deck are straight on the
+# centerline, so their Seams echo each other as a design line. Seams are
+# staggered only between parts screwed to each other (Tray/Deck/keyboard
+# plate, Lid shell/Bezel); Base and Lid may coincide in X. No Seam (plus its
+# steps and one wall of margin) may cross a rib, boss, standoff, column,
+# cradle, vent, lug or connector cutout, so the Tray Seams sit at +-59: clear
+# of the SBC bosses (x=-16.6, 41.4), the battery cradles (x>=50.3) and between
+# the rear-wall connector cutouts.
 split:
-  tray:      {x: 0.0,   step: 4.0, steps: 6}
-  deck:      {x: 20.0,  step: 4.0, steps: 6}
-  lid_shell: {x: -20.0, step: 4.0, steps: 6}
-  bezel:     {x: 40.0,  step: 4.0, steps: 6}   # inside the display opening
+  tray:      {sections: 3, x: 59.0, style: stepped, step: 4.0, steps: 6}
+  deck:      {sections: 2, x: 0.0,  style: straight}
+  lid_shell: {sections: 3, x: 40.0, style: stepped, step: 4.0, steps: 6}
+  bezel:     {sections: 2, x: 0.0,  style: straight}   # inside the display opening
+
+# Parting plane (ADR 0003): the horizontal plane where the Deck meets the Tray,
+# part-way up the Base walls. Height = fraction of the front wall height (the
+# Deck's underside at the front edge), clamped to [min, max] mm. `min` keeps the
+# Tray walls above the tallest rear connector cutout.
+parting:
+  front_wall_fraction: 0.5
+  min: 10.0
+  max: 20.0
+
+# Merged boss (ADR 0003): a boss, column, standoff or lug whose outer surface is
+# closer than `threshold_factor * wall` to a wall face is fused into that wall
+# (hull to the wall, both walls in a corner). Its bore may then come within
+# `bore_margin` mm of the wall's inner face, leaving >= wall + bore_margin to
+# the outer skin. Battery cradles are exempt.
+merged_boss:
+  threshold_factor: 2.0
+  bore_margin: 0.5
+
+# Edge treatment (ADR 0003): concave joints get a stress-relief chamfer of
+# `chamfer_factor * wall` (45 deg on edges horizontal in print orientation; a
+# fillet is allowed where the edge runs along print Z). `bed_chamfer` is the
+# 45 deg chamfer on each Section's bed-face outer edge (elephant's foot).
+edges:
+  chamfer_factor: 0.5
+  bed_chamfer: 0.5   # mm
 
 # Rubber-foot recesses in the Tray floor, inset from the case corners. Placed
 # independently of bosses (neither positions the other).

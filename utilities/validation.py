@@ -92,6 +92,8 @@ class ValidationReport:
     checks: list[CheckResult] = field(default_factory=list)
     #: GOAL metrics: reported, never a failure.
     goals: dict[str, float] = field(default_factory=dict)
+    #: SOFT findings: reported, never a failure.
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def passed(self) -> bool:
@@ -104,6 +106,10 @@ class ValidationReport:
     def add(self, name: str, passed: bool, message: str = "") -> None:
         self.checks.append(CheckResult(name=name, passed=passed, message=message))
 
+    def warn(self, message: str) -> None:
+        """Record a SOFT finding: reported in the summary, never fails the build."""
+        self.warnings.append(message)
+
     def summary(self) -> str:
         lines = [f"{len(self.checks)} checks: {'PASS' if self.passed else 'FAIL'}"]
         for check in self.checks:
@@ -111,6 +117,8 @@ class ValidationReport:
             lines.append(f"  [{marker}] {check.name}: {check.message}")
         for name, value in self.goals.items():
             lines.append(f"  [goal] {name}: {value:.2f}")
+        for message in self.warnings:
+            lines.append(f"  [warn] {message}")
         return "\n".join(lines)
 
 
@@ -378,49 +386,274 @@ def check_dimension_consistency(
         report.add("dimension-consistency", True, "keyboard/display not both present — skipped")
 
 
-def check_seams(config: Any, case_width: float, report: ValidationReport) -> None:
-    """Fail if the Halves' Seams line up or cut through a protected feature.
+#: Parts screwed to each other, whose Seams must not line up (ADR 0003): the
+#: Tray carries the Deck and the keyboard plate; the Lid shell carries the
+#: Bezel. Base and Lid parts are free to coincide in X, and so are the Deck and
+#: the keyboard plate (the plate is supported independently on Tray standoffs).
+STAGGERED_PAIRS: tuple[tuple[str, str], ...] = (("tray", "deck"), ("lid_shell", "bezel"))
 
-    * Seams are staggered: no two parts' swept X ranges overlap or come
-      closer than ``4 * wall`` (so no single weak line runs through the
-      closed device).
-    * The Tray Seam avoids every foot recess.
+
+def _part_ranges(split: Any) -> list[tuple[float, float]]:
+    return [seam.x_range for seam in split.seams()]
+
+
+Segment = tuple[float, float, float]  # (y0, y1, x)
+
+
+def _seam_lines(
+    segments: list[Segment],
+) -> list[tuple[float, float, float, float]]:
+    """A Seam as axis-aligned lines ``(x0, x1, y0, y1)``: its segments and the
+    jog between each pair."""
+    lines = [(x, x, y0, y1) for y0, y1, x in segments]
+    for (_, ya, xa), (_, _, xb) in zip(segments, segments[1:]):
+        lines.append((min(xa, xb), max(xa, xb), ya, ya))
+    return lines
+
+
+def _line_gap(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
+    dx = max(a[0] - b[1], b[0] - a[1], 0.0)
+    dy = max(a[2] - b[3], b[2] - a[3], 0.0)
+    return math.hypot(dx, dy)
+
+
+def seams_gap(a: list[Segment], b: list[Segment]) -> float:
+    """Closest approach (mm) between two Seams given as ``(y0, y1, x)`` segments."""
+    return min(_line_gap(la, lb) for la in _seam_lines(a) for lb in _seam_lines(b))
+
+
+def check_seams(
+    config: Any,
+    case_width: float,
+    report: ValidationReport,
+    plate_seam: list[Segment] | None = None,
+    case_depth: float = 100.0,
+) -> None:
+    """Fail if Seams of screwed-together parts line up or cut a protected spot.
+
+    * Seams are staggered between parts screwed to each other
+      (:data:`STAGGERED_PAIRS`, plus Tray vs keyboard plate when
+      ``plate_seam`` is given as world-frame ``(y0, y1, x)`` segments): the
+      Seam lines, jogs included, stay at least ``4 * wall`` apart, so no single
+      weak line runs through a joined assembly.
+    * The Tray Seams avoid every foot recess.
     * The Bezel Seam lies inside the display opening.
     """
-    seams = config.split
+    splits = config.split
     min_gap = 4.0 * config.wall_thickness
-    names = sorted(seams)
+
+    def lines(part: str) -> list[list[Segment]]:
+        return [seam.segments(case_depth) for seam in splits[part].seams()]
+
     clashes = []
-    for i, a in enumerate(names):
-        for b in names[i + 1:]:
-            a0, a1 = seams[a].x_range
-            b0, b1 = seams[b].x_range
-            if max(a0, b0) - min(a1, b1) < min_gap:
+    for a, b in STAGGERED_PAIRS:
+        if a in splits and b in splits:
+            if any(seams_gap(sa, sb) < min_gap for sa in lines(a) for sb in lines(b)):
                 clashes.append(f"{a}/{b}")
+    if plate_seam is not None and "tray" in splits:
+        if any(seams_gap(sa, plate_seam) < min_gap for sa in lines("tray")):
+            clashes.append("tray/keyboard_plate")
     report.add(
         "seams-staggered", not clashes,
-        "no two Seams within "
-        f"{min_gap:g} mm" if not clashes else f"Seams too close: {', '.join(clashes)}",
+        f"no screwed-together Seams within {min_gap:g} mm" if not clashes
+        else f"Seams too close: {', '.join(clashes)}",
     )
 
-    if "tray" in seams:
+    if "tray" in splits:
         feet = config.feet
-        x0, x1 = seams["tray"].x_range
         hit = [
             fx for fx in (-1, 1)
             for cx in [fx * (case_width / 2.0 - feet.inset_x)]
+            for x0, x1 in _part_ranges(splits["tray"])
             if x1 > cx - feet.diameter / 2.0 and x0 < cx + feet.diameter / 2.0
         ]
-        report.add("seam-avoids-feet", not hit, f"tray Seam x={x0:g}..{x1:g}")
+        ranges = ", ".join(f"{x0:g}..{x1:g}" for x0, x1 in _part_ranges(splits["tray"]))
+        report.add("seam-avoids-feet", not hit, f"tray Seam x={ranges}")
 
-    if "bezel" in seams:
+    if "bezel" in splits:
         half_open = (config.display.width - 2.0 * config.bezel.inset) / 2.0
-        x0, x1 = seams["bezel"].x_range
+        ranges = _part_ranges(splits["bezel"])
         report.add(
             "seam-in-display-opening",
-            -half_open <= x0 and x1 <= half_open,
-            f"bezel Seam x={x0:g}..{x1:g}, opening +-{half_open:g}",
+            all(-half_open <= x0 and x1 <= half_open for x0, x1 in ranges),
+            f"bezel Seam x={ranges[0][0]:g}..{ranges[-1][1]:g}, opening +-{half_open:g}",
         )
+
+
+@dataclass(frozen=True)
+class Feature:
+    """A structural feature's XY footprint (mm), for Seam clearance.
+
+    ``kind`` is rib, boss, standoff, column, cradle, vent, lug or knuckle.
+    ``joins`` names the Seam (``"<part>:<index>"``, as keyed by
+    :func:`seam_bands`) that a Seam-joint lug is *meant* to straddle; that one
+    Seam is exempt, every other Seam must still keep clear of it. ``part``
+    names the part the feature is made of (``"tray"``, ``"deck"``); only that
+    part's Seams can cross it. ``None`` means every part (a column is a Tray
+    post and a Deck boss at once).
+    """
+
+    kind: str
+    name: str
+    x0: float
+    x1: float
+    y0: float
+    y1: float
+    joins: str | None = None
+    part: str | None = None
+
+
+def seam_bands(
+    splits: dict[str, Any], depths: dict[str, float], wall: float
+) -> dict[str, list[tuple[float, float, float, float]]]:
+    """``(x0, x1, y0, y1)`` rectangles covering each Seam ± its steps ± one wall.
+
+    Keyed ``"<part>:<index>"`` (Seams left to right). A stepped Seam is a
+    rectangle per segment plus one per jog face, so the band follows the
+    ``__--__--__`` line rather than its bounding box.
+    """
+    bands: dict[str, list[tuple[float, float, float, float]]] = {}
+    for part, split in splits.items():
+        depth = depths[part]
+        for i, seam in enumerate(split.seams()):
+            rects = []
+            segs = seam.segments(depth)
+            for y0, y1, x in segs:
+                rects.append((x - wall, x + wall, y0, y1))
+            for (_, ya, xa), (_, _, xb) in zip(segs, segs[1:]):
+                rects.append((min(xa, xb) - wall, max(xa, xb) + wall, ya - wall, ya + wall))
+            bands[f"{part}:{i}"] = rects
+    return bands
+
+
+def check_seam_clearance(
+    bands: dict[str, list[tuple[float, float, float, float]]],
+    features: list[Feature],
+    report: ValidationReport,
+    tolerance: float = 1e-6,
+) -> None:
+    """Fail if any Seam band crosses a structural feature (ADR 0003).
+
+    A Seam may never thin a rib, boss, standoff, column, cradle, vent or lug;
+    the one exemption is a lug meant for that very Seam (``Feature.joins``).
+    """
+    hits = []
+    for seam_id, rects in bands.items():
+        for feature in features:
+            if feature.joins == seam_id:
+                continue
+            if feature.part is not None and not seam_id.startswith(feature.part + ":"):
+                continue
+            for x0, x1, y0, y1 in rects:
+                if (
+                    feature.x0 < x1 - tolerance and feature.x1 > x0 + tolerance
+                    and feature.y0 < y1 - tolerance and feature.y1 > y0 + tolerance
+                ):
+                    hits.append(f"{seam_id} crosses {feature.kind} {feature.name}")
+                    break
+    report.add(
+        "seams-clear-of-features", not hits,
+        "; ".join(hits) if hits
+        else f"{len(bands)} Seam band(s) clear of {len(features)} feature(s)",
+    )
+
+
+def _point_seam_gap(x: float, y: float, segments: list[Segment]) -> tuple[float, str]:
+    """Distance (mm) from a point to a Seam line and which side of it the point is on."""
+    lines = _seam_lines(segments)
+    gap = min(_line_gap((x, x, y, y), line) for line in lines)
+    at_y = [lx0 for lx0, lx1, ly0, ly1 in lines if ly0 - 1e-6 <= y <= ly1 + 1e-6]
+    ref = min(at_y) if at_y and x < min(at_y) else (max(at_y) if at_y else 0.0)
+    return gap, "left" if x < ref else "right"
+
+
+def check_plate_seam_screws(
+    holes: list[tuple[float, float]],
+    seam: list[Segment],
+    unit: float,
+    report: ValidationReport,
+    expected_total: int | None = None,
+) -> None:
+    """Fail unless each plate Section has a screw in each half within ``unit`` of the Seam.
+
+    ``holes`` are plate-local ``(x, y)``; ``seam`` the plate Seam as
+    ``(y0, y1, x)`` segments. "Lower"/"upper" halves are split at the plate's
+    middle row line. With ``expected_total``, the plate must also carry exactly
+    that many screws (eight: four at the edges, four at the Seam).
+    """
+    y_mid = (min(s[0] for s in seam) + max(s[1] for s in seam)) / 2.0
+    covered: set[tuple[str, str]] = set()
+    far: list[str] = []
+    for x, y in holes:
+        gap, side = _point_seam_gap(x, y, seam)
+        if gap > unit + 1e-9:
+            continue
+        covered.add((side, "lower" if y < y_mid else "upper"))
+    missing = [
+        f"{side} {half}" for side in ("left", "right") for half in ("lower", "upper")
+        if (side, half) not in covered
+    ]
+    problems = []
+    if missing:
+        problems.append(f"no screw within {unit:g} mm of the Seam for: {', '.join(missing)}")
+    if expected_total is not None and len(holes) != expected_total:
+        problems.append(f"{len(holes)} plate screws, expected {expected_total}")
+    report.add(
+        "plate-seam-screws", not problems,
+        "; ".join(problems) if problems
+        else f"{len(holes)} plate screws, a lower and an upper one within {unit:g} mm of the Seam per Section",
+    )
+
+
+def check_deck_seam_screws(
+    screw_xs: list[float], seam_x: float, reach: float, report: ValidationReport
+) -> None:
+    """Fail unless each Deck Section has a Deck screw within ``reach`` of its Seam.
+
+    The straight Deck Seam at ``seam_x`` is clamped from both sides: a Section
+    with no screw near it would let that side lift off (ADR 0003).
+    """
+    missing = [
+        side for side, sign in (("left", -1.0), ("right", 1.0))
+        if not any(sign * (x - seam_x) > 0 and abs(x - seam_x) <= reach + 1e-9 for x in screw_xs)
+    ]
+    report.add(
+        "deck-seam-screws", not missing,
+        f"a Deck screw within {reach:g} mm of the Seam on both Sections" if not missing
+        else f"no Deck screw within {reach:g} mm of the Seam on the {' and '.join(missing)} Section",
+    )
+
+
+def check_screw_heads_clear_of_feet(
+    heads: list[tuple[float, float, float]],
+    feet: list[tuple[float, float, float]],
+    report: ValidationReport,
+) -> None:
+    """Fail if any bottom screw head ``(x, y, radius)`` overlaps a foot recess."""
+    hits = [
+        f"head at ({hx:.1f}, {hy:.1f}) in foot recess at ({fx:.1f}, {fy:.1f})"
+        for hx, hy, hr in heads for fx, fy, fr in feet
+        if math.hypot(hx - fx, hy - fy) < hr + fr
+    ]
+    report.add(
+        "screw-heads-clear-of-feet", not hits,
+        "; ".join(hits) if hits else f"{len(heads)} bottom screw head(s) clear of {len(feet)} foot recess(es)",
+    )
+
+
+def check_deck_screw(size: str, grip: float, report: ValidationReport) -> None:
+    """Fail unless a stock screw of ``size`` engages the Deck insert across ``grip``."""
+    from geometry.parting import deck_screw
+
+    try:
+        screw = deck_screw(size, grip)
+    except ValueError as exc:
+        report.add("deck-screw-length", False, str(exc))
+        return
+    report.add(
+        "deck-screw-length", True,
+        f"{screw.name}: {screw.engagement:g} mm into the insert across a {grip:g} mm grip",
+    )
 
 
 def check_visor_flush(

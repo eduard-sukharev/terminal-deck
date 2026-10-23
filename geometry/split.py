@@ -1,10 +1,11 @@
-"""Left/right Half splitting along X (ADR 0001).
+"""Section splitting along X (ADR 0003).
 
-A part too wide for the build volume is cut into two Halves along a Seam. The
-Seam is a stepped line in plan view (``__--__--__``): walking along Y it jogs
-by ``step`` in X on alternate segments, and the jogs are plain butt joints
-(no tongue-and-groove, no dowels). The cut is a boolean partition, so the two
-Halves rejoin to the original with no gap and no overlap by construction.
+A part too wide for the build volume is cut into two or three Sections along
+Seams. A Seam is a line in plan view: straight, or stepped (``__--__--__``)
+so that walking along Y it jogs by ``step`` in X on alternate segments. The
+jogs are plain butt joints (no tongue-and-groove, no dowels). The cut is a
+boolean partition, so the Sections rejoin to the original with no gap and no
+overlap by construction.
 """
 
 from __future__ import annotations
@@ -29,23 +30,29 @@ def _left_region(seam, depth: float, x_extent: float, z_extent: float):
     return cad_helpers.union(pieces[0], *pieces[1:])
 
 
-def split_halves(shape, seam, depth: float):
-    """Split ``shape`` into ``(left, right)`` along ``seam``.
+def split_sections(shape, seams, depth: float) -> list:
+    """Split ``shape`` along ``seams`` into ``len(seams) + 1`` Sections.
 
-    ``seam`` is anything with ``segments(depth) -> [(y0, y1, x)]`` (a config
-    :class:`~utilities.config_loader.Seam` or a plate ``RowSeam``).
-    ``depth`` is the part's extent in Y (centered on the origin).
+    ``seams`` are ordered left to right; each is anything with
+    ``segments(depth) -> [(y0, y1, x)]`` (a config
+    :class:`~utilities.config_loader.Seam` or a plate ``RowSeam``). ``depth``
+    is the part's extent in Y (centered on the origin). Returns the Sections
+    left to right.
     """
     box = cad_helpers.bounding_box(shape)
-    seam_x = max(abs(x) for _, _, x in seam.segments(depth))
+    seam_x = max(abs(x) for seam in seams for _, _, x in seam.segments(depth))
     x_extent = max(abs(box.xmin), abs(box.xmax), seam_x) + _MARGIN
     z_extent = max(abs(box.zmin), abs(box.zmax)) + _MARGIN
-    # Pad Y so Halves of a part slightly off-center are still fully covered.
+    # Pad Y so Sections of a part slightly off-center are still fully covered.
     y_depth = max(depth, 2.0 * max(abs(box.ymin), abs(box.ymax))) + 2.0 * _MARGIN
-    left_region = _left_region(seam, y_depth, x_extent, z_extent)
-    left = cad_helpers.intersect(shape, left_region)
-    right = cad_helpers.cut(shape, left_region)
-    return left, right
+    sections = []
+    remainder = shape
+    for seam in seams:
+        region = _left_region(seam, y_depth, x_extent, z_extent)
+        sections.append(cad_helpers.intersect(remainder, region))
+        remainder = cad_helpers.cut(remainder, region)
+    sections.append(remainder)
+    return sections
 
 
 def check_build_volume(
@@ -54,8 +61,8 @@ def check_build_volume(
 ) -> list[str]:
     """Return a violation message per part that does not fit as modelled.
 
-    Parts are modelled flat in their print orientation (ADR 0001 rejects
-    printing on end), so Z must fit the build height and X/Y the bed, with
+    Parts are modelled flat in their print orientation (ADR 0003 declares each
+    Section's orientation), so Z must fit the build height and X/Y the bed, with
     the bed's X and Y interchangeable.
     """
     errors = []
@@ -71,18 +78,20 @@ def check_build_volume(
     return errors
 
 
-def check_halves(whole, left, right, tol: float = 1e-6) -> list[str]:
-    """Violations of the Half contract: connected, and a lossless split."""
+def check_sections(whole, sections, tol: float = 1e-6) -> list[str]:
+    """Violations of the Section contract: each connected, and a lossless split."""
     errors = []
     whole_volume = cad_helpers.volume_mm3(whole)
-    for side, half in (("left", left), ("right", right)):
-        n = cad_helpers.solid_count(half)
+    for i, section in enumerate(sections):
+        n = cad_helpers.solid_count(section)
         if n != 1:
-            errors.append(f"{side} Half is {n} solids, expected 1 connected solid")
-    overlap = cad_helpers.volume_mm3(cad_helpers.intersect(left, right))
-    if overlap > tol * max(1.0, whole_volume):
-        errors.append(f"Halves overlap by {overlap:.3f} mm^3")
-    gap = whole_volume - cad_helpers.volume_mm3(left) - cad_helpers.volume_mm3(right)
+            errors.append(f"Section {i} is {n} solids, expected 1 connected solid")
+    for i, a in enumerate(sections):
+        for j in range(i + 1, len(sections)):
+            overlap = cad_helpers.volume_mm3(cad_helpers.intersect(a, sections[j]))
+            if overlap > tol * max(1.0, whole_volume):
+                errors.append(f"Sections {i} and {j} overlap by {overlap:.3f} mm^3")
+    gap = whole_volume - sum(cad_helpers.volume_mm3(s) for s in sections)
     if abs(gap) > tol * max(1.0, whole_volume):
-        errors.append(f"Halves do not rejoin: {gap:.3f} mm^3 missing")
+        errors.append(f"Sections do not rejoin: {gap:.3f} mm^3 missing")
     return errors

@@ -35,7 +35,7 @@ from layouts import LAYOUTS, make_layout
 from layouts.layout_constrained import ConstraintLayout
 from utilities.config_loader import Config, load_config
 from utilities.file_metadata import apply as apply_fs_metadata
-from utilities.validation import run_all
+from utilities.validation import ValidationReport, run_all
 
 
 class BuildPipeline:
@@ -106,8 +106,11 @@ class BuildPipeline:
                 # check is a true 3D separating-axis test (worst case over
                 # every sub-volume pair, best axis per pair) while this is a
                 # single along-Z estimate — 2.5 here reliably clears 1.5
-                # there, empirically, not by a matching derivation.
-                gap=2.5,
+                # there, empirically, not by a matching derivation. 3.3 (was
+                # 2.5) pays for the SBC standing 10.3 mm further forward than
+                # rear-flush: see the SBC placement in
+                # config/layouts/clamshell.yaml.
+                gap=3.3,
             )
         )
         driver = HdmiDriver(display_cfg)
@@ -174,6 +177,63 @@ class BuildPipeline:
             prov["rev"] = rev
         prov["built"] = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
         return prov
+
+    @staticmethod
+    def _lid_interior(placements, components):
+        """The placements that sit inside the Lid shell: panel, driver, plug."""
+        from assemblies.assembly import select_placements
+
+        return select_placements(
+            placements,
+            {components["display"], components["driver"], components["hdmi_plug_driver"]},
+        )
+
+    def _fastening_validation(self, config, components, placements, assembly, base, size):
+        """Section, Seam and fastening checks (HARD), CAD-free.
+
+        Seam stagger and clearance, the Parting plane and Deck screws, the
+        keyboard plate's Seam screws.
+        """
+        import math
+
+        from utilities.validation import (
+            ValidationReport, check_plate_seam_screws, check_seams,
+        )
+
+        report = ValidationReport()
+        plate_world = None
+        keyboard = components.get("keyboard")
+        kb_placement = next((p for p in placements if p.component is keyboard), None)
+        plate_local = None
+        if keyboard is not None and kb_placement is not None:
+            from keyboard.geometry.seam import plate_seam
+
+            plate_local = plate_seam(keyboard.plate_model())
+            tilt = math.cos(math.radians(kb_placement.tilt_x))
+            depth = keyboard.plate_model().metadata.height
+            plate_world = [
+                (kb_placement.y + y0 * tilt, kb_placement.y + y1 * tilt, kb_placement.x + x)
+                for y0, y1, x in plate_local.segments(depth)
+            ]
+        check_seams(config, size.width, report, plate_seam=plate_world, case_depth=size.depth)
+        base.fastening_report(report)
+        from case.lid import Lid
+
+        display = next(p for p in placements if p.component is components["display"])
+        lid = Lid(
+            components["display"], config, hinge=base.hinge, world_z=display.z,
+            footprint=(size.width, size.depth), visor=base.visor_profile(),
+            assembly=assembly, interior_placements=self._lid_interior(placements, components),
+        )
+        lid.fastening_report(report)
+        if plate_local is not None:
+            depth = keyboard.plate_model().metadata.height
+            check_plate_seam_screws(
+                [(h.x, h.y) for h in keyboard.mounting_holes()],
+                plate_local.segments(depth), config.keyboard.pitch, report,
+                expected_total=8,
+            )
+        return report
 
     def run(
         self,
@@ -277,10 +337,9 @@ class BuildPipeline:
             for error in comp_errors:
                 print(f"  [x ] {error}")
 
-        if steps == "data":
-            return
-
         from assemblies.assembly import Assembly
+        from case.base import Base
+        from components.hinge import Hinge as HingePart
 
         assembly = Assembly(placements, config)
         size = assembly.enclosure_size()
@@ -288,17 +347,24 @@ class BuildPipeline:
             f"[pipeline] enclosure: {size.width:.1f} x {size.depth:.1f} x "
             f"{size.height:.1f} mm"
         )
-        from utilities.validation import ValidationReport, check_seams
-
-        seam_report = ValidationReport()
-        check_seams(config, size.width, seam_report)
-        print("[pipeline] seam validation:")
-        print(seam_report.summary())
-        if not seam_report.passed and not ignore_validation:
+        hinge = HingePart(asdict(config.hinge), wall_thickness=config.wall_thickness)
+        base = Base(
+            assembly, config, keyboard=components.get("keyboard"), hinge=hinge,
+        )
+        fastening_report = self._fastening_validation(
+            config, components, placements, assembly, base, size
+        )
+        print("[pipeline] Section and fastening validation:")
+        print(fastening_report.summary())
+        if not fastening_report.passed and not ignore_validation:
             raise SystemExit(
-                "[pipeline] aborted: Seam validation failed "
+                "[pipeline] aborted: Section/fastening validation failed "
                 "(pass --ignore-validation to build anyway)"
             )
+
+        if steps == "data":
+            return
+
         print(f"[pipeline] bosses: {len(assembly.bosses())}")
         print(f"[pipeline] cutouts: {len(assembly.connector_cutouts())}")
 
@@ -306,21 +372,16 @@ class BuildPipeline:
             return
 
         # --- CAD stages ---------------------------------------------------
-        from case.base import Base
         from case.lid import Lid
-        from components.hinge import Hinge as HingePart
         from exports import EXPORTERS
         from utilities import cad_helpers
-        from utilities.targets import requested_halves, resolve_targets
+        from utilities.targets import SECTION_NAMES, requested_sections, resolve_targets
 
         cad_helpers.require_cad()
 
         # Resolve build targets.
         target_tokens = [t.strip() for t in targets.split(",") if t.strip()]
         buckets, comp_roles = resolve_targets(target_tokens, set(components))
-
-        hinge_cfg = asdict(config.hinge)
-        hinge = HingePart(hinge_cfg, wall_thickness=config.wall_thickness)
 
         # Build requested solids.
         parts: dict[str, object] = {}
@@ -351,11 +412,7 @@ class BuildPipeline:
         base_obj = None
         needs_lid = "lid" in buckets or "lid_shell" in buckets or "lid_bezel" in buckets
         if needs_lid or "base" in buckets or "base_bottom" in buckets or "base_top" in buckets or "hinge" in buckets:
-            base_obj = Base(
-                assembly, config,
-                keyboard=components.get("keyboard"),
-                hinge=hinge,
-            )
+            base_obj = base
         if base_obj is not None and (
             "base" in buckets or "base_bottom" in buckets or "base_top" in buckets or "hinge" in buckets
         ):
@@ -467,6 +524,8 @@ class BuildPipeline:
                 footprint=(size.width, size.depth),
                 interior=display_assembly_solid,
                 visor=base_obj.visor_profile(),
+                assembly=assembly,
+                interior_placements=self._lid_interior(placements, components),
             )
             from utilities.validation import (
                 ValidationReport, check_hinge_clearance, check_hinge_fits,
@@ -537,11 +596,7 @@ class BuildPipeline:
             from assemblies.assembly import select_placements
 
             if base_obj is None:
-                base_obj = Base(
-                    assembly, config,
-                    keyboard=components.get("keyboard"),
-                    hinge=hinge,
-                )
+                base_obj = base
             if "display" in components:
                 display_placement = next(
                     p for p in placements
@@ -552,6 +607,8 @@ class BuildPipeline:
                 world_z=display_placement.z,
                 footprint=(size.width, size.depth),
                 visor=base_obj.visor_profile(),
+                assembly=assembly,
+                interior_placements=self._lid_interior(placements, components),
             )
 
             # Build base solid (closed position).
@@ -638,11 +695,15 @@ class BuildPipeline:
 
             parts["assembly_opened"] = cad_helpers.union(base_f, lid_f, hinge_f)
 
-        # --- Halves (ADR 0001) ----------------------------------------------
-        # Every wide printable part is split into left/right Halves along its
-        # configured Seam; the Halves, not the whole part, are what must fit
-        # the printer, so they are validated here and exported with the rest.
-        from geometry.split import check_build_volume, check_halves, split_halves
+        # --- Sections (ADR 0003) ---------------------------------------------
+        # Every wide printable part is split into two or three Sections along
+        # its Seams; the Sections, not the whole part, are what must fit the
+        # printer, so they are validated here and exported with the rest.
+        from geometry import edge_treatment
+        from geometry.printability import (
+            BED_DOWN, check_bed_face, overhang_faces,
+        )
+        from geometry.split import check_build_volume, check_sections, split_sections
 
         split_sources = {
             "base_bottom": "tray",
@@ -652,13 +713,22 @@ class BuildPipeline:
             "keyboard_plate": "keyboard_plate",
         }
         printable: dict[str, object] = {}
-        split_plans = {
-            name: (config.split.get(key), size.depth)
-            for name, key in split_sources.items()
+        section_depths = {
+            name: size.depth for name in split_sources if name != "keyboard_plate"
         }
+        split_plans: dict[str, tuple[list, float]] = {}
+        for name, key in split_sources.items():
+            if name in section_depths and key in config.split:
+                split = config.split[key]
+                if split.section_names != SECTION_NAMES[name]:
+                    raise SystemExit(
+                        f"[pipeline] aborted: config.split.{key} has {split.sections} "
+                        f"Sections but target {name} names {SECTION_NAMES[name]}"
+                    )
+                split_plans[name] = (split.seams(), section_depths[name])
         if "keyboard_plate" in parts:
             # The plate Seam is derived from the key layout, not configured:
-            # it must run through the key-column gaps (US29).
+            # it must run through the key-column gaps (ADR 0003).
             from keyboard.geometry.seam import plate_seam, seam_conflicts
 
             plate_model = components["keyboard"].plate_model()
@@ -675,39 +745,64 @@ class BuildPipeline:
                     "[pipeline] aborted: plate Seam cuts a switch cutout "
                     "(pass --ignore-validation to build anyway)"
                 )
-            split_plans["keyboard_plate"] = (plate_cfg, plate_model.metadata.height)
-        for part_name, (seam_cfg, part_depth) in split_plans.items():
+            split_plans["keyboard_plate"] = ([plate_cfg], plate_model.metadata.height)
+        section_report = ValidationReport()
+        section_info: dict[str, dict] = {}
+        for part_name, (seams, part_depth) in split_plans.items():
             if part_name not in parts:
                 continue
-            if seam_cfg is None:
-                printable[part_name] = parts[part_name]
-                continue
-            left, right = split_halves(parts[part_name], seam_cfg, part_depth)
-            for side, half in (("left", left), ("right", right)):
-                parts[f"{part_name}_{side}"] = half
-                printable[f"{part_name}_{side}"] = half
-            half_errors = check_halves(parts[part_name], left, right)
-            if half_errors:
-                print(f"[pipeline] {part_name} halves: FAIL")
-                for error in half_errors:
+            sections = split_sections(parts[part_name], seams, part_depth)
+            names = SECTION_NAMES[part_name]
+            errors = check_sections(parts[part_name], sections)
+            section_info[part_name] = {"sections": len(sections), "valid": not errors}
+            for section_name, section in zip(names, sections):
+                full = f"{part_name}_{section_name}"
+                # Edge treatment goes on each Section after the lossless rejoin
+                # check above: concave joints get a stress-relief chamfer, the
+                # bed face a small outer chamfer against elephant's foot (which
+                # trims the Seam faces too).
+                treated = ValidationReport()
+                section = edge_treatment.relieve_concave_joints(
+                    section, BED_DOWN, config.edges.chamfer_factor * config.wall_thickness,
+                    treated,
+                )
+                section = edge_treatment.bed_chamfer(
+                    section, BED_DOWN, config.edges.bed_chamfer, treated
+                )
+                for message in treated.warnings:
+                    section_report.warn(f"{full}: {message}")
+                check_bed_face(
+                    full, section, BED_DOWN, config.material.min_bed_face_area, section_report
+                )
+                for face in overhang_faces(section, BED_DOWN)[:1]:
+                    section_report.warn(
+                        f"{full}: overhang {face.angle_from_vertical:.0f} deg from vertical "
+                        f"({face.area:.0f} mm^2 at {tuple(round(c) for c in face.center)}) needs support"
+                    )
+                parts[full] = section
+                printable[full] = section
+            if errors:
+                print(f"[pipeline] {part_name} Sections: FAIL")
+                for error in errors:
                     print(f"  [x ] {error}")
                 if not ignore_validation:
                     raise SystemExit(
-                        f"[pipeline] aborted: {part_name} Halves are invalid "
+                        f"[pipeline] aborted: {part_name} Sections are invalid "
                         "(pass --ignore-validation to build anyway)"
                     )
-        # A Half named on its own (e.g. ``lid_shell_left``) exports just that
-        # Half; the whole part and the other Half were only built to check it.
-        only_halves = requested_halves(target_tokens)
-        if only_halves:
+        # A Section named on its own (e.g. ``lid_shell_left``) exports just that
+        # Section; the whole part and the other Sections were only built to
+        # check it.
+        only_sections = requested_sections(target_tokens)
+        if only_sections:
             for part_name in split_sources:
-                names = (part_name, f"{part_name}_left", f"{part_name}_right")
-                if not only_halves & set(names):
+                names = [f"{part_name}_{n}" for n in SECTION_NAMES[part_name]]
+                if not only_sections & set(names + [part_name]):
                     continue
-                if names[1] not in parts:
+                if names[0] not in parts:
                     continue  # unsplit part: the whole part is its only form
-                for name in names:
-                    if name not in only_halves:
+                for name in [part_name] + names:
+                    if name not in only_sections:
                         for table in (parts, printable, gltf_parts):
                             table.pop(name, None)
         fit_errors = check_build_volume(printable)
@@ -717,10 +812,12 @@ class BuildPipeline:
         )
         for error in fit_errors:
             print(f"  [x ] {error}")
-        if fit_errors and not ignore_validation:
+        print("[pipeline] printability:")
+        print(section_report.summary())
+        if (fit_errors or not section_report.passed) and not ignore_validation:
             raise SystemExit(
                 "[pipeline] aborted: a printable part exceeds the build volume "
-                "(pass --ignore-validation to build anyway)"
+                "or has no bed face (pass --ignore-validation to build anyway)"
             )
 
         # Export all built parts.

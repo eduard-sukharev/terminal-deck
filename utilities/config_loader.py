@@ -76,9 +76,13 @@ class Deck:
         Typing slope in degrees. The deck plane tilts about X so the rear
         (-Y, hinge side) rises while the front edge stays at the flat-case
         deck level, wedging the base. ``0.0`` reproduces the flat deck.
+    seam_screw_reach : float
+        Farthest a Deck screw may sit from the Deck Seam and still count as
+        clamping it (mm); every Deck Section needs one within this reach.
     """
 
     slope: float = 0.0
+    seam_screw_reach: float = 15.0
 
 
 @dataclass(frozen=True)
@@ -104,6 +108,7 @@ class Flex:
 class Bezel:
     inset: float
     thickness: float
+    seam_screw_offset: float = 10.0  # X distance of the screws beside the centre Seam (mm)
 
 
 @dataclass(frozen=True)
@@ -144,6 +149,7 @@ class Hinge:
 class Screws:
     body: str
     standoff: str
+    deck: str = "M3"  # Deck screws, driven from below into heat-set inserts
 
 
 @dataclass(frozen=True)
@@ -151,14 +157,16 @@ class Material:
     name: str
     layer_height: float
     minimum_feature: float
+    min_bed_face_area: float = 100.0  # smallest flat bed face a Section may print on (mm^2)
 
 
 @dataclass(frozen=True)
 class Seam:
-    """Left/right Half split of one part (ADR 0001).
+    """One Seam line between two adjacent Sections (ADR 0003).
 
-    ``x`` is the Seam's base X position; ``step`` the jog size and ``steps``
-    the number of segments along Y (``step == 0`` is a straight cut).
+    ``x`` is the Seam's base X position; ``step`` the signed jog size (toward
+    +X when positive) and ``steps`` the number of segments along Y (``step ==
+    0`` is a straight cut).
     """
 
     x: float = 0.0
@@ -168,8 +176,6 @@ class Seam:
     def __post_init__(self) -> None:
         if self.steps < 1:
             raise ValueError("seam steps must be >= 1")
-        if self.step < 0:
-            raise ValueError("seam step must be >= 0")
 
     def segments(self, depth: float) -> list[tuple[float, float, float]]:
         """``(y0, y1, x)`` per segment, front-to-back across ``depth``."""
@@ -183,7 +189,114 @@ class Seam:
     @property
     def x_range(self) -> tuple[float, float]:
         """X interval the stepped Seam sweeps across."""
-        return (self.x, self.x + (self.step if self.steps > 1 else 0.0))
+        far = self.x + (self.step if self.steps > 1 else 0.0)
+        return (min(self.x, far), max(self.x, far))
+
+
+#: Section names, left to right, by Section count.
+SECTION_NAMES: dict[int, tuple[str, ...]] = {
+    2: ("left", "right"),
+    3: ("left", "center", "right"),
+}
+
+
+@dataclass(frozen=True)
+class Split:
+    """How one part is divided into Sections (ADR 0003).
+
+    Two Sections have one Seam at ``x``. Three Sections have two Seams at
+    ``-|x|`` and ``+|x|``; on stepped Seams the left one jogs left and the
+    right one right (away from the centerline), so the pair mirrors about it:
+    a step left on one is a step right on the other. ``style`` is ``"straight"`` (one
+    segment, no jog) or ``"stepped"`` (``steps`` segments of jog ``step``).
+    """
+
+    sections: int = 2
+    x: float = 0.0
+    style: str = "straight"
+    step: float = 0.0
+    steps: int = 1
+
+    def __post_init__(self) -> None:
+        if self.sections not in SECTION_NAMES:
+            raise ValueError(f"split sections must be 2 or 3, got {self.sections}")
+        if self.style == "straight":
+            if self.step != 0.0 or self.steps != 1:
+                raise ValueError("a straight split takes no step/steps")
+        elif self.style == "stepped":
+            if self.step <= 0.0 or self.steps < 2:
+                raise ValueError("a stepped split needs step > 0 and steps >= 2")
+        else:
+            raise ValueError(f"split style must be 'straight' or 'stepped', got {self.style!r}")
+
+    @property
+    def section_names(self) -> tuple[str, ...]:
+        return SECTION_NAMES[self.sections]
+
+    def seams(self) -> list[Seam]:
+        """The Seams, left to right (one fewer than the Sections)."""
+        if self.sections == 2:
+            return [Seam(self.x, self.step, self.steps)]
+        edge = abs(self.x)
+        return [
+            Seam(-edge, -self.step, self.steps),
+            Seam(edge, self.step, self.steps),
+        ]
+
+
+@dataclass(frozen=True)
+class Parting:
+    """Where the Deck meets the Tray (ADR 0003).
+
+    The Parting plane sits at ``front_wall_fraction`` of the front wall
+    height, clamped to ``[min, max]`` mm, so it adapts to the keyboard stack
+    but never degenerates in extreme configs.
+    """
+
+    front_wall_fraction: float = 0.5
+    min: float = 10.0
+    max: float = 20.0
+
+    def __post_init__(self) -> None:
+        if not 0.0 < self.front_wall_fraction < 1.0:
+            raise ValueError("parting.front_wall_fraction must be between 0 and 1")
+        if not 0.0 < self.min <= self.max:
+            raise ValueError("parting needs 0 < min <= max")
+
+
+@dataclass(frozen=True)
+class MergedBoss:
+    """When a boss is fused into the wall beside it (ADR 0003).
+
+    A boss, column, standoff or lug whose outer surface is closer than
+    ``threshold_factor * wall`` to a wall face is a Merged boss. Its bore may
+    then sit as close as ``bore_margin`` mm to the wall's inner face, so at
+    least ``wall + bore_margin`` mm remains between bore and outer skin.
+    """
+
+    threshold_factor: float = 2.0
+    bore_margin: float = 0.5
+
+    def __post_init__(self) -> None:
+        if self.threshold_factor <= 0 or self.bore_margin < 0:
+            raise ValueError("merged_boss needs threshold_factor > 0 and bore_margin >= 0")
+
+
+@dataclass(frozen=True)
+class Edges:
+    """Edge treatment of concave joints and bed faces (ADR 0003).
+
+    ``chamfer_factor`` scales ``wall.thickness`` into the stress-relief size
+    of a concave joint; ``bed_chamfer`` (mm) is the 45 degree chamfer on each
+    Section's bed-face outer edge against elephant's foot.
+    """
+
+    chamfer_factor: float = 0.5
+    bed_chamfer: float = 0.5
+
+    def __post_init__(self) -> None:
+        if self.chamfer_factor < 0 or self.bed_chamfer < 0:
+            raise ValueError("edges sizes must be >= 0")
 
 
 @dataclass(frozen=True)
@@ -230,7 +343,10 @@ class Config:
     screws: Screws
     material: Material
     hardware: dict[str, Any] = field(default_factory=dict)
-    split: dict[str, Seam] = field(default_factory=dict)
+    split: dict[str, Split] = field(default_factory=dict)
+    parting: Parting = field(default_factory=Parting)
+    merged_boss: MergedBoss = field(default_factory=MergedBoss)
+    edges: Edges = field(default_factory=Edges)
     feet: Feet = field(default_factory=Feet)
     well: Well = field(default_factory=Well)
     topics: tuple[str, ...] = field(default_factory=tuple)
@@ -310,18 +426,28 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
             controller=keyboard.get("controller"),
         ),
         hinge=Hinge(**{k: float(v) for k, v in hinge.items()}),
-        screws=Screws(body=str(screws["body"]), standoff=str(screws["standoff"])),
+        screws=Screws(
+            body=str(screws["body"]), standoff=str(screws["standoff"]),
+            deck=str(screws.get("deck", "M3")),
+        ),
         material=Material(
             name=str(material["name"]),
             layer_height=float(material["layer_height"]),
             minimum_feature=float(material["minimum_feature"]),
+            min_bed_face_area=float(material.get("min_bed_face_area", 100.0)),
         ),
         hardware=hardware,
         split={
-            part: Seam(x=float(v.get("x", 0.0)), step=float(v.get("step", 0.0)),
-                       steps=int(v.get("steps", 1)))
+            part: Split(
+                sections=int(v.get("sections", 2)), x=float(v.get("x", 0.0)),
+                style=str(v.get("style", "straight")),
+                step=float(v.get("step", 0.0)), steps=int(v.get("steps", 1)),
+            )
             for part, v in (raw.get("split") or {}).items()
         },
+        parting=Parting(**{k: float(v) for k, v in (raw.get("parting") or {}).items()}),
+        merged_boss=MergedBoss(**{k: float(v) for k, v in (raw.get("merged_boss") or {}).items()}),
+        edges=Edges(**{k: float(v) for k, v in (raw.get("edges") or {}).items()}),
         feet=Feet(**{k: float(v) for k, v in (raw.get("feet") or {}).items()}),
         well=Well(**{k: float(v) for k, v in (raw.get("well") or {}).items()}),
         topics=topics,

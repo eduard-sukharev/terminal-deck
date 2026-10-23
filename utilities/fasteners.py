@@ -135,6 +135,14 @@ SCREWS: dict[str, Screw] = {
 }
 
 
+#: Stock screw lengths per thread size (mm), ISO 4762 / 7380 preferred lengths.
+STANDARD_LENGTHS: dict[str, tuple[int, ...]] = {
+    "M2": (4, 5, 6, 8, 10, 12, 16),
+    "M2.5": (5, 6, 8, 10, 12, 16, 20),
+    "M3": (5, 6, 8, 10, 12, 16, 20, 25),
+}
+
+
 def screw(size: str) -> Screw:
     """Return a :class:`Screw` by its size key, e.g. ``"M2.5"``.
 

@@ -128,7 +128,7 @@ def boss_spec(
     )
 
 
-def build(spec: BossSpec, x: float = 0.0, y: float = 0.0):
+def build(spec: BossSpec, x: float = 0.0, y: float = 0.0, bore: bool = True):
     """Generate a boss solid centered at (x, y).
 
     The body is a freestanding post that flares out to
@@ -146,12 +146,16 @@ def build(spec: BossSpec, x: float = 0.0, y: float = 0.0):
         Calculated boss dimensions.
     x, y : float
         Boss center in the shell frame (mm).
+    bore : bool
+        Cut the ``spec.hole_diameter`` bore through the boss. A caller whose
+        bore differs (a counterbored column that also pierces the floor) cuts
+        its own after fusing the boss to the shell.
 
     Returns
     -------
     Shape
         The boss solid, rising from the shell floor (z=0) to ``spec.height``,
-        with the bore removed.
+        with the bore removed (unless ``bore`` is false).
     """
     from utilities import cad_helpers
 
@@ -165,6 +169,8 @@ def build(spec: BossSpec, x: float = 0.0, y: float = 0.0):
         upper = cad_helpers.cylinder_centered(spec.outer_diameter, upper_h)
         upper = cad_helpers.translate(upper, x, y, flare_h + upper_h / 2.0)
         body = cad_helpers.union(body, upper)
-    bore = cad_helpers.cylinder_centered(spec.hole_diameter, spec.height)
-    bore = cad_helpers.translate(bore, x, y, spec.height / 2.0)
-    return cad_helpers.cut(body, bore)
+    if not bore:
+        return body
+    hole = cad_helpers.cylinder_centered(spec.hole_diameter, spec.height)
+    hole = cad_helpers.translate(hole, x, y, spec.height / 2.0)
+    return cad_helpers.cut(body, hole)

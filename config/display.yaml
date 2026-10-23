@@ -20,6 +20,7 @@ display:
 bezel:
   inset: 3                  # glass recess inset from panel edge
   thickness: 2              # bezel wall thickness over the glass edge
+  seam_screw_offset: 10     # X distance of the screws beside the Bezel's centre Seam
 
 glass:
   recess_depth: 1.5         # glass recess depth into lid

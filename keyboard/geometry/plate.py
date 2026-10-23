@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from keyboard.geometry.cutouts import stabilizer_cutouts, switch_cutouts
 from keyboard.geometry.mounting import generate_mounting_holes
+from keyboard.geometry.seam import plate_seam
+from keyboard.geometry.seam_holes import seam_holes
 from keyboard.geometry.outline import generate_outline
 from keyboard.layout.layout import KeyboardLayout
 from keyboard.metadata import KeyboardGeometryModel, KeyboardMetadata
@@ -86,10 +88,36 @@ def generate(
         bounding_box=bbox,
     )
 
-    return KeyboardGeometryModel(
+    model = KeyboardGeometryModel(
         plate_outline=outline,
         switch_cutouts=sw_cuts,
         stabilizer_cutouts=stab_cuts,
         mounting_holes=holes,
         metadata=metadata,
+    )
+    # The plate is split in two Sections along the key-column gaps; each gets
+    # two more holes within one unit of that Seam (ADR 0003).
+    try:
+        seam = plate_seam(model)
+    except ValueError:  # a row with no gap to split at: nothing to clamp
+        return model
+    extra = seam_holes(
+        sw_cuts, stab_cuts, seam, (min(xs), min(ys), max(xs), max(ys)),
+        pitch, screw_diameter,
+    )
+    if not extra:
+        return model
+    all_holes = list(holes) + [h.as_hole() for h in extra]
+    return KeyboardGeometryModel(
+        plate_outline=outline,
+        switch_cutouts=sw_cuts,
+        stabilizer_cutouts=stab_cuts,
+        mounting_holes=all_holes,
+        metadata=KeyboardMetadata(
+            width=metadata.width, height=metadata.height,
+            plate_thickness=metadata.plate_thickness,
+            switch_centers=metadata.switch_centers,
+            mounting_points=[(h.x, h.y) for h in all_holes],
+            bounding_box=metadata.bounding_box,
+        ),
     )

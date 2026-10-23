@@ -252,28 +252,34 @@ constraints:
   # i.e. rearward, so the plugged cable runs out into the rear strip rather
   # than deeper under the keyboard where there is no room for it.
   #
-  # Rear-flush, plus 13 mm forward: `Rp2040Keyboard.plate_raise_for_buried`
-  # (main.py) sizes the plate standoffs assuming the SBC sits exactly
-  # rear-flush (offset 0) — that assumption is what makes rear-flush the
-  # *safest* spot under the wedge, not the only usable one, since the wedge
-  # only gets shallower moving forward. The +13 was added so the SBC's
-  # mini-HDMI plug (below) — a rigid 21 mm connector shell, not flexible
-  # cable — clears the USB hub's east edge instead of running straight
-  # through it; sbc↔keyboard clearance was checked to confirm the extra
-  # 13 mm doesn't eat back into the margin plate_raise_for_buried leaves
-  # (it doesn't — gap stays 2.87, unchanged from offset 0 — apparently not
-  # the binding pair/axis in this range, not derived to be safe by
-  # construction the way rear-flush is).
+  # Rear-flush, plus 23.3 mm forward: `Rp2040Keyboard.plate_raise_for_buried`
+  # (main.py) sizes the plate standoffs assuming the SBC sits close to
+  # rear-flush — rear-flush is the *safest* spot under the wedge, not the only
+  # usable one, since the wedge only gets shallower moving forward, and the
+  # extra forward distance is paid for by a taller plate raise (main.py's
+  # `gap`). Two things pin this number from below:
+  #   * the SBC's mini-HDMI plug — a rigid 21 mm connector shell, not
+  #     flexible cable — has to clear the USB hub's east edge (it did at +13);
+  #   * the keyboard plate's Seam standoffs (ADR 0003): the two lower-row
+  #     holes beside the plate Seam stand in the row gap 1.3 mm behind the
+  #     plate's centre, and a standoff runs floor to plate, so it cannot go
+  #     through the board. The SBC's rear edge has to clear that row gap
+  #     (world y = -1.3) by a standoff radius plus a screw clearance, i.e.
+  #     start at y >= 2.0; at +23.3 it starts at y = 2.0 and ends at 32.0,
+  #     short of the upper row gap at y = 36.5.
+  # The lower-left Seam standoff then sits left of the plug (the plug now
+  # spans x -14.4..3.1), within one key unit of the Seam.
   #
   # offset_x threads the plugged USB-C cable (below) through the gap between
   # the hub's east edge and the battery's west edge — the only clear run to
-  # the rear wall. Enforced by the plug's own clearance checks, not by this
-  # number alone.
+  # the rear wall. 14.4 (was 12.4) keeps the plug clear of the Seam standoff
+  # while still threading that gap. Enforced by the plug's own clearance
+  # checks, not by this number alone.
   - kind: relative_placement
     subject: sbc
     target: keyboard
-    offset_x: 12.4
-    offset_y: "({sbc.depth} - {keyboard.depth}) / 2 + 13.0"
+    offset_x: 14.4
+    offset_y: "({sbc.depth} - {keyboard.depth}) / 2 + 23.3"
     rotation: 0.0
   # x/y come from the relative_placement above; z is set separately because
   # it must be an absolute floor height (the SBC sits on its own bosses on
@@ -335,6 +341,15 @@ constraints:
     subject: controller
     z: "{config.wall_thickness}"
     tilt: 0.0
+
+  # ── Keyboard plate mounting holes ─────────────────────────────────────
+  # The plate stands on eight Tray-floor standoffs: four at its edges and two
+  # per plate Section within one key unit of the plate Seam (ADR 0003). The
+  # Seam ones are placed against everything buried under the plate, so this
+  # comes after the SBC, its plugs and the controller; it fails the build when
+  # a Section's standoff cannot clear them.
+  - kind: keyboard_mounting_holes
+    subject: keyboard
 
   # ── Base floor ────────────────────────────────────────────────────────
   # Every base-floor part gets an explicit z above (usb_breakout, sbc,

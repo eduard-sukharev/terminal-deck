@@ -12,12 +12,15 @@ Buckets
 * ``base`` — base shell
 * ``lid`` — combined lid assembly (lid_shell + display + lid_bezel)
 * ``lid_shell`` — the Lid shell (rear tray); ``lid_bezel`` — the Bezel
-* ``<part>_left`` / ``<part>_right`` — one Half of ``base_bottom``,
-  ``base_top``, ``lid_shell`` or ``lid_bezel`` (see :data:`SPLIT_PARTS`).
-  They resolve to the part's bucket; :func:`requested_halves` then narrows
-  the export to just the named Halves.
-* ``hinge`` — hinge barrels + pin + wire tunnel
-* ``keyboard_plate`` — bare switch plate (printed as two Halves)
+* ``<part>_left`` / ``<part>_center`` / ``<part>_right`` — one Section of
+  ``base_bottom``, ``base_top``, ``lid_shell``, ``lid_bezel`` or
+  ``keyboard_plate`` (see :data:`SECTION_NAMES`; only the three-Section parts
+  have a ``_center``). They resolve to the part's bucket;
+  :func:`requested_sections` then narrows the export to just the named
+  Sections.
+* ``hinge`` — Lid knuckles, bolts, caps
+* ``base_knuckle`` — the separate Base knuckle (hinge part)
+* ``keyboard_plate`` — bare switch plate (printed as two Sections)
 * ``display`` — LCD panel + HDMI driver combined (the sub-assembly)
 * ``components`` — all per-component debug STLs
 
@@ -33,17 +36,25 @@ from __future__ import annotations
 BUCKETS: frozenset[str] = frozenset({
     "all", "assembly", "assembly_opened", "base", "base_bottom", "base_top",
     "lid", "lid_shell", "lid_bezel", "keyboard_plate",
-    "hinge", "display", "components",
+    "hinge", "base_knuckle", "display", "components",
 })
 
 
-#: Parts printed as left/right Halves (ADR 0001).
-SPLIT_PARTS: frozenset[str] = frozenset({
-    "base_bottom", "base_top", "lid_shell", "lid_bezel", "keyboard_plate",
-})
+#: Section names per split part, left to right (ADR 0003). Tray and Lid shell
+#: have three Sections; Deck, Bezel and the keyboard plate have two.
+SECTION_NAMES: dict[str, tuple[str, ...]] = {
+    "base_bottom": ("left", "center", "right"),
+    "base_top": ("left", "right"),
+    "lid_shell": ("left", "center", "right"),
+    "lid_bezel": ("left", "right"),
+    "keyboard_plate": ("left", "right"),
+}
 
-_HALF_ALIASES: dict[str, str] = {
-    f"{part}_{side}": part for part in SPLIT_PARTS for side in ("left", "right")
+#: Parts printed as Sections.
+SPLIT_PARTS: frozenset[str] = frozenset(SECTION_NAMES)
+
+_SECTION_ALIASES: dict[str, str] = {
+    f"{part}_{name}": part for part, names in SECTION_NAMES.items() for name in names
 }
 
 
@@ -75,8 +86,8 @@ def resolve_targets(
     comp_roles: set[str] = set()
 
     for token in tokens:
-        if token in _HALF_ALIASES:
-            buckets.add(_HALF_ALIASES[token])
+        if token in _SECTION_ALIASES:
+            buckets.add(_SECTION_ALIASES[token])
         elif token in BUCKETS:
             if token == "all":
                 buckets.update(BUCKETS - {"all"})
@@ -110,19 +121,20 @@ _PART_CONTAINERS: dict[str, frozenset[str]] = {
 }
 
 
-def requested_halves(tokens: list[str]) -> set[str]:
-    """Half names (``<part>_left``/``_right``) that were asked for alone.
+def requested_sections(tokens: list[str]) -> set[str]:
+    """Section names (``<part>_left``/``_center``/``_right``) asked for alone.
 
-    A Half is dropped from the result when its part is also wanted as a whole
-    (directly or via a bucket such as ``lid``, ``base`` or ``all``), because
-    then every Half is built anyway.  An empty result means "no narrowing".
+    A Section is dropped from the result when its part is also wanted as a
+    whole (directly or via a bucket such as ``lid``, ``base`` or ``all``),
+    because then every Section is built anyway.  An empty result means "no
+    narrowing".
     """
     wanted = set(tokens)
     return {
         token for token in tokens
-        if token in _HALF_ALIASES
-        and not wanted & _PART_CONTAINERS[_HALF_ALIASES[token]]
+        if token in _SECTION_ALIASES
+        and not wanted & _PART_CONTAINERS[_SECTION_ALIASES[token]]
     }
 
 
-__all__ = ["BUCKETS", "SPLIT_PARTS", "requested_halves", "resolve_targets"]
+__all__ = ["BUCKETS", "SECTION_NAMES", "SPLIT_PARTS", "requested_sections", "resolve_targets"]

@@ -4,9 +4,11 @@ The Lid is split into two parts that sandwich the display assembly:
 
 * **Lid shell** — the rear shell tray (open at +Z toward the user).  Five solid
   walls (left, right, front, back, bottom) form a bucket that the display
-  assembly drops into.  Four bosses at the corners hold heat-set inserts for
-  the bezel screws.
-* **Lid bezel** — the front plate with a glass cutout and four mounting holes.
+  assembly drops into.  Eight bosses hold heat-set inserts for the bezel
+  screws: four at the corners, and one above and one below the glass on each
+  side of the Bezel's straight centre Seam.
+* **Lid bezel** — the front plate with a glass cutout and eight countersunk
+  mounting holes.
   Sits *inside* the lid_shell opening (XY = interior dimensions) so its front
   face is flush with the Lid shell walls.
 
@@ -39,6 +41,8 @@ class Lid:
         bezel_thickness: float | None = None,
         interior=None,
         visor=None,
+        assembly=None,
+        interior_placements=None,
     ) -> None:
         self.display = display
         self.config = config
@@ -46,9 +50,13 @@ class Lid:
         self.lid_interior_height = lid_interior_height
         self.world_z = world_z
         self.footprint = footprint
-        #: Solid of what sits inside the shell (display, driver); Seam
-        #: joints keep clear of it.
+        #: Solid of what sits inside the shell (display, driver).
         self.interior = interior
+        #: Assembly and the placements inside the shell (display, driver, plug):
+        #: Seam lugs and Bezel bosses keep clear of their volumes (CAD-free).
+        self.assembly = assembly
+        self.interior_placements = interior_placements or []
+        self._memo: dict = {}
         #: ``geometry.visor.VisorProfile`` for the Lid shell's tapered lip, or
         #: ``None`` for a flat-topped shell.
         self.visor = visor
@@ -101,22 +109,143 @@ class Lid:
         _, _, outer_bottom, outer_top = self._outer_bounds()
         return outer_top - outer_bottom
 
-    def _corner_positions(self) -> list[tuple[float, float]]:
-        """Return the 4 bezel-mount corner positions (mm, XY).
+    def wall_bounds(self):
+        """Interior wall faces of the Lid shell (mm)."""
+        from geometry.merged_boss import WallBounds
 
-        Inset 3 mm from the interior wall faces (the bezel's edges).
-        """
-        width, depth, _, outer_top = self._outer_bounds()
+        width, depth, _, _ = self._outer_bounds()
         wall = self.config.wall_thickness
+        return WallBounds(-width / 2 + wall, width / 2 - wall, -depth / 2 + wall, depth / 2 - wall)
+
+    def _corner_positions(self) -> list[tuple[float, float]]:
+        """The 4 corner Bezel-mount positions (mm, XY), inset 3 mm from the
+        interior wall faces (the Bezel's edges)."""
+        b = self.wall_bounds()
         inset = 3.0
-        half_iw = (width - 2 * wall) / 2
-        half_id = (depth - 2 * wall) / 2
         return [
-            (half_iw - inset, half_id - inset),   # NE
-            (-half_iw + inset, half_id - inset),  # NW
-            (-half_iw + inset, -half_id + inset), # SW
-            (half_iw - inset, -half_id + inset),  # SE
+            (b.x1 - inset, b.y1 - inset),   # NE
+            (b.x0 + inset, b.y1 - inset),   # NW
+            (b.x0 + inset, b.y0 + inset),   # SW
+            (b.x1 - inset, b.y0 + inset),   # SE
         ]
+
+    def _seam_screw_positions(self) -> list[tuple[float, float]]:
+        """The 4 screws beside the Bezel's centre Seam (mm, XY).
+
+        One above and one below the glass on each side of the Seam, centred in
+        the band between the glass opening and the Bezel's edge, where the
+        display panel is not.
+        """
+        b = self.wall_bounds()
+        glass_half = self.glass_recess()["height"] / 2.0
+        y = glass_half + (b.y1 - glass_half) / 2.0
+        seam = self.config.split["bezel"].seams()[0].x if "bezel" in self.config.split else 0.0
+        dx = self.config.bezel.seam_screw_offset
+        return [(seam + sx * dx, sy * y) for sx in (-1, 1) for sy in (-1, 1)]
+
+    def screw_positions(self) -> list[tuple[float, float]]:
+        """All eight Bezel screw positions (mm, XY): corners, then Seam side."""
+        return self._corner_positions() + self._seam_screw_positions()
+
+    def boss_outer_diameter(self) -> float:
+        """Outer diameter of a Bezel boss: the insert bore plus a sleeve (mm)."""
+        return self._insert().printed_hole_diameter + 2 * 1.2
+
+    def _floor_top(self) -> float:
+        _, _, outer_bottom, _ = self._outer_bounds()
+        return outer_bottom + self.config.wall_thickness
+
+    def seam_bands(self):
+        """Seam bands of the Lid shell and the Bezel, keyed ``"<part>:<index>"``."""
+        from utilities.validation import seam_bands
+
+        depth = self._outer_bounds()[1]
+        splits = {p: self.config.split[p] for p in ("lid_shell", "bezel") if p in self.config.split}
+        return seam_bands(splits, {p: depth for p in splits}, self.config.wall_thickness)
+
+    def _interior_rects(self, top: float):
+        if self.assembly is None:
+            return []
+        return self.assembly.keepout_rects(
+            self._floor_top(), top, self.interior_placements or None
+        ) if self.interior_placements else []
+
+    def knuckle_rects(self) -> list[tuple[float, float, float, float]]:
+        """XY footprint of the Lid knuckles on the rear wall (mm)."""
+        if self.hinge is None:
+            return []
+        width, depth, _, _ = self._outer_bounds()
+        reach = self.hinge.diameter
+        return [
+            (x0, x1, -depth / 2.0 - reach / 2.0, -depth / 2.0 + self.config.wall_thickness)
+            for x0, x1 in self.hinge.lid_knuckle_spans(width)
+        ]
+
+    def lug_sites(self):
+        """Seam-joint sites per Lid shell Seam (``"lid_shell:<index>"``), two each.
+
+        Clear of the display stack, the Bezel bosses and the Lid knuckles.
+        """
+        from geometry import seam_joint
+
+        if "lug_sites" in self._memo:
+            return self._memo["lug_sites"]
+        split = self.config.split.get("lid_shell")
+        sites = {}
+        if split is not None:
+            wall = self.config.wall_thickness
+            depth = self._outer_bounds()[1]
+            spec = seam_joint.joint_spec(self.config.screws.body)
+            keepouts = self._interior_rects(self._floor_top() + spec.size + self.config.clearance.shell)
+            r = self.boss_outer_diameter() / 2.0
+            keepouts += [(x - r, x + r, y - r, y + r) for x, y in self.screw_positions()]
+            keepouts += self.knuckle_rects()
+            for i, seam in enumerate(split.seams()):
+                sites[f"lid_shell:{i}"] = seam_joint.plan_joints(
+                    seam, depth, wall, spec, floor_top=self._floor_top(),
+                    clearance=self.config.clearance.shell, keepouts=keepouts,
+                )
+        self._memo["lug_sites"] = sites
+        return sites
+
+    def structural_features(self):
+        """Structural features the Lid's Seams must keep clear of (CAD-free)."""
+        from geometry import seam_joint
+        from utilities.validation import Feature
+
+        wall = self.config.wall_thickness
+        spec = seam_joint.joint_spec(self.config.screws.body)
+        r = self.boss_outer_diameter() / 2.0
+        features = []
+        for x, y in self.screw_positions():
+            features.append(Feature("boss", f"({x:.1f}, {y:.1f})", x - r, x + r, y - r, y + r, part="lid_shell"))
+            hole = fasteners.screw(self.config.screws.body).head_diameter / 2.0
+            features.append(Feature("boss", f"bezel hole ({x:.1f}, {y:.1f})", x - hole, x + hole, y - hole, y + hole, part="bezel"))
+        for i, (x0, x1, y0, y1) in enumerate(self.knuckle_rects()):
+            features.append(Feature("knuckle", f"#{i}", x0, x1, y0, y1, part="lid_shell"))
+        for sid, sites in self.lug_sites().items():
+            for sx, sy, backed in sites:
+                x0, x1, y0, y1 = seam_joint.lug_footprint(spec, sx, sy, wall, backed)
+                features.append(Feature("lug", f"({sx:.1f}, {sy:.1f})", x0, x1, y0, y1, joins=sid, part="lid_shell"))
+        return features
+
+    def fastening_report(self, report) -> None:
+        """Data-level Seam checks for the Lid (HARD)."""
+        from utilities.validation import check_seam_clearance
+
+        check_seam_clearance(self.seam_bands(), self.structural_features(), report)
+        r = self.boss_outer_diameter() / 2.0
+        rects = self._interior_rects(self._boss_top())
+        hits = [
+            f"({x:.1f}, {y:.1f})" for x, y in self.screw_positions()
+            for x0, x1, y0, y1 in rects
+            if x + r > x0 and x - r < x1 and y + r > y0 and y - r < y1
+        ]
+        report.add(
+            "bezel-bosses-clear-of-display", not hits,
+            "every Bezel boss stands clear of the display panel and driver" if not hits
+            else f"Bezel boss at {', '.join(sorted(set(hits)))} lands on the display stack",
+        )
 
     def _insert(self):
         """Heat-set insert the Bezel screws thread into (M2, from config)."""
@@ -140,7 +269,7 @@ class Lid:
         Shape
             The Lid shell solid.
         """
-        from geometry import fillet
+        from geometry import fillet, merged_boss
         from utilities import cad_helpers
 
         cad_helpers.require_cad()
@@ -165,18 +294,26 @@ class Lid:
         body = cad_helpers.cut(outer, cavity)
 
         # Bezel bosses: floor up to the Bezel's rear face, insert hole in top.
+        # A boss within 2 walls of a wall is merged into it (ADR 0003).
         insert = self._insert()
-        sleeve = 1.2
-        boss_od = insert.printed_hole_diameter + 2 * sleeve
         floor_top = outer_bottom + wall
+        boss_od = self.boss_outer_diameter()
         # Start a little inside the floor so the union is a real overlap.
         boss_bottom = floor_top - 0.5
         boss_h = self._boss_top() - boss_bottom
-        for cx, cy in self._corner_positions():
+        rule = config.merged_boss
+        for cx, cy in self.screw_positions():
             boss = cad_helpers.cylinder_centered(boss_od, boss_h)
             boss = cad_helpers.translate(boss, cx, cy, boss_bottom + boss_h / 2.0)
+            walls = merged_boss.merge_walls(cx, cy, boss_od / 2.0, self.wall_bounds(), wall, rule)
+            if walls:
+                hull = merged_boss.build_hull(
+                    cx, cy, boss_od / 2.0, boss_h, walls, self.wall_bounds(), wall / 2.0,
+                    z0=boss_bottom,
+                )
+                boss = cad_helpers.union(boss, hull)
             body = cad_helpers.union(body, boss)
-        for cx, cy in self._corner_positions():
+        for cx, cy in self.screw_positions():
             hole = cad_helpers.cylinder_centered(insert.printed_hole_diameter, insert.depth)
             hole = cad_helpers.translate(
                 hole, cx, cy, self._boss_top() - insert.depth / 2.0
@@ -195,18 +332,17 @@ class Lid:
                 ),
             )
 
-        # Screw lugs that straddle the Lid shell Seam (US28).
-        seam = config.split.get("lid_shell")
-        if seam is not None:
+        # Screw lugs on each Lid shell Seam, two per Seam, at the planned sites.
+        split = config.split.get("lid_shell")
+        if split is not None:
             from geometry import seam_joint
 
-            body = seam_joint.add_joints(
-                body, seam, depth, wall,
-                seam_joint.joint_spec(config.screws.body),
-                floor_top=floor_top,
-                obstacles=self.interior,
-                clearance=config.clearance.shell,
-            )
+            sites = self.lug_sites()
+            for i, seam in enumerate(split.seams()):
+                body = seam_joint.add_joints(
+                    body, seam, depth, wall, seam_joint.joint_spec(config.screws.body),
+                    floor_top=floor_top, sites=sites[f"lid_shell:{i}"],
+                )
 
         return self._mount_hinge(body)
 
@@ -296,7 +432,7 @@ class Lid:
         # Countersunk clearance holes: through-hole plus a cone from the
         # head diameter at the front face down to the shaft.
         screw = fasteners.screw(config.screws.body)
-        for cx, cy in self._corner_positions():
+        for cx, cy in self.screw_positions():
             hole = cad_helpers.cylinder_centered(screw.clearance, self.bezel_thickness + 1.0)
             hole = cad_helpers.translate(
                 hole, cx, cy, outer_top - self.bezel_thickness / 2.0

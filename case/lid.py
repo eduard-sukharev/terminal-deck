@@ -118,10 +118,10 @@ class Lid:
         return WallBounds(-width / 2 + wall, width / 2 - wall, -depth / 2 + wall, depth / 2 - wall)
 
     def _corner_positions(self) -> list[tuple[float, float]]:
-        """The 4 corner Bezel-mount positions (mm, XY), inset 3 mm from the
+        """The 4 corner Bezel-mount positions (mm, XY), inset from the
         interior wall faces (the Bezel's edges)."""
         b = self.wall_bounds()
-        inset = 3.0
+        inset = self.config.bezel.corner_inset
         return [
             (b.x1 - inset, b.y1 - inset),   # NE
             (b.x0 + inset, b.y1 - inset),   # NW
@@ -149,7 +149,7 @@ class Lid:
 
     def boss_outer_diameter(self) -> float:
         """Outer diameter of a Bezel boss: the insert bore plus a sleeve (mm)."""
-        return self._insert().printed_hole_diameter + 2 * 1.2
+        return self._insert().printed_hole_diameter + 2 * self.config.bezel.boss_sleeve
 
     def _floor_top(self) -> float:
         _, _, outer_bottom, _ = self._outer_bounds()

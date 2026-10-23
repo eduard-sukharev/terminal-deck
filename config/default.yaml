@@ -39,6 +39,10 @@ hinge:
   end_inset: 9          # hinge span inset from each case side (keeps the Base knuckle part
                         # inside the 220 mm build volume)
   friction_bolt: M3     # bolt (head + nyloc nut both on the Base side)
+  swing_clearance: 0.5  # gap between a swinging knuckle's circle and a fixed part
+  side_overrun: 1.0     # how far a notch or bore runs past the case side
+  head_recess_margin: 0.5  # head recess depth beyond the bolt head
+  cap_margin: 2.0       # service cap diameter inset from the knuckle diameter
 
 screws:
   body: M2              # case body screws (fastener library)

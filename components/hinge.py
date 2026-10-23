@@ -35,10 +35,6 @@ from typing import Any
 from components.base import BoundingBox, Component
 from utilities import fasteners
 
-#: How far a notch or bore runs past the case side, so the cut exits cleanly (mm).
-SIDE_OVERRUN = 1.0
-#: Clearance between a swinging knuckle's circle and a fixed part (mm).
-SWING_CLEARANCE = 0.5
 
 
 @dataclass(frozen=True)
@@ -58,6 +54,10 @@ class HingeParameters:
     cap_plug: float
     end_inset: float
     friction_bolt: str
+    swing_clearance: float
+    side_overrun: float
+    head_recess_margin: float
+    cap_margin: float
 
 
 class Hinge(Component):
@@ -79,6 +79,10 @@ class Hinge(Component):
         self.cap_plug = float(data.get("cap_plug", 4.0))
         self.end_inset = float(data.get("end_inset", 9.0))
         self.friction_bolt = str(data.get("friction_bolt", "M3"))
+        self.swing_clearance = float(data.get("swing_clearance", 0.5))
+        self.side_overrun = float(data.get("side_overrun", 1.0))
+        self.head_recess_margin = float(data.get("head_recess_margin", 0.5))
+        self.cap_margin = float(data.get("cap_margin", 2.0))
         self.wall_thickness = wall_thickness
         tunnel_wall = (self.diameter - self.wire_tunnel) / 2.0
         if tunnel_wall < wall_thickness:
@@ -101,6 +105,8 @@ class Hinge(Component):
             flange=self.flange, flange_depth=self.flange_depth,
             cap_thickness=self.cap_thickness, cap_plug=self.cap_plug,
             end_inset=self.end_inset, friction_bolt=self.friction_bolt,
+            swing_clearance=self.swing_clearance, side_overrun=self.side_overrun,
+            head_recess_margin=self.head_recess_margin, cap_margin=self.cap_margin,
         )
 
     # -- layout along the hinge axis (all X, centered on 0) -------------------
@@ -143,7 +149,7 @@ class Hinge(Component):
     def web_top(self) -> float:
         """Top of the Base knuckle's web relative to the axis (mm): just under the
         circle the Lid knuckles and roll sweep."""
-        return -(self.radius + SWING_CLEARANCE)
+        return -(self.radius + self.swing_clearance)
 
     def bolt_length(self) -> int:
         """Stock length of the friction bolt (mm).
@@ -164,7 +170,7 @@ class Hinge(Component):
 
     def head_recess_depth(self) -> float:
         """Depth of the bolt-head recess in the cheek's outer face (mm)."""
-        return fasteners.screw(self.friction_bolt).head_depth + 0.5
+        return fasteners.screw(self.friction_bolt).head_depth + self.head_recess_margin
 
     def size(self) -> BoundingBox:
         # Placeholder length; real length derives from case width.
@@ -310,14 +316,14 @@ class Hinge(Component):
     @property
     def notch_radius(self) -> float:
         """Radius of the clearance notch around a knuckle (mm): knuckle plus the swing clearance."""
-        return self.radius + SWING_CLEARANCE
+        return self.radius + self.swing_clearance
 
     def corner_notch_spans(self, case_width: float) -> tuple[tuple[float, float], tuple[float, float]]:
         """((x_min, x_max) left, right) Deck notches over the Lid knuckles (mm).
 
         Run from the Lid knuckle's own washer stack outward past the case side."""
         (l0, l1), (r0, r1) = self.lid_knuckle_spans(case_width)
-        out = case_width / 2.0 + SIDE_OVERRUN
+        out = case_width / 2.0 + self.side_overrun
         return ((-out, l1 + self.washer_stack / 2.0), (r0 - self.washer_stack / 2.0, out))
 
     def lid_notch_spans(self, case_width: float) -> tuple[tuple[float, float], ...]:
@@ -325,7 +331,7 @@ class Hinge(Component):
         b0, b1 = self.base_knuckle_span(case_width)
         (c0, c1), (d0, d1) = self.cheek_spans(case_width)
         gap = self.washer_stack / 2.0
-        out = case_width / 2.0 + SIDE_OVERRUN
+        out = case_width / 2.0 + self.side_overrun
         return ((-out, c1 + gap), (b0 - gap, b1 + gap), (d0 - gap, out))
 
     def build_base_notches(self, case_width: float = 80.0):
@@ -393,7 +399,7 @@ class Hinge(Component):
                 parts.append(self._x_cylinder(washer.diameter, lo, hi))
             # Service cap: a head over the recess and a plug into it.
             lo, hi = sorted((outer, outer + side * self.cap_thickness))
-            parts.append(self._x_cylinder(self.diameter - 2.0, lo, hi))
+            parts.append(self._x_cylinder(self.diameter - self.cap_margin, lo, hi))
             lo, hi = sorted((outer, outer - side * min(self.cap_plug, recess)))
             parts.append(self._x_cylinder(bolt.head_diameter + 0.2, lo, hi))
         return cad_helpers.union(*parts)

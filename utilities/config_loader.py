@@ -109,6 +109,8 @@ class Bezel:
     inset: float
     thickness: float
     seam_screw_offset: float = 10.0  # X distance of the screws beside the centre Seam (mm)
+    corner_inset: float = 3.0        # corner screws' distance from the interior wall faces (mm)
+    boss_sleeve: float = 1.2         # wall of the insert boss around the insert bore (mm)
 
 
 @dataclass(frozen=True)
@@ -153,6 +155,10 @@ class Hinge:
     cap_plug: float = 4.0         # service cap plug depth into the head recess
     end_inset: float = 9.0        # hinge span inset from each case side
     friction_bolt: str = "M3"     # bolt size (fastener library)
+    swing_clearance: float = 0.5  # gap between a swinging knuckle's circle and a fixed part
+    side_overrun: float = 1.0     # how far a notch or bore runs past the case side
+    head_recess_margin: float = 0.5  # head recess depth beyond the bolt head
+    cap_margin: float = 2.0       # service cap diameter inset from the knuckle diameter
 
 
 @dataclass(frozen=True)

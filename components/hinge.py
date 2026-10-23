@@ -139,6 +139,12 @@ class Hinge(Component):
         half = self.span(case_width) / 2.0
         return (-half, half)
 
+    @property
+    def web_top(self) -> float:
+        """Top of the Base knuckle's web relative to the axis (mm): just under the
+        circle the Lid knuckles and roll sweep."""
+        return -(self.radius + SWING_CLEARANCE)
+
     def bolt_length(self) -> int:
         """Stock length of the friction bolt (mm).
 
@@ -228,7 +234,7 @@ class Hinge(Component):
         cheeks = self.cheek_spans(case_width)
         b0, b1 = self.base_knuckle_span(case_width)
         p0, p1 = self.part_span(case_width)
-        web_top = -(r + SWING_CLEARANCE)
+        web_top = self.web_top
 
         pieces = [self._d_bar(b0, b1)] + [self._d_bar(*c) for c in cheeks]
         # Web: behind the rear face, from the flange up to just under the Lid

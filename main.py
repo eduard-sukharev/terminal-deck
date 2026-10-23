@@ -577,7 +577,7 @@ class BuildPipeline:
             check_hinge_sweep(
                 hinge.cheek_spans(size.width), hinge.base_knuckle_span(size.width),
                 hinge.lid_notch_spans(size.width),
-                -(hinge.radius + 0.5), hinge.radius, visor_report,
+                hinge.web_top, hinge.radius, visor_report,
             )
             print("[pipeline] closed-device validation:")
             print(visor_report.summary())

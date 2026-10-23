@@ -395,7 +395,7 @@ class Lid:
         """Generate the Bezel: the front plate with the glass opening.
 
         Sits inside the Lid shell's opening (XY = interior dimensions) on the
-        bosses, front face flush with the shell. Four countersunk M2 holes
+        bosses, front face flush with the shell. Eight countersunk M2 holes
         take the screws from the front into the bosses' heat-set inserts.
 
         Returns

@@ -528,7 +528,7 @@ def test_rear_right_corner_takes_a_deck_column_beside_the_battery():
 def test_deck_lug_and_hinge_pads_clear_the_seam_check():
     base, _ = _hinged_base()
     features = base.structural_features()
-    assert sum(f.kind == "hinge" for f in features) == 3
+    assert sum(f.kind == "hinge" for f in features) == 5   # 2 pads, 2 stop ribs, Cable guard
     assert any(f.kind == "lug" and f.joins == "deck:0" for f in features)
 
 

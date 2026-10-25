@@ -136,10 +136,12 @@ class Hinge:
 
     x: float                      # X of the right hinge's centre (the left is mirrored)
     part: dict[str, Any]          # barrel, leaf thickness, Leaves and their holes
-    travel: float = 180.0         # opening angle the Lid swings clear through (deg)
+    travel: float = 180.0         # opening angle, held by the travel stop (deg)
     swing_clearance: float = 0.5  # gap between a swinging part and a fixed one
     fit: float = 0.2              # gap around a Leaf in its pocket
     insert: str = "M4"            # heat-set insert per Leaf hole (fastener library)
+    torque: float = 0.0           # friction torque per hinge (N*m), for the record
+    stop: dict[str, Any] | None = None  # travel stop rib: width, face (mm)
 
 
 @dataclass(frozen=True)
@@ -461,7 +463,7 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
             controller=keyboard.get("controller"),
         ),
         hinge=Hinge(**{
-            k: (dict(v) if k == "part" else str(v) if k == "insert" else float(v))
+            k: (dict(v) if k in ("part", "stop") else str(v) if k == "insert" else float(v))
             for k, v in hinge.items()
         }),
         cable_guard=CableGuard(**{

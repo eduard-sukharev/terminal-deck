@@ -185,3 +185,60 @@ def test_guard_rejects_an_entry_angle_outside_0_to_90():
     c = cfg()
     with pytest.raises(ValueError, match="entry_angle"):
         CableGuard(replace(c.cable_guard, entry_angle=90.0), wall_thickness=2.0, x=0.0, travel=90.0)
+
+
+# -- travel stop --------------------------------------------------------------
+
+PARTING = -16.0   # hinge-frame Parting plane, below the axis
+LID_H = 15.8
+
+
+def test_lid_swings_clear_of_the_stop_until_its_travel():
+    h = hinge()
+    assert h.stop_hits(lid_depth=120.0, lid_height=LID_H, parting=PARTING) == []
+
+
+def test_stop_face_meets_the_lid_rear_face_at_travel():
+    h = hinge()
+    th = math.radians(h.travel)
+    (y0, z0), (y1, z1) = h.stop_profile(PARTING)[:2]
+    s = h.setback
+    # The face starts at the Lid's inner rear edge, turned by `travel`...
+    assert (y0, z0) == pytest.approx((s * math.cos(th), s * math.sin(th)))
+    # ...and runs along the Lid's rear face (normal to the Lid) for `face` mm.
+    assert math.hypot(y1 - y0, z1 - z0) == pytest.approx(h.stop_face)
+    assert (y1 - y0) * math.cos(th) + (z1 - z0) * math.sin(th) == pytest.approx(0.0, abs=1e-9)
+
+
+def test_a_shorter_stop_would_be_hit_early():
+    from dataclasses import replace
+    c = cfg()
+    h = Hinge(replace(c.hinge, travel=c.hinge.travel), wall_thickness=c.wall_thickness, guard=guard())
+    late = Hinge(replace(c.hinge, travel=c.hinge.travel + 10.0), wall_thickness=c.wall_thickness, guard=guard())
+    # The stop built for `travel` blocks a Lid meant to open 10 deg further.
+    hits = late.stop_hits(lid_depth=120.0, lid_height=LID_H, parting=PARTING, profile=h.stop_profile(PARTING))
+    assert hits and all(th <= h.travel + 10.0 for th, _, _ in hits)
+
+
+def test_stop_ribs_sit_outboard_of_each_barrel_mirrored():
+    h = hinge()
+    (l0, l1), (r0, r1) = h.stop_span("left"), h.stop_span("right")
+    assert (l0, l1) == pytest.approx((-r1, -r0))
+    assert r0 == pytest.approx(h.x + h.part.barrel_length / 2.0 + h.swing_clearance)
+    assert r1 - r0 == pytest.approx(h.stop_width)
+
+
+def test_stop_rib_stands_on_the_parting_plane():
+    h = hinge()
+    zs = [z for _, z in h.stop_profile(PARTING)]
+    assert min(zs) == pytest.approx(PARTING)
+
+
+@pytest.mark.skipif(not cad_helpers.cad_available(), reason="build123d not installed")
+def test_opened_hinge_turns_only_the_lid_leaf():
+    h = hinge()
+    closed, opened = h.build_part("right"), h.build_part("right", opened=h.travel)
+    assert cad_helpers.volume_mm3(opened) == pytest.approx(cad_helpers.volume_mm3(closed), rel=1e-3)
+    _, _, zc = cad_helpers.bounding_box_mm(closed)
+    _, yo, _ = cad_helpers.bounding_box_mm(opened)
+    assert yo > cad_helpers.bounding_box_mm(closed)[1]

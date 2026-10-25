@@ -382,6 +382,28 @@ def check_torque_hinge(
         else f"the Lid enters the Base at {hits[0][0]:.0f} deg ({len(hits)} sample hits)",
     )
 
+    # The travel stop: the Lid lands on it at `travel` and not before, along
+    # its rear face, and the ribs stay clear of the Cable guard.
+    if hinge.has_stop:
+        hits = hinge.stop_hits(lid_depth=case_depth, lid_height=lid_height, parting=parting)
+        problems = []
+        if hits:
+            problems.append(f"the Lid meets a stop rib at {hits[0][0]:.0f} deg, before {hinge.travel:g}")
+        if hinge.stop_face > lid_height + 1e-9:
+            problems.append(f"stop face {hinge.stop_face:g} mm longer than the Lid's rear face {lid_height:.1f}")
+        if hinge.guard is not None:
+            gx0, gx1 = hinge.guard.span()
+            problems += [
+                f"{side} rib overlaps the Cable guard"
+                for side in sides
+                if gx0 < hinge.stop_span(side)[1] and gx1 > hinge.stop_span(side)[0]
+            ]
+        report.add(
+            "hinge-stop", not problems,
+            f"the Lid lands on the stop ribs at {hinge.travel:g} deg" if not problems
+            else "; ".join(problems),
+        )
+
     # No component inside a Leaf or its pad (Base: world frame; Lid: its own).
     hits = []
     for which, placements, (ay, az), flip in (

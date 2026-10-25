@@ -32,10 +32,18 @@ hinge:
   x: 20.0               # X of the right hinge's centre; between the hub and the battery,
                         # whose cells stand taller than the Base leaf, and left of the rear
                         # Deck column at x=37
-  travel: 180.0         # opening angle the Lid must swing clear through (deg)
+  travel: 120.0         # opening angle (deg): a comfortable working angle, held there by
+                        # the travel stop (the hinge itself turns to 196)
   swing_clearance: 0.5  # gap between a swinging part and a fixed one
   fit: 0.2              # gap around a Leaf in its pocket
   insert: M4            # heat-set insert per Leaf hole (fastener library)
+  torque: 0.15          # friction torque per hinge (N*m); the pair holds the Lid level
+                        # (~0.26 N*m) yet stays under the Base's own weight (~0.30 N*m)
+                        # so the Lid opens one-handed (ADR 0007)
+  stop:                 # travel stop: a rib on the Deck outboard of each barrel that
+                        # the Lid's rear face lands on at `travel`
+    width: 6.0          # along X
+    face: 8.0           # contact length along the Lid's rear face, from its inner edge
   part:                 # XK574-6-16, 2 N*m (docs/reference/torque_hinge_xk574-6-16.avif)
     name: XK574-6-16
     barrel_diameter: 16.0

@@ -17,6 +17,13 @@ hole's ``v`` flips with it). The case derives the rest: the axis sits
 ``setback`` behind the rear face, clear of the barrel and the Cable guard
 for the Lid's whole swing; each Leaf gets a pocket and a pad with a heat-set
 insert per hole, the pad reaching from the Leaf to the shell's surface.
+
+The hinge turns further than is comfortable, so a travel stop holds the Lid
+at ``travel``: a rib on the Deck outboard of each barrel, standing on the
+Parting plane behind the rear face, whose face lies on the Lid's rear face
+turned by ``travel``. The Lid never comes nearer the axis than ``setback``,
+so the rib may fill everything inside that radius; elsewhere it keeps to
+where no part of the Lid passes before ``travel``.
 """
 
 from __future__ import annotations
@@ -100,6 +107,12 @@ class Hinge(Component):
         self.part = TorqueHinge.from_config(cfg.part)
         self.wall_thickness = wall_thickness
         self.guard = guard
+        stop = getattr(cfg, "stop", None)
+        self.has_stop = stop is not None
+        self.stop_width = float(stop["width"]) if stop else 0.0
+        self.stop_face = float(stop["face"]) if stop else 0.0
+        if self.has_stop and not 90.0 < self.travel < 180.0:
+            raise ValueError(f"hinge: a travel stop needs a travel between 90 and 180 deg, not {self.travel:g}")
 
     def size(self) -> BoundingBox:
         p = self.part
@@ -201,6 +214,78 @@ class Hinge(Component):
                     hits.append((math.degrees(th), yy, zz))
         return hits
 
+    # -- travel stop ----------------------------------------------------------------
+
+    def stop_span(self, side: str) -> tuple[float, float]:
+        """(x0, x1) of a side's stop rib: outboard of its barrel, clear of the
+        Lid leaf turning with it."""
+        inner = self.x + self.part.barrel_length / 2.0 + self.swing_clearance
+        outer = inner + self.stop_width
+        return (-outer, -inner) if side == "left" else (inner, outer)
+
+    def stop_profile(self, parting: float, setback: float | None = None) -> list[tuple[float, float]]:
+        """The stop rib's side profile (hinge frame ``(y, z)``), face first.
+
+        The face runs from the Lid's inner rear edge, turned by ``travel``,
+        ``face`` mm along the Lid's rear face; the rib drops from there to the
+        Parting plane, runs into the Deck's rear wall, and returns just below
+        the closed plane and back through the axis region inside ``setback``,
+        where the Lid never reaches.
+        """
+        s = self.setback if setback is None else setback
+        th = math.radians(self.travel)
+        ty, tz = math.cos(th), math.sin(th)        # along the Lid, turned
+        ny, nz = -math.sin(th), math.cos(th)       # across it, toward its back
+        q0 = (s * ty, s * tz)
+        q1 = (q0[0] + self.stop_face * ny, q0[1] + self.stop_face * nz)
+        root = s + self.wall_thickness             # into the Deck's rear wall
+        below = -self.swing_clearance              # clear of the closed Lid
+        return [q0, q1, (q1[0], parting), (root, parting), (root, below), (0.0, below)]
+
+    @staticmethod
+    def _inside(y: float, z: float, poly: list[tuple[float, float]], tol: float = 1e-6) -> bool:
+        """Strictly inside ``poly`` (points within ``tol`` of an edge are not)."""
+        n, inside = len(poly), False
+        for i in range(n):
+            (ay, az), (by, bz) = poly[i], poly[(i + 1) % n]
+            dy, dz = by - ay, bz - az
+            ln = math.hypot(dy, dz)
+            if ln > 0.0:
+                t = max(0.0, min(1.0, ((y - ay) * dy + (z - az) * dz) / ln ** 2))
+                if math.hypot(y - ay - t * dy, z - az - t * dz) <= tol:
+                    return False
+            if (az > z) != (bz > z) and y < ay + (z - az) * dy / dz:
+                inside = not inside
+        return inside
+
+    def stop_hits(
+        self, lid_depth: float, lid_height: float, parting: float,
+        profile: list[tuple[float, float]] | None = None, step: float = 1.0,
+    ) -> list[tuple[float, float, float]]:
+        """Points of the Lid's side profile inside the stop rib while it opens
+        to ``travel`` (exclusive): ``(theta, y, z)``; empty when it lands only
+        at ``travel``."""
+        poly = self.stop_profile(parting) if profile is None else profile
+        pts = self._lid_outline(lid_depth, lid_height, self.setback, step)
+        n = max(2, int(self.travel / step) + 1)
+        hits = []
+        for k in range(n - 1):
+            th = math.radians(self.travel * k / (n - 1))
+            c, s = math.cos(th), math.sin(th)
+            for y, z in pts[: -4]:  # the Lid leaf turns inside the barrel's X span
+                yy, zz = y * c - z * s, y * s + z * c
+                if self._inside(yy, zz, poly):
+                    hits.append((math.degrees(th), yy, zz))
+        return hits
+
+    def build_stop(self, side: str, parting: float):
+        """A side's stop rib (hinge frame, X in world)."""
+        from utilities import cad_helpers
+
+        x0, x1 = self.stop_span(side)
+        rib = cad_helpers.extrude_profile_x(self.stop_profile(parting), x1 - x0)
+        return cad_helpers.translate(rib, (x0 + x1) / 2.0, 0.0, 0.0)
+
     def insert_room(self, which: str, outer: float, minimum_feature: float) -> float:
         """Depth an insert can take from a Leaf's mounting face toward the
         shell's outer surface at hinge-frame ``outer``, less a printable skin."""
@@ -241,13 +326,15 @@ class Hinge(Component):
             web = self._box(x0, x1, leaf.start - grow, web_y + grow, 0.0, z1 + grow)
         return cad_helpers.union(plate, web)
 
-    def build_part(self, side: str):
-        """One Torque hinge, closed: barrel, both Leaves and their webs."""
+    def build_part(self, side: str, opened: float = 0.0):
+        """One Torque hinge: barrel, both Leaves and their webs, the Lid leaf
+        turned ``opened`` deg about the axis (0 = closed)."""
         from utilities import cad_helpers
 
         cx, half = self.center(side), self.part.barrel_length / 2.0
         barrel = self._x_cylinder(self.part.barrel_diameter, cx - half, cx + half)
-        return cad_helpers.union(barrel, *[self._leaf_with_web(w, side) for w in LEAVES])
+        lid = cad_helpers.rotate_x(self._leaf_with_web("lid", side), opened)
+        return cad_helpers.union(barrel, self._leaf_with_web("base", side), lid)
 
     def build_pocket(self, which: str, side: str):
         """The void a Leaf, its web and the barrel take in a shell (``fit`` all round)."""
@@ -295,8 +382,8 @@ class Hinge(Component):
             bores.append(cad_helpers.translate(bore, cx + m * h.v, h.u, face + sign * (depth / 2.0 - self.fit)))
         return cad_helpers.union(*bores)
 
-    def build(self):
-        """Both Torque hinges, closed, in the hinge frame."""
+    def build(self, opened: float = 0.0):
+        """Both Torque hinges in the hinge frame, opened ``opened`` deg."""
         from utilities import cad_helpers
 
-        return cad_helpers.union(*[self.build_part(s) for s in SIDES])
+        return cad_helpers.union(*[self.build_part(s, opened) for s in SIDES])

@@ -525,12 +525,19 @@ class BaseFastening:
 
     def hinge_rects(self) -> dict[str, tuple[float, float, float, float]]:
         """XY footprint ``(x0, x1, y0, y1)`` of what the hinge adds to the Deck:
-        each Base leaf's pad (``"left"``/``"right"``) and the Cable guard's
+        each Base leaf's pad (``"left"``/``"right"``), each travel stop rib
+        (``"stop left"``/``"stop right"``) and the Cable guard's
         discs and arms (``"cable guard"``)."""
         if self.hinge is None:
             return {}
         rear_y = -self.size().depth / 2.0
         out = {side: self.hinge.pad_rect("base", rear_y, side) for side in ("left", "right")}
+        if self.hinge.has_stop:
+            axis_y = rear_y - self.hinge.setback
+            ys = [y for y, _ in self.hinge.stop_profile(self.parting_height() - self.hinge_axis_z())]
+            for side in ("left", "right"):
+                x0, x1 = self.hinge.stop_span(side)
+                out[f"stop {side}"] = (x0, x1, axis_y + min(ys), axis_y + max(ys))
         guard = self.hinge.guard
         if guard is not None:
             x0, x1, y0, y1 = guard.arm_rect(self.hinge.setback)

@@ -452,7 +452,7 @@ class BuildPipeline:
             # are case-build-time geometry, never placed components, so the
             # ordinary collision system never sees them — check them here,
             # once the case geometry that generates them exists.
-            from utilities.validation import ValidationReport, check_boss_collisions
+            from utilities.validation import check_boss_collisions
 
             boss_report = ValidationReport()
             check_boss_collisions(base_obj.all_bosses(), placements, boss_report)
@@ -560,7 +560,7 @@ class BuildPipeline:
                 interior_placements=self._lid_interior(placements, components),
             )
             from utilities.validation import (
-                ValidationReport, check_hinge_fits, check_visor_flush,
+                check_hinge_fits, check_visor_flush,
             )
 
             visor_report = ValidationReport()
@@ -621,7 +621,7 @@ class BuildPipeline:
                 )
             gltf_parts["hinge"] = colored
 
-        # ── Opened assembly: base in ZX plane, lid upward, LCD faces +Z ──
+        # ── Opened assembly: the Lid open to its travel stop ──
         if "assembly_opened" in buckets:
             from assemblies.assembly import select_placements
 
@@ -673,57 +673,20 @@ class BuildPipeline:
                 )
             lid_solid = cad_helpers.union(lid_solid, lid.build_bezel())
 
-            # Hinge axis in the original frame.
-            depth = size.depth
-            hinge_z = base_obj.hinge_axis_z()
-            driver_height = float(
-                config.hardware.get("driver_board", {}).get("height", 4.6)
+            # Open the Lid to its travel stop about the Hinge axis; the
+            # hinges' Lid leaves turn with it.
+            axis_y = -size.depth / 2.0 - hinge.setback
+            axis_z = base_obj.hinge_axis_z()
+            # The Lid is built in its own frame (the closed Lid turned over,
+            # axis at its outer top): flip it back onto the Base first.
+            lid_closed = cad_helpers.translate(
+                cad_helpers.mirror_z(lid_solid), 0.0, 0.0, axis_z + lid._outer_bounds()[3]
             )
-
-            # Step 1: stand the closed assembly upright so the base sits in
-            # the ZX plane (vertical), keyboard facing +Y.
-            #   -90° about X: (x,y,z) → (x, z, -y)
-            #   Hinge at (0, -depth/2, hinge_z) → (0, hinge_z, depth/2)
-            base_u = cad_helpers.rotate_x(base_solid, -90)
-            lid_u = cad_helpers.rotate_x(lid_solid, -90)
-            hinge_u = hinge.build()
-            hinge_u = cad_helpers.translate(
-                hinge_u, 0.0, -depth / 2.0 - hinge.setback, hinge_z
-            )
-            hinge_u = cad_helpers.rotate_x(hinge_u, -90)
-
-            # Step 2: open the lid +90° about the hinge axis so it extends
-            # in +Y (upward from the base) with the LCD facing +Z.
-            ax_y = hinge_z
-            ax_z = depth / 2.0 + hinge.setback
             lid_open = cad_helpers.rotate_about(
-                lid_u, (0.0, ax_y, ax_z), (1.0, ax_y, ax_z), 90
+                lid_closed, (0.0, axis_y, axis_z), (1.0, axis_y, axis_z), hinge.travel
             )
-
-            # Step 3: flip the whole assembly 180° about Y so the base rear
-            # faces -Z instead of +Z.
-            base_f = cad_helpers.rotate_y(base_u, 180)
-            lid_f = cad_helpers.rotate_y(lid_open, 180)
-            hinge_f = cad_helpers.rotate_y(hinge_u, 180)
-
-            # Step 4: rotate the lid 180° about the Y axis through the hinge
-            # center so the LCD faces +Z again (the Y flip flipped it to -Z).
-            # Hinge after step 3: (0, hinge_z, -depth/2) along X.
-            hy = hinge_z
-            hz = -depth / 2.0 - hinge.setback
-            lid_f = cad_helpers.rotate_about(lid_f, (0, hy, hz), (0, hy + 1, hz), 180)
-
-            # Step 5: translate the lid in -Z so its +Z face (LCD side) sits
-            # at the hinge, making the lid extend behind the hinge in -Z.
-            lid_total_h = (
-                config.display.height + driver_height
-                + 2 * config.clearance.shell + 2 * config.wall_thickness
-            )
-            z_offset = display_placement.z - hinge_z
-            dist_to_plus_z = z_offset + lid_total_h / 2.0
-            lid_f = cad_helpers.translate(lid_f, 0, 0, -dist_to_plus_z)
-
-            parts["assembly_opened"] = cad_helpers.union(base_f, lid_f, hinge_f)
+            hinge_open = cad_helpers.translate(hinge.build(opened=hinge.travel), 0.0, axis_y, axis_z)
+            parts["assembly_opened"] = cad_helpers.union(base_solid, lid_open, hinge_open)
 
         # --- Sections (ADR 0003) ---------------------------------------------
         # Every wide printable part is split into two or three Sections along

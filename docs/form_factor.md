@@ -107,7 +107,14 @@ The case adapts to that description (`components/hinge.py`):
   Deck's and the Lid shell's rear walls. The build fails if the guard
   overlaps a hinge or a Deck Seam.
 
-The pads and the guard are structural features: no Seam may cross them.
+* The Lid opens to `hinge.travel` (120°, a working angle; the hinge itself
+  turns to 196°) and stops there on a rib on the Deck outboard of each
+  barrel, behind the rear face, standing on the Parting plane. Its face lies
+  on the Lid's rear face at `travel`; the build fails if the Lid meets it
+  earlier. Hinge torque ~0.15 N·m each (`hinge.torque`, see ADR 0007): enough
+  to hold the Lid, little enough to open it one-handed.
+
+The pads, the stop ribs and the guard are structural features: no Seam may cross them.
 
 Sections of one part are joined for good by Seam lugs (ADR 0006,
 `geometry/seam_joint.py`): a lug straddles the Seam, bored through along X

@@ -37,6 +37,22 @@ hinge as data and making the case adapt to it:
   ring covers only the angles no cable entry reaches through the travel, so
   the cover is open at the rear. It carries no load and must not overlap a
   Torque hinge or a Deck Seam.
+- The Lid opens to a comfortable `travel` (120 deg), not the hinge's own
+  196 deg: a travel stop rib on the Deck outboard of each barrel, standing
+  on the Parting plane behind the rear face, takes the Lid's rear face at
+  `travel`. It fills the region the Lid never passes before `travel` (all of
+  it inside `setback` of the axis), so it needs no notch in the Lid; a HARD
+  check fails if the Lid meets a rib early. Rejected: a hinge with a built-in
+  stop (ties the case to one catalogue part) and a tooth in the Cable guard
+  (an ~8 mm lever loads the guard, which must stay load-free).
+- Hinge torque is sized to the light Lid, not to the part's 2 N·m. Lid
+  ~380 g: printed shell and Bezel ~127 g (PETG), panel ~217 g taken as
+  mostly glass (231.75 × 64.5 × 6.5 mm, 80 % glass at 2.5 g/cm³, the rest
+  ~1.2 g/cm³; unweighed), driver and cable ~35 g. Its centre of mass ~69 mm
+  from the axis needs ~0.26 N·m to hold level (~0.13 N·m at the 120 deg
+  stop). The Base (~510 g, centre ~60 mm ahead of the rear edge) lifts off
+  the table above ~0.30 N·m. So ~0.15 N·m per hinge (`hinge.torque`);
+  2 × 0.7 N·m would need the Base held down.
 - The printed hinge (Lid knuckles, Base knuckle, End cheeks, Saddles,
   friction bolt, service caps) is removed, not kept as an option.
 

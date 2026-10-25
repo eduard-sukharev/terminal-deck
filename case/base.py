@@ -238,7 +238,8 @@ class Base(BaseFastening):
     def _mount_hinge(self, body):
         """Fit the Deck ``body`` to the Torque hinges (ADR 0007).
 
-        Fuses a pad under each Base leaf and the Cable guard's Deck side on,
+        Fuses a pad under each Base leaf, each travel stop rib and the Cable
+        guard's Deck side on,
         then cuts each Leaf's pocket, the insert bores and the Cable slot.
         Without a hinge, ``body`` is returned unchanged.
         """
@@ -253,6 +254,8 @@ class Base(BaseFastening):
             adds.append(h.build_pad("base", side, support, bored=False))
             cuts.append(h.build_pocket("base", side))
             cuts.append(h.build_insert_bores("base", side, support))
+            if h.has_stop:
+                adds.append(h.build_stop(side, self.parting_height() - self.hinge_axis_z()))
         if h.guard is not None:
             adds.append(h.guard.build_deck(setback))
             cuts.append(h.guard.build_slot("base", setback))

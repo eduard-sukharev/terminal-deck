@@ -75,6 +75,10 @@ _Avoid:_ "wing", "flange".
 **Hinge axis** — The line the Lid turns about; the origin a Torque hinge's
 Leaves and holes are described from.
 
+**Travel stop** — The printed rib on the Deck, behind each Torque hinge,
+that the Lid's rear face lands on at its working angle; the hinge itself
+would turn further.
+
 **Cable slot** — The opening in the Deck and the Lid shell, near the
 display's HDMI connector, that the display cable passes through between
 Base and Lid.

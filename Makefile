@@ -11,8 +11,7 @@
 #   make lid_shell   # lid rear shell tray only
 #   make keyboard_plate  # bare switch plate, split into Halves
 #   make lid_bezel  # lid front plate with glass cutout only
-#   make hinge      # hinge only (Lid knuckles, hardware, Base knuckle)
-#   make base_knuckle # the separate Base knuckle part only
+#   make hinge      # the two Torque hinges only
 #   make assembly   # full assembly union only
 #   make components # per-component debug STLs only
 #   make build TARGETS=display,base  # selected targets
@@ -46,7 +45,7 @@ RENDER_AZIM ?= -90
 TARGETS  ?= all
 IGNORE_VALIDATION ?=
 
-.PHONY: env env-remove render render_svg render_stl verify data all build test check clean display base base_bottom base_top lid lid_shell lid_bezel keyboard_plate hinge base_knuckle assembly assembly_opened components
+.PHONY: env env-remove render render_svg render_stl verify data all build test check clean display base base_bottom base_top lid lid_shell lid_bezel keyboard_plate hinge assembly assembly_opened components
 
 ifneq ($(strip $(IGNORE_VALIDATION)),)
 IGNORE_VALIDATION_FLAG := --ignore-validation
@@ -106,8 +105,6 @@ keyboard_plate: build
 hinge: TARGETS = hinge
 hinge: build
 
-base_knuckle: TARGETS = base_knuckle
-base_knuckle: build
 
 assembly: TARGETS = assembly
 assembly: build

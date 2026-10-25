@@ -18,8 +18,7 @@ Buckets
   have a ``_center``). They resolve to the part's bucket;
   :func:`requested_sections` then narrows the export to just the named
   Sections.
-* ``hinge`` — Lid knuckles, bolts, caps
-* ``base_knuckle`` — the separate Base knuckle (hinge part)
+* ``hinge`` — the two purchased Torque hinges, closed, on the Hinge axis
 * ``keyboard_plate`` — bare switch plate (printed as two Sections)
 * ``display`` — LCD panel + HDMI driver combined (the sub-assembly)
 * ``components`` — all per-component debug STLs
@@ -36,7 +35,7 @@ from __future__ import annotations
 BUCKETS: frozenset[str] = frozenset({
     "all", "assembly", "assembly_opened", "base", "base_bottom", "base_top",
     "lid", "lid_shell", "lid_bezel", "keyboard_plate",
-    "hinge", "base_knuckle", "display", "components",
+    "hinge", "display", "components",
 })
 
 

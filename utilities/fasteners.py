@@ -132,6 +132,14 @@ SCREWS: dict[str, Screw] = {
         head_depth=3.0,
         length=10.0,
     ),
+    "M4": Screw(
+        size="M4",
+        pilot_hole=3.3,
+        clearance=4.5,
+        head_diameter=7.0,
+        head_depth=4.0,
+        length=8.0,
+    ),
 }
 
 
@@ -140,6 +148,7 @@ STANDARD_LENGTHS: dict[str, tuple[int, ...]] = {
     "M2": (4, 5, 6, 8, 10, 12, 16),
     "M2.5": (5, 6, 8, 10, 12, 16, 20),
     "M3": (5, 6, 8, 10, 12, 16, 20, 25, 30),
+    "M4": (6, 8, 10, 12, 16, 20, 25, 30),
 }
 
 
@@ -183,6 +192,7 @@ HEAT_INSERTS: dict[str, HeatInsert] = {
         size="M2.5", outside_diameter=4.0, depth=4.0, hole_clearance=0.2
     ),
     "M3": HeatInsert(size="M3", outside_diameter=4.6, depth=4.0, hole_clearance=0.2),
+    "M4": HeatInsert(size="M4", outside_diameter=5.6, depth=4.0, hole_clearance=0.2),  # short
 }
 
 

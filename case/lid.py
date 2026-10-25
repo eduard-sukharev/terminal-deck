@@ -177,21 +177,25 @@ class Lid:
             self._floor_top(), top, self.interior_placements or None
         ) if self.interior_placements else []
 
-    def knuckle_rects(self) -> list[tuple[float, float, float, float]]:
-        """XY footprint of the Lid knuckles on the rear wall (mm)."""
+    def hinge_rects(self) -> list[tuple[float, float, float, float]]:
+        """XY footprint of what the hinge adds to the Lid shell: each Lid
+        leaf's pad and the Cable guard's Lid ring with its web (mm)."""
         if self.hinge is None:
             return []
-        width, depth, _, _ = self._outer_bounds()
-        reach = self.hinge.diameter
-        return [
-            (x0, x1, -depth / 2.0 - reach / 2.0, -depth / 2.0 + self.config.wall_thickness)
-            for x0, x1 in self.hinge.lid_knuckle_spans(width)
-        ]
+        _, depth, _, _ = self._outer_bounds()
+        rear_y = -depth / 2.0
+        out = [self.hinge.pad_rect("lid", rear_y, side) for side in ("left", "right")]
+        guard = self.hinge.guard
+        if guard is not None:
+            x0, x1 = guard.lid_ring_span()
+            out.append((x0, x1, rear_y - self.hinge.setback - guard.outer_radius,
+                        rear_y + self.config.wall_thickness))
+        return out
 
     def lug_sites(self):
         """Seam-joint sites per Lid shell Seam (``"lid_shell:<index>"``), two each.
 
-        Clear of the display stack, the Bezel bosses and the Lid knuckles.
+        Clear of the display stack, the Bezel bosses and the hinge pads.
         """
         from geometry import seam_joint
 
@@ -206,7 +210,7 @@ class Lid:
             keepouts = self._interior_rects(self._floor_top() + spec.size + self.config.clearance.shell)
             r = self.boss_outer_diameter() / 2.0
             keepouts += [(x - r, x + r, y - r, y + r) for x, y in self.screw_positions()]
-            keepouts += self.knuckle_rects()
+            keepouts += self.hinge_rects()
             for i, seam in enumerate(split.seams()):
                 sites[f"lid_shell:{i}"] = seam_joint.plan_joints(
                     seam, depth, wall, spec, floor_top=self._floor_top(),
@@ -228,8 +232,8 @@ class Lid:
             features.append(Feature("boss", f"({x:.1f}, {y:.1f})", x - r, x + r, y - r, y + r, part="lid_shell"))
             hole = fasteners.screw(self.config.screws.body).head_diameter / 2.0
             features.append(Feature("boss", f"bezel hole ({x:.1f}, {y:.1f})", x - hole, x + hole, y - hole, y + hole, part="bezel"))
-        for i, (x0, x1, y0, y1) in enumerate(self.knuckle_rects()):
-            features.append(Feature("knuckle", f"#{i}", x0, x1, y0, y1, part="lid_shell"))
+        for i, (x0, x1, y0, y1) in enumerate(self.hinge_rects()):
+            features.append(Feature("hinge", f"#{i}", x0, x1, y0, y1, part="lid_shell"))
         for sid, sites in self.lug_sites().items():
             for sx, sy, backed in sites:
                 x0, x1, y0, y1 = seam_joint.lug_footprint(spec, sx, sy, wall, backed)
@@ -354,49 +358,46 @@ class Lid:
         return self._mount_hinge(body)
 
     def _on_hinge_axis(self, solid):
-        """Move an axis-at-origin hinge solid onto the hinge axis.
+        """Move a hinge-frame solid (closed, world-up) into the Lid's own frame.
 
-        In the Lid's own frame the axis runs along the rear edge, in the Bezel's
-        front plane (the plane the Lid closes on).
+        The Lid is built face-up: its frame is the closed Lid turned over, so
+        hinge-frame Z flips, and the axis runs ``setback`` behind the rear
+        face in the Bezel's front plane (the plane the Lid closes on).
         """
         from utilities import cad_helpers
 
         _, depth, _, outer_top = self._outer_bounds()
-        return cad_helpers.translate(solid, 0.0, -depth / 2.0, outer_top)
+        return cad_helpers.translate(
+            cad_helpers.mirror_z(solid), 0.0, -depth / 2.0 - self.hinge.setback, outer_top
+        )
+
+    def hinge_pad_support(self) -> float:
+        """Hinge-frame Z the Lid leaf's pad reaches up to: half into the back."""
+        return self.height() - self.config.wall_thickness / 2.0
 
     def _mount_hinge(self, body):
-        """Notch the shell for the Base knuckle and fuse the Lid knuckles on.
+        """Fit the Lid shell ``body`` to the Torque hinges (ADR 0007).
 
-        The knuckles keep to the rear wall's thickness so they stay out of the
-        display cavity. Without a hinge, ``body`` is returned unchanged.
+        Fuses a pad over each Lid leaf and the Cable guard's Lid ring on, then
+        cuts each Leaf's pocket, the insert bores and the Cable slot. Without
+        a hinge, ``body`` is returned unchanged.
         """
         from utilities import cad_helpers
 
         if self.hinge is None:
             return body
-        width, depth, _, outer_top = self._outer_bounds()
-        wall = self.config.wall_thickness
-        reach = self.hinge.diameter
-        # Rolled rear edge: the Lid half of a full-width barrel on the hinge
-        # axis, kept to the rear wall's thickness like the knuckles.
-        roll_slab = cad_helpers.translate(
-            cad_helpers.box_centered(width, reach + wall, reach),
-            0.0, -depth / 2.0 - reach / 2.0 + wall / 2.0, outer_top - reach / 2.0,
-        )
-        roll = cad_helpers.intersect(
-            self._on_hinge_axis(self.hinge.build_lid_roll(width)), roll_slab
-        )
-        body = cad_helpers.union(body, roll)
-        body = cad_helpers.cut(body, self._on_hinge_axis(self.hinge.build_lid_notch(width)))
-        slab = cad_helpers.translate(
-            cad_helpers.box_centered(width, reach + wall, 4 * reach),
-            0.0, -depth / 2.0 - reach / 2.0 + wall / 2.0, outer_top,
-        )
-        knuckles = cad_helpers.intersect(
-            self._on_hinge_axis(self.hinge.build_lid_knuckles(width)), slab
-        )
-        body = cad_helpers.union(body, knuckles)
-        return cad_helpers.cut(body, self._on_hinge_axis(self.hinge.build_lid_bores(width)))
+        h, setback = self.hinge, self.hinge.setback
+        support = self.hinge_pad_support()
+        adds, cuts = [], []
+        for side in ("left", "right"):
+            adds.append(h.build_pad("lid", side, support, bored=False))
+            cuts.append(h.build_pocket("lid", side))
+            cuts.append(h.build_insert_bores("lid", side, support))
+        if h.guard is not None:
+            adds.append(h.guard.build_lid(setback))
+            cuts.append(h.guard.build_slot("lid", setback))
+        body = cad_helpers.union(body, *[self._on_hinge_axis(a) for a in adds])
+        return cad_helpers.cut(body, *[self._on_hinge_axis(c) for c in cuts])
 
     def build_bezel(self):
         """Generate the Bezel: the front plate with the glass opening.

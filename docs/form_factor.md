@@ -8,7 +8,8 @@ with lasting trade-offs are in `docs/adr/`.
 * **NEC MobilePro 900** — overall footprint (~243 × 126 mm). Our Envelope is
   display-limited at ~236 × 118 mm, already in that class.
 * **Jornada P6** (r/cyberDeck prototype; images in `docs/reference/`) —
-  hinge, rounded rear roll, keyboard Well, recessed feet, lid proportions.
+  keyboard Well, recessed feet, lid proportions (its printed hinge and
+  rounded rear roll gave way to Torque hinges, ADR 0007).
 * **Micro Journal Rev.2 ReVamp** — the Visor.
 
 No palm rest. The Micro Journal "large palm rest" requirement is dropped.
@@ -68,65 +69,45 @@ point) minus the Deck top. Each run checks `visor-closes-flush`,
 * The rear wall carries a row of vertical 0.8 mm vent slots
   (`geometry/vents.py`). A slot may stand over a connector cutout, starting a
   wall above it (or beside it); it is left out only over the Seam bands and
-  what is fused to the wall's inside (merged columns, saddles, Deck Seam
+  what is fused to the wall's inside (merged columns, hinge pads, Deck Seam
   lugs). A wall-thick solid band runs across the Parting plane, so neither
   the Tray's top edge nor the Deck's bed face is a comb, and the slots stop a
-  wall below the hinge pocket.
+  wall below the Base leaf's pocket.
 * Battery cells lie in printed floor cradles; side-by-side cells' cradles
   meet flush and print as one block.
 
 ## Hinge
 
-Printed friction hinge (ADR 0004, amended by ADR 0005), Jornada P6 layout: a
-Lid knuckle at each corner and one long Base knuckle in the middle. Each Lid
-knuckle is clamped between the Base knuckle and an outer end cheek by an M3
-bolt whose head and captive nyloc nut are both on the stationary Base side,
-with steel and spring washers between the rubbing faces; the head sits under a
-removable service cap and tightening it sets the friction. The end cheeks are
-fused to the Deck, one per Deck Section. The Base knuckle is a separate
-D-profile bar, hollow between its lands (the display cable tunnel,
-`hinge.wire_tunnel`), that sits in a pocket in the Deck's rear edge with its
-flat against the Deck: the two friction bolts hold it along the axis and tie
-the Deck Sections together, and a saddle block on the inside of the rear skirt
-backs its flat at each land, from the Parting plane up to the Deck roof (as
-deep as `hinge.saddle`, less where a component stands closer; the build fails
-if a saddle is thinner than a wall). Nothing of the hinge reaches below the
-Parting plane, so the Tray's rear wall and its ports stay clear. Knuckle
-diameter must leave at least `wall.thickness` around the tunnel. The Lid
-knuckles are fused to the Lid shell's side Sections (no Seam crosses them);
-the Lid's rear edge is rolled (`Hinge.build_lid_roll`) and the roll counts as
-wall, so Lid shell Seams pass through it. All dimensions are in the `hinge:`
-config section and the layout math stays in `components/hinge.py`.
+Two purchased metal Torque hinges (ADR 0007; reference part XK574-6-16,
+2 N·m), the left one the mirror of the right about the centerline. The part is
+data in the `hinge:` config section: a barrel on the Hinge axis and two
+Leaves, each with its offset from the axis, its extent and its holes, all in
+the hinge's own frame. Only the right hinge's X is configured (`hinge.x`,
+between the hub and the battery, whose cells stand taller than the Base leaf,
+and clear of the rear Deck column).
 
-## Printing
+The case adapts to that description (`components/hinge.py`):
 
-Every wide part is split into Sections (ADR 0003): Tray and Lid shell into
-three, with stepped Seams (`__--__--__`) mirrored about the centerline; Bezel
-and Deck into two along a straight Seam at x=0; the keyboard plate into two at
-the key-column gap nearest the center. Seams are staggered between parts
-screwed to each other, and no Seam (with its steps and a wall of margin)
-crosses a rib, boss, standoff, column, cradle, vent or lug — derived features
-such as ribs are laid out to clear it, and the build fails otherwise. Seam
-positions and step sizes come from config, per part.
+* The Hinge axis lies in the closed plane (Lid underside), set back behind
+  the rear face by the barrel's or the Cable guard's radius plus a swing
+  clearance. With the axis outside the shells the Lid swings through
+  `hinge.travel` without a rear roll or notches; the build fails if any
+  point of the Lid's side profile or its Leaf would enter the Base.
+* Each Leaf lies flat inside its shell: the Base leaf under the Deck slab,
+  the Lid leaf against the Lid's back. Each gets a pocket (`hinge.fit` all
+  round, through the rear wall) and a pad a wall wider than the Leaf from the
+  Leaf to the shell, with an M4 heat-set insert per hole. The build fails if
+  an insert has no room, a hole's insert falls outside the case, a Leaf
+  leaves its shell, or a component stands in a Leaf's pad.
+* The display FPC makes one turn round the Cable guard on the axis, facing
+  the driver's HDMI plug: a core (the FPC's minimum bend radius) and a ring,
+  part of the Deck through two end discs and arms, inside a Lid ring that
+  turns with the Lid. Each ring covers only the angles no cable entry ever
+  reaches through the travel. The cable passes through a Cable slot in the
+  Deck's and the Lid shell's rear walls. The build fails if the guard
+  overlaps a hinge or a Deck Seam.
 
-Each Section has a flat bed face and a declared print orientation (HARD);
-overhangs steeper than 45° are reported (SOFT) as needing support. The Deck
-prints Parting face down with supports under its sloped roof.
-
-A boss, column, standoff or lug closer than `2·wall` to a wall becomes a
-**Merged boss**: the gap is filled (hull to the wall, both walls in a
-corner), and its bore may move toward the wall as long as at least
-`wall.thickness + 0.5` mm remains between bore and outer skin. Battery cradles
-are exempt.
-
-Concave joints (wall–floor, boss–wall, boss–floor, rib–floor, Merged
-boss–wall) get a stress-relief edge of `0.5·wall` by default: a 45° chamfer
-where the edge is horizontal in print orientation, a fillet allowed where it
-runs along print Z. A stepped Seam's notch corner gets that fillet like any
-other, so the tab corner of the neighbouring Section that fits into it is
-rounded too, `edges.seam_convex_extra` (0.5 mm) larger, and the two still
-mate. The bed-face outer edge gets a 0.5 mm chamfer against elephant's foot.
-Where an edge treatment doesn't fit it is skipped with a SOFT warning.
+The pads and the guard are structural features: no Seam may cross them.
 
 Sections of one part are joined for good by Seam lugs (ADR 0006,
 `geometry/seam_joint.py`): a lug straddles the Seam, bored through along X
@@ -134,9 +115,9 @@ for a length of 1.75 mm filament that is pushed in after the Sections are put
 together, glued, and trimmed flush (`seam_pin` in the config). Each Seam of
 the Tray and the Lid shell gets two lugs on the floor, the Deck's Seam two
 standing on the Parting plane — one in the front skirt under the keyboard
-plate, one in the rear skirt under the Base knuckle. Sites are tried at the
+plate, one in the rear skirt. Sites are tried at the
 Seam's end segments, then the interior ones, skipping any whose lug would
-touch the components inside, a boss, column, cradle, saddle or connector
+touch the components inside, a boss, column, cradle, hinge pad or connector
 cutout; the build fails if fewer than two clear sites exist on a Seam. Ribs
 are laid out between the Seam bands and the lugs. Bezel Sections are joined
 through the Lid shell bosses; screws stay wherever one part is held to
@@ -144,19 +125,17 @@ another, so the case still opens for service.
 
 Seam defaults are tuned per part: the Tray's sit at ±59 mm (clear of the SBC
 bosses, the battery cradles and the rear-wall connector cutouts); the Lid
-shell's at ±40 mm. Stepped Seams jog away from the centerline, so the pair
+shell's at ±66 mm (outboard of the hinge pads and the Cable guard). Stepped Seams jog away from the centerline, so the pair
 mirrors about it.
 
 Fitting the plate Seam standoffs meant moving the SBC 10.3 mm forward and 2 mm
 right in `config/layouts/clamshell.yaml` (and raising the plate by 0.8 mm to
 keep the board's clearance): a standoff runs floor to plate and cannot pass
-through the board. The Base knuckle used to be screwed to the Tray floor (ADR 0004); the hub
-and the battery stand against the rear wall and the Tray wall is only as tall
-as the Parting plane, so it is seated in the Deck instead (ADR 0005).
+through the board.
 
 ## Review renders
 
 Every assembly target is also exported as glTF with one color per component,
 and the Base/Lid shells translucent, so the Sections, Seams and internal parts
-can be told apart when reviewing a design. New parts (Visor, hinge knuckles,
-service caps, each Section) need their own entry in `utilities/colors.py`.
+can be told apart when reviewing a design. New parts (Visor, Torque hinges,
+each Section) need their own entry in `utilities/colors.py`.

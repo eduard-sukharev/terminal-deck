@@ -79,9 +79,8 @@ A full `make all` takes ~8 minutes for that reason.
   face. Naming a Section on its own (e.g. `--targets lid_shell_center`)
   exports only that Section; naming the part or a bucket containing it exports
   all of them.
-- `base_knuckle` — the separate Base knuckle bar of the hinge (ADR 0004, 0005)
-- `hinge` — Lid knuckles, bolts, nuts, washers, service caps and the Base
-  knuckle, one color per piece
+- `hinge` — the two purchased Torque hinges (ADR 0007), closed, on the Hinge
+  axis
 - `display` — LCD panel + HDMI driver combined (the sub-assembly, fast)
 - `components` — all per-component debug STLs
 - `comp:<role>` — a single component's raw STL (e.g. `comp:driver`, `comp:display`)
@@ -110,9 +109,9 @@ intuition. Wire-up for the full pipeline lives in `main.py` (`BuildPipeline`,
   `case.Base.build_top()` produce the Tray (bosses/columns/ribs/vents/cutouts,
   up to the Parting plane) and the Deck (skirt, slab, Well, keyboard cutout,
   insert bosses); `case/base_fastening.py` holds their CAD-free fastening data
-  (Parting plane, Deck columns, Seam bands/lugs, hinge saddles); `case.Lid.build_shell()` and
+  (Parting plane, Deck columns, Seam bands/lugs, hinge pads); `case.Lid.build_shell()` and
   `case.Lid.build_bezel()` produce the lid rear tray and front bezel (glass
-  opening); `components/hinge.py` builds the Lid knuckles, the Base knuckle (D-bar with the cable tunnel, seated in the Deck), the end cheeks fused to the Deck, the Deck notches and the bolt hardware;
+  opening); `components/hinge.py` describes the purchased Torque hinges from config (Leaves, holes, the derived axis setback, sweep check) and builds each Leaf's pocket and insert pad, `components/cable_guard.py` the Cable guard on the Hinge axis;
   `geometry/*` hold the primitives.
 - `utilities/cad_helpers.py` is the **only** CAD adapter (build123d); it imports
   lazily so the data layer stays importable without a CAD library. Geometry

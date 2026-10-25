@@ -466,34 +466,35 @@ def test_plate_has_eight_standoffs_and_the_seam_ones_clear_the_sbc():
 
 
 def _hinged_base():
-    from dataclasses import asdict
+    from components.cable_guard import CableGuard
     from components.hinge import Hinge
     base, cfg = _base()
-    base.hinge = Hinge(asdict(cfg.hinge), wall_thickness=cfg.wall_thickness)
+    guard = CableGuard(cfg.cable_guard, wall_thickness=cfg.wall_thickness, x=-48.5, travel=cfg.hinge.travel)
+    base.hinge = Hinge(cfg.hinge, wall_thickness=cfg.wall_thickness, guard=guard)
     return base, cfg
 
 
-def test_saddles_back_both_bolt_lands_from_the_rear_wall():
+def test_hinge_pads_stand_inside_the_case_from_the_rear_face():
     base, cfg = _hinged_base()
-    saddles = base.saddle_rects()
-    wall = cfg.wall_thickness
-    rear_in = base.wall_bounds().y0
-    lands = base.hinge.land_spans(base.size().width)
-    assert set(saddles) == {"left", "right"}
-    for (x0, x1, y0, y1), (l0, l1) in zip(saddles.values(), lands):
-        assert (x0, x1) == (l0, l1)
-        assert y0 == rear_in and wall <= y1 - y0 <= base.hinge.saddle
+    rects = base.hinge_rects()
+    rear = -base.size().depth / 2.0
+    assert {"left", "right", "cable guard"} <= set(rects)
+    for side in ("left", "right"):
+        x0, x1, y0, y1 = rects[side]
+        assert y0 == rear and y1 > rear + cfg.wall_thickness
+        assert x1 - x0 == base.hinge.part.leaves["base"].width + 2 * cfg.wall_thickness
 
 
-def test_saddles_stop_short_of_the_components():
+def test_hinge_pads_clear_the_base_components():
     base, cfg = _hinged_base()
-    zp = base.parting_height()
-    gap = cfg.clearance.shell
-    rects = base.assembly.keepout_rects(zp, base.deck_level_at(base.wall_bounds().y0), base._base_placements())
-    for x0, x1, y0, y1 in base.saddle_rects().values():
-        for ox0, ox1, oy0, oy1 in rects:
-            if ox0 < x1 and ox1 > x0:
-                assert y1 <= oy0 - gap + 1e-9
+    h, axis_z = base.hinge, base.hinge_axis_z()
+    z0 = axis_z + h.leaf_z("base")[0]
+    for x0, x1, y0, y1 in (base.hinge_rects()[s] for s in ("left", "right")):
+        for p in base.assembly.placements:
+            px0, py0, px1, py1 = p.box
+            pz0, pz1 = p.z_bounds()
+            overlap = px0 < x1 and px1 > x0 and py0 < y1 and py1 > y0 and pz1 > z0
+            assert not overlap, p.component.name
 
 
 def test_deck_seam_has_a_front_and_a_rear_lug_on_the_parting_plane():
@@ -524,10 +525,10 @@ def test_rear_right_corner_takes_a_deck_column_beside_the_battery():
     assert corner[0].x > b.x1 - corner[0].spec.outer_diameter
 
 
-def test_deck_lug_and_saddles_clear_the_seam_check():
+def test_deck_lug_and_hinge_pads_clear_the_seam_check():
     base, _ = _hinged_base()
     features = base.structural_features()
-    assert sum(f.kind == "saddle" for f in features) == 2
+    assert sum(f.kind == "hinge" for f in features) == 3
     assert any(f.kind == "lug" and f.joins == "deck:0" for f in features)
 
 

@@ -131,30 +131,27 @@ class Keyboard:
 
 @dataclass(frozen=True)
 class Hinge:
-    """Printed friction hinge (ADR 0004). Lengths in mm along the hinge axis.
+    """Purchased Torque hinges (ADR 0007). ``part`` describes the hinge in its
+    own frame; ``components.hinge.TorqueHinge`` parses it."""
 
-    From each end of the span inward: an end cheek, a Lid knuckle, then the
-    Base knuckle; ``washer_stack`` separates the rubbing faces. An M3 bolt
-    (``friction_bolt``) runs cheek -> Lid knuckle -> Base knuckle land into a
-    captive nyloc nut; its head sits under a removable service cap.
-    """
+    x: float                      # X of the right hinge's centre (the left is mirrored)
+    part: dict[str, Any]          # barrel, leaf thickness, Leaves and their holes
+    travel: float = 180.0         # opening angle the Lid swings clear through (deg)
+    swing_clearance: float = 0.5  # gap between a swinging part and a fixed one
+    fit: float = 0.2              # gap around a Leaf in its pocket
+    insert: str = "M4"            # heat-set insert per Leaf hole (fastener library)
 
-    diameter: float               # knuckle outer diameter (>= wire_tunnel + 2 * wall)
-    wire_tunnel: float            # display cable tunnel bore through the Base knuckle
-    lid_knuckle: float = 20.0     # length of each Lid corner knuckle
-    washer_stack: float = 1.2     # steel + spring washer between rubbing faces
-    land: float = 8.0             # solid bolt-bearing length at each Base knuckle end
-    end_cheek: float = 5.0        # thickness of each outer Base end cheek
-    saddle: float = 6.0           # Deck saddle block depth behind the Base knuckle's flat
-    fit: float = 0.2              # gap between the Base knuckle and its Deck pocket
-    cap_thickness: float = 2.0    # removable service cap head thickness
-    cap_plug: float = 4.0         # service cap plug depth into the head recess
-    end_inset: float = 9.0        # hinge span inset from each case side
-    friction_bolt: str = "M3"     # bolt size (fastener library)
-    swing_clearance: float = 0.5  # gap between a swinging knuckle's circle and a fixed part
-    side_overrun: float = 1.0     # how far a notch or bore runs past the case side
-    head_recess_margin: float = 0.5  # head recess depth beyond the bolt head
-    cap_margin: float = 2.0       # service cap diameter inset from the knuckle diameter
+
+@dataclass(frozen=True)
+class CableGuard:
+    """The display cable's turn around the Hinge axis (ADR 0007)."""
+
+    fpc_width: float
+    fpc_thickness: float
+    min_bend_radius: float        # the core radius
+    turns: int = 1
+    fit: float = 0.5              # room around the coil and between the moving halves
+    entry_angle: float = 30.0     # angular width of each cable entry (deg)
 
 
 @dataclass(frozen=True)
@@ -375,6 +372,7 @@ class Config:
     glass: Glass
     keyboard: Keyboard
     hinge: Hinge
+    cable_guard: CableGuard
     screws: Screws
     material: Material
     hardware: dict[str, Any] = field(default_factory=dict)
@@ -425,6 +423,7 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
     glass = _as_dict(raw, "glass")
     keyboard = _as_dict(raw, "keyboard")
     hinge = _as_dict(raw, "hinge")
+    cable_guard = _as_dict(raw, "cable_guard")
     screws = _as_dict(raw, "screws")
     material = _as_dict(raw, "material")
 
@@ -462,7 +461,11 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
             controller=keyboard.get("controller"),
         ),
         hinge=Hinge(**{
-            k: (str(v) if k == "friction_bolt" else float(v)) for k, v in hinge.items()
+            k: (dict(v) if k == "part" else str(v) if k == "insert" else float(v))
+            for k, v in hinge.items()
+        }),
+        cable_guard=CableGuard(**{
+            k: (int(v) if k == "turns" else float(v)) for k, v in cable_guard.items()
         }),
         screws=Screws(
             body=str(screws["body"]), standoff=str(screws["standoff"]),

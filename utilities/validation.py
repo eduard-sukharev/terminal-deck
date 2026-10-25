@@ -306,71 +306,137 @@ def check_lid_clearance(
     )
 
 
-def check_hinge_clearance(
-    knuckle_box: tuple[float, float, float, float, float, float],
-    placements: list[Any],
+def check_torque_hinge(
+    hinge: Any,
     report: ValidationReport,
-    extra_boxes: dict[str, tuple[float, float, float, float, float, float]] | None = None,
+    *,
+    case_width: float,
+    case_depth: float,
+    base_top: float,
+    parting: float,
+    lid_height: float,
+    wall: float,
+    minimum_feature: float,
+    base_placements: list[Any],
+    axis_world: tuple[float, float],
+    lid_placements: list[Any],
+    lid_axis: tuple[float, float],
+    deck_seams: list[float],
+    deck_columns: list[tuple[float, float, float, float]] = (),
 ) -> None:
-    """Fail if a placed component intrudes on the Base-side hinge pieces.
+    """HARD checks that the case can take the Torque hinges (ADR 0007).
 
-    ``knuckle_box`` is ``(x0, x1, y0, y1, z0, z1)`` in world coordinates: the
-    part of the Base knuckle bar that sits inside the case. ``extra_boxes``
-    names the other Base-side hinge pieces (the end cheeks, the saddles) the
-    same way.
+    Heights are in the hinge frame (axis at 0, closed, Base below): the Deck
+    top ``base_top``, the Parting plane ``parting`` and the Lid's back
+    ``lid_height``. ``axis_world`` is the axis ``(y, z)`` in the world frame
+    of ``base_placements``; ``lid_axis`` the same in the Lid's own (turned
+    over) frame of ``lid_placements``.
     """
-    boxes = {"Base knuckle": knuckle_box, **(extra_boxes or {})}
+    rear_y = -case_depth / 2.0
+    insert = hinge.insert()
+    sides = ("left", "right")
+
+    # Each insert bore fits between its Leaf and the shell's outer surface.
+    rooms = {
+        "base": hinge.insert_room("base", base_top, minimum_feature),
+        "lid": hinge.insert_room("lid", lid_height, minimum_feature),
+    }
+    short = [f"{w} {r:.1f} mm" for w, r in rooms.items() if r < insert.depth - 1e-9]
+    report.add(
+        "hinge-insert-depth", not short,
+        f"room for the {insert.size} inserts: "
+        + ", ".join(f"{w} {r:.1f} mm" for w, r in rooms.items())
+        + (f" (< {insert.depth:g} mm: {', '.join(short)})" if short else ""),
+    )
+
+    # The Base leaf stays above the Parting plane (it belongs to the Deck);
+    # the Lid leaf stays inside the Lid's back.
+    base_low = hinge.leaf_z("base")[0] - hinge.fit
+    lid_high = hinge.leaf_z("lid")[1] + hinge.fit
+    report.add(
+        "hinge-leaf-in-shell",
+        base_low >= parting - 1e-9 and lid_high <= lid_height - wall + 1e-9,
+        f"Base leaf down to {base_low:.1f} mm (Parting plane {parting:.1f}), "
+        f"Lid leaf up to {lid_high:.1f} mm (Lid back {lid_height - wall:.1f})",
+    )
+
+    # Every hole's insert sits in the pad, inside the case, with a skin round it.
+    bad = []
+    r = insert.outside_diameter / 2.0 + minimum_feature
+    for which in ("base", "lid"):
+        for side in sides:
+            for x, y, _ in hinge.holes(which, rear_y, side):
+                if y - r < rear_y - 1e-9 or abs(x) + r > case_width / 2.0 - wall + 1e-9:
+                    bad.append(f"{which} {side} ({x:.1f}, {y:.1f})")
+    report.add(
+        "hinge-holes-in-material", not bad,
+        "every Leaf hole's insert sits inside the case" if not bad
+        else f"insert outside the case: {', '.join(bad)}",
+    )
+
+    # The Lid swings clear of the Base through its whole travel.
+    hits = hinge.sweep_hits(lid_depth=case_depth, lid_height=lid_height)
+    report.add(
+        "hinge-sweep-clears", not hits,
+        f"the Lid swings clear through {hinge.travel:g} deg" if not hits
+        else f"the Lid enters the Base at {hits[0][0]:.0f} deg ({len(hits)} sample hits)",
+    )
+
+    # No component inside a Leaf or its pad (Base: world frame; Lid: its own).
     hits = []
-    for label, (kx0, kx1, ky0, ky1, kz0, kz1) in boxes.items():
-        for p in placements:
-            x0, y0, x1, y1 = p.box
-            z0, z1 = p.z_bounds()
-            if x0 < kx1 and x1 > kx0 and y0 < ky1 and y1 > ky0 and z0 < kz1 and z1 > kz0:
-                hits.append(f"{p.component.__class__.__name__} in {label}")
+    for which, placements, (ay, az), flip in (
+        ("base", base_placements, axis_world, 1.0),
+        ("lid", lid_placements, lid_axis, -1.0),
+    ):
+        z0, z1 = hinge.leaf_z(which)
+        pad_z = (base_top, z0) if which == "base" else (z1, lid_height)
+        lo, hi = min(z0, pad_z[0], pad_z[1]), max(z1, pad_z[0], pad_z[1])
+        zs = sorted((az + flip * lo, az + flip * hi))
+        for side in sides:
+            kx0, kx1, ky0, ky1 = hinge.pad_rect(which, rear_y, side)
+            for p in placements:
+                x0, y0, x1, y1 = p.box
+                pz0, pz1 = p.z_bounds()
+                if x0 < kx1 and x1 > kx0 and y0 < ky1 and y1 > ky0 and pz0 < zs[1] and pz1 > zs[0]:
+                    hits.append(f"{p.component.__class__.__name__} in the {side} {which} leaf pad")
+    for side in sides:
+        kx0, kx1, ky0, ky1 = hinge.pad_rect("base", rear_y, side)
+        for cx0, cx1, cy0, cy1 in deck_columns:
+            if cx0 < kx1 and cx1 > kx0 and cy0 < ky1 and cy1 > ky0:
+                hits.append(f"Deck column ({(cx0 + cx1) / 2:.1f}, {(cy0 + cy1) / 2:.1f}) in the {side} base leaf pad")
     report.add(
-        "hinge-clears",
-        not hits,
-        f"components inside the hinge's Base-side pieces: {', '.join(hits)}" if hits
-        else "no component inside the hinge's Base-side pieces",
+        "hinge-clears", not hits,
+        f"components inside the hinge: {', '.join(hits)}" if hits
+        else "no component or Deck column inside a Leaf or its pad",
     )
 
-
-def check_hinge_sweep(
-    cheek_spans: tuple[tuple[float, float], ...],
-    bar_span: tuple[float, float],
-    lid_notches: tuple[tuple[float, float], ...],
-    report: ValidationReport,
-) -> None:
-    """Fail unless the Lid's opening sweep clears the Base-side hinge pieces.
-
-    The Lid swings about the hinge axis, so every Base-side piece on the axis
-    within the Lid's width (the end cheeks and the Base knuckle) must lie in a
-    Lid shell notch. Nothing else of the hinge reaches below the Deck
-    (ADR 0005).
-    """
-    uncovered = [
-        f"{kind} {lo:g}..{hi:g}"
-        for kind, (lo, hi) in [("cheek", c) for c in cheek_spans] + [("bar", bar_span)]
-        if not any(n0 <= lo + 1e-9 and hi <= n1 + 1e-9 for n0, n1 in lid_notches)
-    ]
-    report.add(
-        "hinge-sweep-clears", not uncovered,
-        f"not inside a Lid notch: {', '.join(uncovered)}" if uncovered
-        else "end cheeks and Base knuckle clear the Lid's opening sweep",
-    )
+    guard = hinge.guard
+    if guard is not None:
+        gx0, gx1 = guard.span()
+        crossing = []
+        for side in sides:
+            x0, x1, _, _ = hinge.pad_rect("base", rear_y, side)
+            if gx0 < x1 and gx1 > x0:
+                crossing.append(f"{side} hinge")
+        crossing += [f"Deck Seam x={x:g}" for x in deck_seams if gx0 - wall < x < gx1 + wall]
+        report.add(
+            "cable-guard-clear", not crossing,
+            f"Cable guard {gx0:.1f}..{gx1:.1f} clear of the hinges and Deck Seams" if not crossing
+            else f"Cable guard {gx0:.1f}..{gx1:.1f} overlaps {', '.join(crossing)}",
+        )
 
 
 def check_hinge_fits(
     diameter: float, base_rear_height: float, lid_height: float, report: ValidationReport
 ) -> None:
-    """Fail if the knuckle, centred on the closed interface plane, would stand
-    proud of the Base's or the Lid's rear face (needs half a diameter each side)."""
+    """Fail if the hinge barrel, centred on the closed interface plane, would
+    reach past the Base's bottom or the Lid's back (half a diameter each side)."""
     radius = diameter / 2.0
     room = min(base_rear_height, lid_height)
     report.add(
         "hinge-fits",
         radius <= room,
-        f"knuckle radius {radius:.2f} mm vs rear room {room:.2f} mm "
+        f"barrel radius {radius:.2f} mm vs rear room {room:.2f} mm "
         f"(Base {base_rear_height:.2f}, Lid {lid_height:.2f})",
     )
 
@@ -514,7 +580,7 @@ def check_seams(
 class Feature:
     """A structural feature's XY footprint (mm), for Seam clearance.
 
-    ``kind`` is rib, boss, standoff, column, cradle, vent, lug, saddle or knuckle.
+    ``kind`` is rib, boss, standoff, column, cradle, vent, lug or hinge.
     ``joins`` names the Seam (``"<part>:<index>"``, as keyed by
     :func:`seam_bands`) that a Seam-joint lug is *meant* to straddle; that one
     Seam is exempt, every other Seam must still keep clear of it. ``part``

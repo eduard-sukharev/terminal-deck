@@ -513,7 +513,7 @@ constraints:
     gap: 2.0
     axis: z
 
-  # HDMI from the SBC to the driver board, through the hinge wire tunnel.
+  # HDMI from the SBC to the driver board, around the Cable guard on the Hinge axis.
   - kind: cable_path
     from_component: sbc
     from_connector_type: HDMI
@@ -523,5 +523,5 @@ constraints:
       - 0.0
       - "0 - ({battery.width} - 2.0 + {keyboard.depth} + 2 * {config.clearance.shell} + 2 * {config.wall_thickness}) / 2 - {config.wall_thickness}"
       - "{keyboard.height} + {config.clearance.shell}"
-    clearance_diameter: "{config.hinge.wire_tunnel}"
+    clearance_diameter: "{config.cable_guard.fpc_width}"
     bend_radius: 30.0

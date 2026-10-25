@@ -227,6 +227,22 @@ class BuildPipeline:
         )
         lid.fastening_report(report)
         self._data_lid = lid
+        if base.hinge is not None:
+            from utilities.validation import check_torque_hinge
+
+            check_torque_hinge(
+                base.hinge, report,
+                case_width=size.width, case_depth=size.depth,
+                base_top=base.hinge_base_top(), parting=base.parting_height() - base.hinge_axis_z(),
+                lid_height=lid.height(), wall=config.wall_thickness,
+                minimum_feature=config.material.minimum_feature,
+                base_placements=[p for p in placements if p not in (lid.interior_placements or [])],
+                deck_columns=[base.column_rect(c) for c in base.columns()],
+                axis_world=(-size.depth / 2.0 - base.hinge.setback, base.hinge_axis_z()),
+                lid_placements=lid.interior_placements or [],
+                lid_axis=(-size.depth / 2.0 - base.hinge.setback, lid._outer_bounds()[3]),
+                deck_seams=[seam.x for seam in config.split["deck"].seams()] if "deck" in config.split else [],
+            )
         if plate_local is not None:
             depth = keyboard.plate_model().metadata.height
             check_plate_seam_screws(
@@ -348,7 +364,19 @@ class BuildPipeline:
             f"[pipeline] enclosure: {size.width:.1f} x {size.depth:.1f} x "
             f"{size.height:.1f} mm"
         )
-        hinge = HingePart(asdict(config.hinge), wall_thickness=config.wall_thickness)
+        from components.cable_guard import CableGuard
+
+        # The Cable guard faces the driver's HDMI plug, where the FPC leaves
+        # the Lid (ADR 0007).
+        plug = next(
+            (p for p in placements if p.component is components.get("hdmi_plug_driver")), None
+        )
+        guard = CableGuard(
+            config.cable_guard, wall_thickness=config.wall_thickness,
+            x=(plug.box[0] + plug.box[2]) / 2.0 if plug is not None else 0.0,
+            travel=config.hinge.travel,
+        )
+        hinge = HingePart(config.hinge, wall_thickness=config.wall_thickness, guard=guard)
         base = Base(
             assembly, config, keyboard=components.get("keyboard"), hinge=hinge,
         )
@@ -402,7 +430,7 @@ class BuildPipeline:
         # Keyboard placement is needed for base and hinge.
         needs_keyboard_placement = (
             "base" in buckets or "base_bottom" in buckets or "base_top" in buckets
-            or "hinge" in buckets or "base_knuckle" in buckets
+            or "hinge" in buckets
         )
         keyboard_placement = None
         if needs_keyboard_placement and "keyboard" in components:
@@ -415,7 +443,7 @@ class BuildPipeline:
         needs_lid = "lid" in buckets or "lid_shell" in buckets or "lid_bezel" in buckets
         needs_base = (
             "base" in buckets or "base_bottom" in buckets or "base_top" in buckets
-            or "hinge" in buckets or "base_knuckle" in buckets
+            or "hinge" in buckets
         )
         if needs_lid or needs_base:
             base_obj = base
@@ -495,7 +523,7 @@ class BuildPipeline:
         # Display placement is needed for lid and hinge.
         needs_display_placement = (
             "lid" in buckets or "lid_shell" in buckets or "lid_bezel" in buckets
-            or "hinge" in buckets or "base_knuckle" in buckets
+            or "hinge" in buckets
         )
         if needs_display_placement:
             display = next(p for p in placements if p.component is components["display"])
@@ -532,8 +560,7 @@ class BuildPipeline:
                 interior_placements=self._lid_interior(placements, components),
             )
             from utilities.validation import (
-                ValidationReport, check_hinge_clearance, check_hinge_fits,
-                check_visor_flush,
+                ValidationReport, check_hinge_fits, check_visor_flush,
             )
 
             visor_report = ValidationReport()
@@ -546,34 +573,7 @@ class BuildPipeline:
                 base_obj.closed_plane_z() + lid.height()
             )
             check_hinge_fits(
-                hinge.diameter, base_obj.closed_plane_z(), lid.height(), visor_report
-            )
-            axis_z = base_obj.hinge_axis_z()
-            knuckle_x0, knuckle_x1 = hinge.base_knuckle_span(size.width)
-            rear_y = -size.depth / 2.0
-            check_hinge_clearance(
-                (
-                    knuckle_x0, knuckle_x1,
-                    rear_y, rear_y + config.wall_thickness,
-                    axis_z - hinge.diameter / 2.0, axis_z + hinge.diameter / 2.0,
-                ),
-                placements, visor_report,
-                extra_boxes={
-                    f"{side} end cheek": (
-                        c0, c1, rear_y, rear_y + config.wall_thickness,
-                        axis_z - hinge.diameter / 2.0, axis_z + hinge.diameter / 2.0,
-                    )
-                    for side, (c0, c1) in zip(("left", "right"), hinge.cheek_spans(size.width))
-                } | {
-                    f"{side} saddle": (x0, x1, y0, y1, base_obj.parting_height(), axis_z)
-                    for side, (x0, x1, y0, y1) in base_obj.saddle_rects().items()
-                },
-            )
-            from utilities.validation import check_hinge_sweep
-
-            check_hinge_sweep(
-                hinge.cheek_spans(size.width), hinge.base_knuckle_span(size.width),
-                hinge.lid_notch_spans(size.width), visor_report,
+                hinge.part.barrel_diameter, base_obj.closed_plane_z(), lid.height(), visor_report
             )
             print("[pipeline] closed-device validation:")
             print(visor_report.summary())
@@ -605,36 +605,20 @@ class BuildPipeline:
                     extra_parts=[("case", cad_helpers.union(lid_shell_solid, lid_bezel_solid))],
                 )
 
-        if "base_knuckle" in buckets or "hinge" in buckets:
-            knuckle_solid = base_obj.build_knuckle()
-        if "base_knuckle" in buckets:
-            parts["base_knuckle"] = knuckle_solid
-            gltf_parts["base_knuckle"] = cad_helpers.new_assembly()
-            cad_helpers.assembly_add(
-                gltf_parts["base_knuckle"], knuckle_solid, "Base knuckle",
-                color_for("base_knuckle"),
-            )
-
         if "hinge" in buckets:
+            # The purchased Torque hinges, closed, on the Hinge axis; one
+            # color per hinge (they are steel, not printed).
             hinge_z = base_obj.hinge_axis_z()
-            on_axis = lambda s: cad_helpers.translate(s, 0.0, -size.depth / 2.0, hinge_z)
-            hardware = on_axis(hinge.build_hardware(size.width))
-            lid_knuckles = on_axis(hinge.build_lid_knuckles(size.width))
-            # The end cheeks are Deck (ADR 0005); shown here for context.
-            cheek_solid = on_axis(cad_helpers.cut(
-                hinge.build_cheeks(size.width), hinge.build_cheek_bores(size.width)
-            ))
-            parts["hinge"] = cad_helpers.union(hardware, lid_knuckles, knuckle_solid, cheek_solid)
-            # One color per hinge piece: the Base knuckle, the end cheeks, the
-            # Lid knuckles and the bolts/nuts/washers/caps.
+            on_axis = lambda s: cad_helpers.translate(
+                s, 0.0, -size.depth / 2.0 - hinge.setback, hinge_z
+            )
+            bodies = {side: on_axis(hinge.build_part(side)) for side in ("left", "right")}
+            parts["hinge"] = cad_helpers.union(*bodies.values())
             colored = cad_helpers.new_assembly()
-            for role, label, shape in (
-                ("base_knuckle", "Base knuckle", knuckle_solid),
-                ("end_cheek", "End cheeks (Deck)", cheek_solid),
-                ("lid_knuckle", "Lid knuckles", lid_knuckles),
-                ("hinge_hardware", "Bolts, nuts, washers, caps", hardware),
-            ):
-                cad_helpers.assembly_add(colored, shape, label, color_for(role))
+            for side, shape in bodies.items():
+                cad_helpers.assembly_add(
+                    colored, shape, f"Torque hinge ({side})", color_for("torque_hinge")
+                )
             gltf_parts["hinge"] = colored
 
         # ── Opened assembly: base in ZX plane, lid upward, LCD faces +Z ──
@@ -702,16 +686,16 @@ class BuildPipeline:
             #   Hinge at (0, -depth/2, hinge_z) → (0, hinge_z, depth/2)
             base_u = cad_helpers.rotate_x(base_solid, -90)
             lid_u = cad_helpers.rotate_x(lid_solid, -90)
-            hinge_u = hinge.build(case_depth=size.width)
+            hinge_u = hinge.build()
             hinge_u = cad_helpers.translate(
-                hinge_u, 0.0, -depth / 2.0, hinge_z
+                hinge_u, 0.0, -depth / 2.0 - hinge.setback, hinge_z
             )
             hinge_u = cad_helpers.rotate_x(hinge_u, -90)
 
             # Step 2: open the lid +90° about the hinge axis so it extends
             # in +Y (upward from the base) with the LCD facing +Z.
             ax_y = hinge_z
-            ax_z = depth / 2.0
+            ax_z = depth / 2.0 + hinge.setback
             lid_open = cad_helpers.rotate_about(
                 lid_u, (0.0, ax_y, ax_z), (1.0, ax_y, ax_z), 90
             )
@@ -726,7 +710,7 @@ class BuildPipeline:
             # center so the LCD faces +Z again (the Y flip flipped it to -Z).
             # Hinge after step 3: (0, hinge_z, -depth/2) along X.
             hy = hinge_z
-            hz = -depth / 2.0
+            hz = -depth / 2.0 - hinge.setback
             lid_f = cad_helpers.rotate_about(lid_f, (0, hy, hz), (0, hy + 1, hz), 180)
 
             # Step 5: translate the lid in -Z so its +Z face (LCD side) sits
@@ -957,7 +941,7 @@ class BuildPipeline:
                     "plate": len(components["keyboard"].mounting_holes()),
                     "bezel": len(lid_data.screw_positions()) if lid_data else 0,
                     "deck": len(base.columns()),
-                    "hinge_bolts": 2,
+                    "hinge": hinge.screw_count(),
                     "deck_seam_lug": sum(len(v) for v in base.deck_lug_sites().values()),
                 },
                 "checks": {c.name + (f"#{i}" if sum(1 for d in fastening_report.checks if d.name == c.name) > 1 else ""): c.passed

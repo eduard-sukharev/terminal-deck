@@ -21,25 +21,51 @@ clearance:
   insert: 0.2           # heat-set insert hole clearance (diameter oversize)
   screw: 0.6            # minimum radial clearance around a screw head / boss
 
+# Torque hinges (ADR 0007): two purchased metal friction hinges, the left one
+# always the mirror of the right about the case centerline. The part is
+# described as data in its own frame (Hinge axis along X at the origin, +Y
+# toward the case interior, Base leaf below the axis and Lid leaf above it
+# when closed); the case adapts to it: the axis is set back behind the rear
+# face far enough to swing clear, each Leaf gets a pocket and a pad with a
+# heat-set insert per hole. Nothing here places the axis by hand.
 hinge:
-  diameter: 13          # knuckle outer diameter (>= wire_tunnel + 2 * wall.thickness)
-  wire_tunnel: 8        # display cable tunnel bore, through the Base knuckle
-  lid_knuckle: 20       # length of each Lid corner knuckle
-  washer_stack: 1.2     # steel + spring washer between rubbing faces
-  land: 8               # solid bolt-bearing length at each Base knuckle end
-  end_cheek: 5          # thickness of each outer Base end cheek
-  saddle: 6             # how deep each Deck saddle block backs the Base knuckle's flat,
-                        # inward from the rear wall (less where a component is closer)
-  fit: 0.2              # gap between the Base knuckle and its Deck pocket
-  cap_thickness: 2      # removable service cap head thickness
-  cap_plug: 4           # service cap plug depth into the bolt-head recess
-  end_inset: 9          # hinge span inset from each case side (keeps the Base knuckle part
-                        # inside the 220 mm build volume)
-  friction_bolt: M3     # bolt (head + nyloc nut both on the Base side)
-  swing_clearance: 0.5  # gap between a swinging knuckle's circle and a fixed part
-  side_overrun: 1.0     # how far a notch or bore runs past the case side
-  head_recess_margin: 0.5  # head recess depth beyond the bolt head
-  cap_margin: 2.0       # service cap diameter inset from the knuckle diameter
+  x: 20.0               # X of the right hinge's centre; between the hub and the battery,
+                        # whose cells stand taller than the Base leaf, and left of the rear
+                        # Deck column at x=37
+  travel: 180.0         # opening angle the Lid must swing clear through (deg)
+  swing_clearance: 0.5  # gap between a swinging part and a fixed one
+  fit: 0.2              # gap around a Leaf in its pocket
+  insert: M4            # heat-set insert per Leaf hole (fastener library)
+  part:                 # XK574-6-16, 2 N*m (docs/reference/torque_hinge_xk574-6-16.avif)
+    name: XK574-6-16
+    barrel_diameter: 16.0
+    barrel_length: 18.5 # along X; also each Leaf's width
+    leaf_thickness: 2.0 # TODO: measure
+    leaves:             # offset: axis to the Leaf's near face; start/length: along the
+                        # Leaf from the axis; holes: [u from the axis, v along X from the
+                        # Leaf's centre, diameter]
+      base:
+        offset: 7.5     # TODO: measure (drawing: 9.5 to the far face)
+        start: 7.0
+        length: 26.0
+        width: 18.5
+        holes: [[14.0, 0.0, 4.3], [27.0, 0.0, 4.3]]   # v: TODO: measure
+      lid:
+        offset: 7.5     # TODO: measure
+        start: 7.0
+        length: 26.0
+        width: 18.5
+        holes: [[14.0, 0.0, 4.3], [27.0, 0.0, 4.3]]   # v: TODO: measure
+
+# Cable guard (ADR 0007): one turn of the display FPC around a core on the
+# Hinge axis, facing the driver's HDMI connector, under a two-half cover.
+cable_guard:
+  fpc_width: 14.0       # TODO: measure
+  fpc_thickness: 0.2    # TODO: measure
+  min_bend_radius: 3.0  # TODO: measure; the core radius
+  turns: 1
+  fit: 0.5              # room around the coil and between the moving halves
+  entry_angle: 30.0     # angular width of each cable entry into the guard (deg)
 
 screws:
   body: M2              # case body screws (fastener library)
@@ -63,11 +89,12 @@ material:
 # steps and one wall of margin) may cross a rib, boss, standoff, column,
 # cradle, vent, lug or connector cutout, so the Tray Seams sit at +-59: clear
 # of the SBC bosses (x=-16.6, 41.4), the battery cradles (x>=50.3) and between
-# the rear-wall connector cutouts.
+# the rear-wall connector cutouts. The Lid shell Seams sit at +-66: outboard of
+# the Torque hinge pads (|x| <= 31.3) and the Cable guard (x = -58.5..-38.5).
 split:
   tray:      {sections: 3, x: 59.0, style: stepped, step: 4.0, steps: 6}
   deck:      {sections: 2, x: 0.0,  style: straight}
-  lid_shell: {sections: 3, x: 40.0, style: stepped, step: 4.0, steps: 6}
+  lid_shell: {sections: 3, x: 66.0, style: stepped, step: 4.0, steps: 6}
   bezel:     {sections: 2, x: 0.0,  style: straight}   # inside the display opening
 
 # Parting plane (ADR 0003): the horizontal plane where the Deck meets the Tray,

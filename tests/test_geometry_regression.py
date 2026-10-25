@@ -118,7 +118,7 @@ def test_every_section_is_one_connected_solid(rebuilt_metrics):
 
 
 def test_every_section_fits_the_build_volume(rebuilt_metrics):
-    for name in _section_names() + ["base_knuckle"]:
+    for name in _section_names():
         x, y, z = rebuilt_metrics[name]["bbox"]
         assert sorted((x, y)) <= sorted(BUILD_BED), f"{name} footprint {x} x {y}"
         assert z <= BUILD_HEIGHT
@@ -142,7 +142,7 @@ def test_screw_counts(rebuilt_metrics):
     assert screws["plate"] == 8
     assert screws["bezel"] == 12
     assert screws["deck"] >= 2
-    assert screws["hinge_bolts"] == 2
+    assert screws["hinge"] == 8  # two holes per Leaf, two Leaves, two hinges
     assert screws["deck_seam_lug"] == 2
 
 
@@ -157,7 +157,7 @@ def test_baseline_covers_expected_targets(baseline_metrics):
     # case/lid/assembly target. If this shrinks, the baseline is stale.
     expected = {
         "assembly", "assembly_opened", "base", "base_bottom", "base_top",
-        "base_knuckle", "display", "hinge", "lid", "lid_shell", "lid_bezel",
+        "display", "hinge", "lid", "lid_shell", "lid_bezel",
     }
     missing = expected - set(baseline_metrics)
     assert not missing, f"baseline is missing targets: {sorted(missing)}"

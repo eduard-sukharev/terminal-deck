@@ -61,15 +61,38 @@ Sections with a glued filament pin along X through both. Joins Sections of
 one part for good, as opposed to screws holding one part to another, which
 come apart for service.
 
-**Base knuckle** — The long middle knuckle of the hinge: a separate printed
+**Torque hinge** — A purchased metal friction hinge joining Base and Lid,
+one at each rear corner (the second always mirrored about the case
+centerline). Described by its Hinge axis and two Leaves; the case adapts to
+that description, not the other way round.
+_Avoid:_ "knuckle" for any part of it.
+
+**Leaf** — One flat mounting plate of a Torque hinge: the Base leaf screws
+to the Base, the Lid leaf to the Lid. Its screw holes are given in the
+Leaf's own plane, relative to the Hinge axis.
+_Avoid:_ "wing", "flange".
+
+**Hinge axis** — The line the Lid turns about; the origin a Torque hinge's
+Leaves and holes are described from.
+
+**Cable slot** — The opening in the Deck and the Lid shell, near the
+display's HDMI connector, that the display cable passes through between
+Base and Lid.
+
+**Cable guard** — A printed, load-free sleeve on the Hinge axis, facing the
+display's HDMI connector: a core setting the display cable's minimum bend
+radius, wrapped by one turn of the cable, inside a ring that is part of the
+Deck and a ring outside it that is part of the Lid shell and turns with it.
+
+**Base knuckle** — (superseded by Torque hinge) The long middle knuckle of the hinge: a separate printed
 bar on the Base side, seated in the Deck's rear edge, carrying the display
 cable through its hollow middle.
 _Avoid:_ "bracket", "Base knuckle part" (it no longer includes the cheeks).
 
-**End cheek** — The fixed block at each end of the hinge, outboard of a Lid
+**End cheek** — (superseded by Torque hinge) The fixed block at each end of the hinge, outboard of a Lid
 knuckle, holding the friction bolt's head. Part of the Deck.
 
-**Saddle** — The block inside the Deck's rear skirt that the Base knuckle's
+**Saddle** — (superseded by Torque hinge) The block inside the Deck's rear skirt that the Base knuckle's
 flat bears against, one at each end of the bar.
 
 **Merged boss** — A boss, column or lug standing close enough to a wall

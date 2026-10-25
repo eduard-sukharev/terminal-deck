@@ -9,8 +9,8 @@ Terms (see ``CONTEXT.md`` and ADR 0003): the **Parting plane** is the
 horizontal plane the Tray top and the Deck bottom are both cut to; a
 **column** is a Tray post, counterbored from the floor, that the Deck screw
 runs up through into a heat-set insert in a **Deck boss**; a **Seam** joins
-Sections of one part; a **saddle** backs the Base knuckle's flat inside the
-Deck's rear skirt (ADR 0005).
+Sections of one part; each Torque hinge's Base leaf screws into a pad on the
+Deck (ADR 0007).
 """
 
 from __future__ import annotations
@@ -438,10 +438,10 @@ class BaseFastening:
     def vent_keepout_ranges(self) -> tuple[tuple[float, float], ...]:
         """X ranges the rear-wall vent slots keep clear of over their whole
         height (mm): Seam bands, and what is fused to the rear wall's inside —
-        columns merged into it, saddles and the Deck Seam lugs."""
+        columns merged into it, the hinge pads and Cable guard, and the Deck Seam lugs."""
         chamfer = self.config.corners.cutout_chamfer
         ranges = [(r[0], r[1]) for r in self._band_rects()]
-        for x0, x1, _, _ in self.saddle_rects().values():
+        for x0, x1, _, _ in self.hinge_rects().values():
             ranges.append((x0 - chamfer, x1 + chamfer))
         for rects in self.deck_lug_rects().values():
             ranges += [(x0 - chamfer, x1 + chamfer) for x0, x1, _, _ in rects]
@@ -482,8 +482,8 @@ class BaseFastening:
             features.append(Feature("column", f"({col.x:.1f}, {col.y:.1f})", x0, x1, y0, y1))
         for i, (x0, x1, y0, y1) in enumerate(self.cradle_rects()):
             features.append(Feature("cradle", f"#{i}", x0, x1, y0, y1, part="tray"))
-        for name, (x0, x1, y0, y1) in self.saddle_rects().items():
-            features.append(Feature("saddle", name, x0, x1, y0, y1, part="deck"))
+        for name, (x0, x1, y0, y1) in self.hinge_rects().items():
+            features.append(Feature("hinge", name, x0, x1, y0, y1, part="deck"))
         for i, (x0, x1, y0, y1) in enumerate(self.vent_rects(vents, vent_width)):
             features.append(Feature("vent", f"#{i}", x0, x1, y0, y1))
         zp = self.parting_height()
@@ -521,39 +521,21 @@ class BaseFastening:
                 out.append((bx, by, spec, component))
         return out
 
-    # -- Base knuckle saddles (ADR 0005) ----------------------------------------
+    # -- Torque hinges (ADR 0007) ----------------------------------------------
 
-    def saddle_rects(self) -> dict[str, tuple[float, float, float, float]]:
-        """XY footprint ``(x0, x1, y0, y1)`` of each Deck saddle block, keyed
-        ``"left"``/``"right"``.
-
-        A saddle spans its bolt land along X and runs inward from the rear
-        wall's inner face ``hinge.saddle`` deep, or less where a component,
-        column or connector cutout above the Parting plane stands closer (less
-        the shell clearance). It stands from the Parting plane to the Deck roof.
-        """
-        key = "saddle_rects"
-        if key in self._memo:
-            return self._memo[key]
+    def hinge_rects(self) -> dict[str, tuple[float, float, float, float]]:
+        """XY footprint ``(x0, x1, y0, y1)`` of what the hinge adds to the Deck:
+        each Base leaf's pad (``"left"``/``"right"``) and the Cable guard's
+        discs and arms (``"cable guard"``)."""
         if self.hinge is None:
-            self._memo[key] = {}
             return {}
-        b = self.wall_bounds()
-        zp = self.parting_height()
-        gap = self.config.clearance.shell
-        top = self.deck_level_at(b.y0)
-        obstacles = list(self.assembly.keepout_rects(zp, top, self._base_placements()))
-        obstacles += [self.column_rect(c) for c in self.columns()]
-        obstacles += [rc for rc, c in zip(self.cutout_rects(), self.cutouts())
-                      if c["z"] + c["height"] / 2.0 + self.config.corners.cutout_chamfer > zp]
-        out = {}
-        for name, (x0, x1) in zip(("left", "right"), self.hinge.land_spans(self.size().width)):
-            depth = self.hinge.saddle
-            for ox0, ox1, oy0, oy1 in obstacles:
-                if ox0 < x1 + gap and ox1 > x0 - gap and oy1 > b.y0:
-                    depth = min(depth, oy0 - gap - b.y0)
-            out[name] = (x0, x1, b.y0, b.y0 + max(depth, 0.0))
-        self._memo[key] = out
+        rear_y = -self.size().depth / 2.0
+        out = {side: self.hinge.pad_rect("base", rear_y, side) for side in ("left", "right")}
+        guard = self.hinge.guard
+        if guard is not None:
+            x0, x1, y0, y1 = guard.arm_rect(self.hinge.setback)
+            axis_y = rear_y - self.hinge.setback
+            out["cable guard"] = (x0, x1, axis_y + y0, axis_y + y1)
         return out
 
     # -- Deck Seam lugs ------------------------------------------------------------
@@ -575,7 +557,7 @@ class BaseFastening:
             keepouts += [self.column_rect(c) for c in self.columns()]
             keepouts += [rc for rc, c in zip(self.cutout_rects(), self.cutouts())
                          if c["z"] + c["height"] / 2.0 + self.config.corners.cutout_chamfer > zp]
-            keepouts += list(self.saddle_rects().values())
+            keepouts += list(self.hinge_rects().values())
             for i, seam in enumerate(split.seams()):
                 try:
                     sites[f"deck:{i}"] = seam_joint.plan_joints(

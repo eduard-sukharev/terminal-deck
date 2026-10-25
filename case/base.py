@@ -33,7 +33,7 @@ class Base(BaseFastening):
         plate top). If None, the deck level falls back to the tallest
         base-floor component + clearance.
     hinge : Hinge or None
-        Hinge part (for clearance checks).
+        The Torque hinges, with their Cable guard (ADR 0007).
     """
 
     def __init__(
@@ -214,29 +214,50 @@ class Base(BaseFastening):
 
 
     def _on_hinge_axis(self, solid):
-        """Move an axis-at-origin hinge solid onto the hinge axis (rear edge)."""
+        """Move a hinge-frame solid onto the Hinge axis, ``setback`` behind the
+        rear face at the closed plane (X is already world)."""
         from utilities import cad_helpers
 
         return cad_helpers.translate(
-            solid, 0.0, -self.size().depth / 2.0, self.hinge_axis_z()
+            solid, 0.0, -self.size().depth / 2.0 - self.hinge.setback, self.hinge_axis_z()
         )
 
-    def _mount_hinge(self, body):
-        """Seat the hinge in the Deck ``body`` (ADR 0005).
+    def _hinge_pad_support(self, side: str) -> float:
+        """Hinge-frame Z the Base leaf's pad reaches up to: half into the slab."""
+        rear_y = -self.size().depth / 2.0
+        _, _, y0, y1 = self.hinge.pad_rect("base", rear_y, side)
+        slab = min(self.deck_level_at(y0), self.deck_level_at(y1))
+        return slab + self.config.wall_thickness / 2.0 - self.hinge_axis_z()
 
-        Cuts the Base knuckle's pocket and the notches where the Lid knuckles
-        swing and the service caps sit, fuses on the end cheeks and bores them
-        for the friction bolts. The Base knuckle itself is its own part.
+    def hinge_base_top(self) -> float:
+        """Hinge-frame Z of the Deck top over the Base leaf pads (the lowest)."""
+        rear_y = -self.size().depth / 2.0
+        ys = [y for side in ("left", "right") for y in self.hinge.pad_rect("base", rear_y, side)[2:]]
+        return min(self.deck_top_at(y) for y in ys) - self.hinge_axis_z()
+
+    def _mount_hinge(self, body):
+        """Fit the Deck ``body`` to the Torque hinges (ADR 0007).
+
+        Fuses a pad under each Base leaf and the Cable guard's Deck side on,
+        then cuts each Leaf's pocket, the insert bores and the Cable slot.
         Without a hinge, ``body`` is returned unchanged.
         """
         from utilities import cad_helpers
 
         if self.hinge is None:
             return body
-        width = self.size().width
-        body = cad_helpers.cut(body, self._on_hinge_axis(self.hinge.build_base_notches(width)))
-        body = cad_helpers.union(body, self._on_hinge_axis(self.hinge.build_cheeks(width)))
-        return cad_helpers.cut(body, self._on_hinge_axis(self.hinge.build_cheek_bores(width)))
+        h, setback = self.hinge, self.hinge.setback
+        adds, cuts = [], []
+        for side in ("left", "right"):
+            support = self._hinge_pad_support(side)
+            adds.append(h.build_pad("base", side, support, bored=False))
+            cuts.append(h.build_pocket("base", side))
+            cuts.append(h.build_insert_bores("base", side, support))
+        if h.guard is not None:
+            adds.append(h.guard.build_deck(setback))
+            cuts.append(h.guard.build_slot("base", setback))
+        body = cad_helpers.union(body, *[self._on_hinge_axis(a) for a in adds])
+        return cad_helpers.cut(body, *[self._on_hinge_axis(c) for c in cuts])
 
     def _slope_cut_tool(self, z_at_front: float, size, height: float):
         """A half-space solid lying above the deck-parallel plane through
@@ -447,7 +468,7 @@ class Base(BaseFastening):
     def vent_spec(self):
         """Rear-wall vent slots: vertical, clear of the Seam bands and the
         features fused into the rear wall, starting a wall above any connector
-        cutout they stand over and stopping a wall below the hinge pocket."""
+        cutout they stand over; the hinge pads and Cable guard are keepouts."""
         from geometry import vents
 
         key = "vent_spec"
@@ -456,9 +477,6 @@ class Base(BaseFastening):
             wall = self.config.wall_thickness
             margin = vents.MARGIN
             top = self.deck_rear_level() - margin
-            if self.hinge is not None:
-                reach = max(self.hinge.radius + self.hinge.fit, self.hinge.notch_radius)
-                top = min(top, self.hinge_axis_z() - reach - wall)
             self._memo[key] = vents.vent_slots(
                 b.x1 - b.x0, (margin, top),
                 keepouts=self.vent_keepout_ranges(), raised=self.vent_raised_ranges(),
@@ -500,21 +518,10 @@ class Base(BaseFastening):
             [(c.x, c.y, c.counterbore_diameter / 2.0) for c in columns], feet, report
         )
         check_seam_clearance(self.seam_bands(), self.seam_features(), report)
-        self.knuckle_report(report)
+        self.deck_lug_report(report)
 
-    def knuckle_report(self, report) -> None:
-        """Hinge seating and Deck Seam checks (ADR 0005): HARD that each saddle
-        backs the Base knuckle at least a wall deep, HARD that every Deck Seam
-        has its lug."""
-        if self.hinge is not None:
-            wall = self.config.wall_thickness
-            depths = {n: y1 - y0 for n, (_, _, y0, y1) in self.saddle_rects().items()}
-            thin = [n for n, d in depths.items() if d < wall - 1e-9]
-            report.add(
-                "knuckle-saddles", not thin,
-                ", ".join(f"{n} {d:.1f} mm" for n, d in depths.items())
-                + (f" (thinner than the {wall:g} mm wall: {', '.join(thin)})" if thin else " deep"),
-            )
+    def deck_lug_report(self, report) -> None:
+        """HARD that every Deck Seam has its lug."""
         lugs = self.deck_lug_sites()
         if lugs:
             bare = [sid for sid, pts in lugs.items() if not pts]
@@ -635,16 +642,6 @@ class Base(BaseFastening):
             body = cad_helpers.cut(body, cad_helpers.translate(recess, fx, fy, -wall))
         return body
 
-    # -- Base knuckle -----------------------------------------------------------
-
-    def build_knuckle(self):
-        """The Base knuckle, in world position (ADR 0004, 0005): the D-bar with
-        the display cable tunnel, seated in the Deck's pocket. Prints flat face
-        down."""
-        if self.hinge is None:
-            raise ValueError("no hinge configured")
-        return self._on_hinge_axis(self.hinge.build_base_part(self.size().width))
-
     # -- Deck -------------------------------------------------------------------
 
     def build_top(self):
@@ -653,9 +650,9 @@ class Base(BaseFastening):
         The Deck is the shell above the Parting plane: a skirt of wall from the
         plane up to the sloped underside, then the one-wall-thick slab with the
         keyboard opening and its Well rim, plus a heat-set-insert boss over each
-        Tray column, the saddles, the Seam lug, the end cheeks and the Base
-        knuckle's pocket. It prints Parting face down, supports under the roof
-        and the cheeks.
+        Tray column, the Seam lug, a pad under each Base leaf and the Cable
+        guard's Deck side. It prints Parting face down, supports under the roof
+        and the pads.
 
         Returns
         -------
@@ -740,15 +737,6 @@ class Base(BaseFastening):
                 cutout = cad_helpers.rotate_x(cutout, -slope)
             cutout = cad_helpers.translate(cutout, *pose)
             deck = cad_helpers.cut(deck, cutout)
-
-        # Saddles: solid blocks inside the rear skirt, from the Parting plane
-        # into the roof, that the Base knuckle's flat bears against at each
-        # land (ADR 0005). The pocket cut in _mount_hinge trims their rear face.
-        for x0, x1, y0, y1 in self.saddle_rects().values():
-            top = self.deck_level_at(y1) + wall / 2.0
-            block = cad_helpers.box_centered(x1 - x0, y1 - y0 + wall / 2.0, top - zp)
-            deck = cad_helpers.union(deck, cad_helpers.translate(
-                block, (x0 + x1) / 2.0, (y0 + y1 - wall / 2.0) / 2.0, (zp + top) / 2.0))
 
         # Deck Seam lugs, standing on the Parting plane; split with the Deck.
         from geometry import seam_joint

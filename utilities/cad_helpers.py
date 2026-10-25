@@ -154,6 +154,12 @@ def rotate_about(
     return shape.rotate(b3d.Axis(origin=p0, direction=direction), angle_deg)
 
 
+def mirror_z(shape: Any) -> Any:
+    """Mirror ``shape`` through the XY plane (``z -> -z``)."""
+    b3d = require_cad()
+    return b3d.mirror(shape, b3d.Plane.XY)
+
+
 def rotate_x(shape: Any, angle_deg: float) -> Any:
     """Rotate a shape about the X axis through the origin."""
     return rotate_about(shape, (0, 0, 0), (1, 0, 0), angle_deg)

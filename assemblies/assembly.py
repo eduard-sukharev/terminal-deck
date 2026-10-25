@@ -269,7 +269,7 @@ class Assembly:
         """
         return self.build_subset(self.placements)
 
-    def build_subset(self, placements: list[Placement]):
+    def build_subset(self, placements: list[Placement], transform: dict[int, Any] | None = None):
         """Generate the union solid for ``placements`` in their world frames.
 
         Each selected placement's solid is transformed to its world placement
@@ -301,7 +301,8 @@ class Assembly:
             if placement.tilt_x:
                 solid = cad_helpers.rotate_x(solid, placement.tilt_x)
             solid = cad_helpers.translate(solid, placement.x, placement.y, placement.z)
-            parts.append(solid)
+            move = (transform or {}).get(id(placement.component))
+            parts.append(move(solid) if move else solid)
         if not parts:
             raise ValueError("no placements to assemble")
         return cad_helpers.union(parts[0], *parts[1:])
@@ -312,6 +313,7 @@ class Assembly:
         role_map: dict[int, str] | None = None,
         assembly: Any | None = None,
         extra_parts: list[tuple[str, Any]] | None = None,
+        transform: dict[int, Any] | None = None,
     ):
         """Build a ``ColoredAssembly`` with one colored child per part.
 
@@ -339,6 +341,9 @@ class Assembly:
             Additional pre-built, already-world-positioned solids to add as
             colored children, keyed by role/name (e.g.
             ``[("case", base_shell_solid)]``).
+        transform : dict[int, callable] or None
+            ``id(component) -> f(solid)`` applied after the placement, e.g. to
+            bring the Lid's parts from its own (face-up) frame onto the Base.
 
         Returns
         -------
@@ -360,6 +365,9 @@ class Assembly:
             if placement.tilt_x:
                 solid = cad_helpers.rotate_x(solid, placement.tilt_x)
             solid = cad_helpers.translate(solid, placement.x, placement.y, placement.z)
+            move = (transform or {}).get(id(placement.component))
+            if move:
+                solid = move(solid)
             role = role_map.get(id(placement.component), placement.component.name)
             cad_helpers.assembly_add(assy, solid, placement.component.name, color_for(role))
 

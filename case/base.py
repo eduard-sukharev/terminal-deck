@@ -184,8 +184,8 @@ class Base(BaseFastening):
     def visor_profile(self):
         """Visor height along Y that fills the wedge under the closed Lid.
 
-        The Lid's flat underside lies on the plane through the Deck's highest
-        point (the rear level), so the Visor is that plane minus the Deck top:
+        The Lid's flat underside lies on the closed plane (the wall top at the
+        rear), so the Visor is that plane minus the wall top:
         full at the front, tapering to zero at the knee and flat behind it.
         """
         from geometry.visor import VisorProfile
@@ -193,16 +193,38 @@ class Base(BaseFastening):
         size = self.size()
         rear_y, front_y = -size.depth / 2.0, size.depth / 2.0
         knee_y = self._deck_knee_y()
-        top = self.deck_top_at(rear_y)
+        top = self.closed_plane_z()
         knots = [(rear_y, 0.0)]
         if knee_y is not None and self.slope() and rear_y < knee_y < front_y:
             knots.append((knee_y, 0.0))
-        knots.append((front_y, top - self.deck_top_at(front_y)))
+        knots.append((front_y, top - self.wall_top_at(front_y)))
         return VisorProfile(tuple(knots))
 
+    def rim_rise(self) -> float:
+        """How far the Base's outer walls rise above the Deck top (mm).
+
+        Closed, the Bezel's glass faces the keyboard, so the Lid's flat
+        underside has to clear the keycaps: the walls stand up round the Deck
+        until the plane through their rear top lies a shell clearance above
+        the highest keycap. The keys tilt with the Deck, so their highest
+        point and the Deck's highest point are both at the rear. 0 without a
+        keyboard or when the keys already sit below the Deck's rear top.
+        """
+        kb = self._keyboard_placement()
+        if kb is None:
+            return 0.0
+        top = kb.z_bounds()[1] + self.config.clearance.shell
+        return max(0.0, top - self.deck_top_at(-self.size().depth / 2.0))
+
+    def wall_top_at(self, y: float) -> float:
+        """Height of the Base's outer wall top at world ``y`` (mm): the Deck
+        top raised by :meth:`rim_rise`; the Visor meets it when closed."""
+        return self.deck_top_at(y) + self.rim_rise()
+
     def closed_plane_z(self) -> float:
-        """Height of the Lid's flat underside when closed (mm)."""
-        return self.deck_top_at(-self.size().depth / 2.0)
+        """Height of the Lid's flat underside when closed (mm): the wall top
+        at the rear."""
+        return self.wall_top_at(-self.size().depth / 2.0)
 
     def hinge_axis_z(self) -> float:
         """Height of the hinge axis (mm): the closed Lid/Base interface plane.
@@ -230,10 +252,15 @@ class Base(BaseFastening):
         return slab + self.config.wall_thickness / 2.0 - self.hinge_axis_z()
 
     def hinge_base_top(self) -> float:
-        """Hinge-frame Z of the Deck top over the Base leaf pads (the lowest)."""
+        """Hinge-frame Z of the Deck face the Base leaf's insert bores run
+        toward: the top when the Leaf hangs under the slab, the underside
+        when the raised walls leave it standing on the slab (the nearest)."""
         rear_y = -self.size().depth / 2.0
         ys = [y for side in ("left", "right") for y in self.hinge.pad_rect("base", rear_y, side)[2:]]
-        return min(self.deck_top_at(y) for y in ys) - self.hinge_axis_z()
+        axis = self.hinge_axis_z()
+        if min(self.deck_top_at(y) for y in ys) - axis < self.hinge.leaf_z("base")[0]:
+            return max(self.deck_level_at(y) for y in ys) - axis
+        return min(self.deck_top_at(y) for y in ys) - axis
 
     def _mount_hinge(self, body):
         """Fit the Deck ``body`` to the Torque hinges (ADR 0007).
@@ -259,6 +286,11 @@ class Base(BaseFastening):
         if h.guard is not None:
             adds.append(h.guard.build_deck(setback))
             cuts.append(h.guard.build_slot("base", setback))
+            # The cable goes on down through the slab into the Base.
+            x0, x1 = h.guard.lid_ring_span()
+            rear_y = -self.size().depth / 2.0
+            floor = self.deck_level_at(rear_y) - self.config.wall_thickness - self.hinge_axis_z()
+            cuts.append(h._box(x0, x1, setback - h.guard.fit, setback + 2 * self.config.wall_thickness, floor, 0.0))
         body = cad_helpers.union(body, *[self._on_hinge_axis(a) for a in adds])
         return cad_helpers.cut(body, *[self._on_hinge_axis(c) for c in cuts])
 
@@ -398,7 +430,9 @@ class Base(BaseFastening):
 
         Floor outer face at ``z = -wall``, inner face at 0; the walls run up to
         the sloped Deck underside and the slab above it is one wall thick.
-        The Tray and the Deck are this solid cut at the Parting plane.
+        The outer walls carry on :meth:`rim_rise` above the slab so the closed
+        Lid clears the keycaps. The Tray and the Deck are this solid cut at the
+        Parting plane.
         """
         from geometry import fillet
         from utilities import cad_helpers
@@ -411,17 +445,22 @@ class Base(BaseFastening):
         size = self.size()
         dl = self.deck_level()
         rear_dl = self.deck_rear_level()
-        height = rear_dl + 4 * wall
+        rise = self.rim_rise()
+        height = rear_dl + 4 * wall + rise
         outer = cad_helpers.box_centered(size.width, size.depth, height)
         outer = cad_helpers.translate(outer, 0.0, 0.0, height / 2.0 - wall)
         outer = fillet.fillet_corners(outer, config.corners.radius)
-        outer = cad_helpers.cut(outer, self._deck_surface_tool(dl + wall, size, height))
+        outer = cad_helpers.cut(outer, self._deck_surface_tool(dl + wall + rise, size, height))
 
-        cavity = cad_helpers.box_centered(size.width - 2 * wall, size.depth - 2 * wall, height)
-        cavity = cad_helpers.translate(cavity, 0.0, 0.0, height / 2.0)
-        cavity = fillet.fillet_corners(cavity, max(config.corners.radius - wall, 0.0))
-        cavity = cad_helpers.cut(cavity, self._deck_surface_tool(dl, size, height))
+        inner = cad_helpers.box_centered(size.width - 2 * wall, size.depth - 2 * wall, height)
+        inner = cad_helpers.translate(inner, 0.0, 0.0, height / 2.0)
+        inner = fillet.fillet_corners(inner, max(config.corners.radius - wall, 0.0))
+        cavity = cad_helpers.cut(inner, self._deck_surface_tool(dl, size, height))
         blank = cad_helpers.cut(outer, cavity)
+        if rise > 0.0:
+            # The walls stand `rise` above the slab: open the room above it.
+            above = cad_helpers.intersect(inner, self._deck_surface_tool(dl + wall, size, height))
+            blank = cad_helpers.cut(blank, above)
         self._memo[key] = blank
         return blank
 
@@ -675,7 +714,7 @@ class Base(BaseFastening):
         slope = self.slope()
         blank = self._shell_blank()
         deck = cad_helpers.intersect(blank, self._above_parting(zp, below=False))
-        blank_h = 4 * wall + self.deck_rear_level()
+        blank_h = 4 * wall + self.deck_rear_level() + self.rim_rise()
         footprint = cad_helpers.translate(
             fillet.fillet_corners(
                 cad_helpers.box_centered(size.width, size.depth, blank_h), config.corners.radius

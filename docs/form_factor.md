@@ -23,14 +23,19 @@ No palm rest. The Micro Journal "large palm rest" requirement is dropped.
   walls on the front and both sides, full height at the front, zero at the
   hinge. Opened, the Visor hoods the top edge of the screen. See
   `docs/reference/visor-side-view.svg`.
+* Closed, the Bezel's glass faces the keyboard, so the Lid's flat underside
+  (the closed plane) lies a shell clearance above the highest keycap. The
+  Base's outer walls stand that far above the Deck (`Base.rim_rise()`),
+  following its slope; the Lid itself holds only the panel and its driver.
+  `keys-clear-glass` fails the build otherwise.
 * Thickness: strive for thinner, no hard limit. Closed thickness is a GOAL
   metric in the constraint report. Permitted levers: deck slope, keycap
   profile (config), minimal Lid. The buried-SBC layout stays.
 
 The Visor is built by `geometry/visor.py` from `Base.visor_profile()` and
 added to the Lid shell: a wall-thick ring on the shell outline, trimmed to a
-height that equals the Lid's flat underside plane (through the Deck's highest
-point) minus the Deck top. Each run checks `visor-closes-flush`,
+height that equals the Lid's flat underside plane (through the walls' rear
+top) minus the wall top. Each run checks `visor-closes-flush`,
 `visor-zero-at-hinge` and `visor-non-negative`, and reports closed thickness
 (Base to closed Lid top) as a GOAL line in the "closed-device validation".
 

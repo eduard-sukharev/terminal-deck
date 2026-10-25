@@ -21,6 +21,10 @@ Same footprint as the Base, thinner. Made of the Lid shell and the Bezel.
 clamshell has no wedge-shaped gap. When the Lid is open it sits along the top
 edge of the screen (after the Micro Journal Rev.2 ReVamp).
 
+**Closed plane** — The plane the Lid's glass side lies on when closed: the
+top of the Base's walls at the rear, a clearance above the highest keycap.
+The Hinge axis lies in it.
+
 **Well** — The recess in the Deck the keyboard sits in, bounded by a rim.
 
 **Lid shell** — The Lid's rear (outer) tray.

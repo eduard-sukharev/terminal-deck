@@ -188,6 +188,21 @@ class BuildPipeline:
             {components["display"], components["driver"], components["hdmi_plug_driver"]},
         )
 
+    def _lid_closer(self, config, components, placements, assembly, base, size):
+        """A function taking a solid in the Lid's own frame (face-up) to the
+        closed device: turned over onto the Base, Bezel on the closed plane."""
+        from case.lid import Lid
+        from utilities import cad_helpers
+
+        display = next(p for p in placements if p.component is components["display"])
+        lid = Lid(
+            components["display"], config, hinge=base.hinge, world_z=display.z,
+            footprint=(size.width, size.depth), visor=base.visor_profile(),
+            assembly=assembly, interior_placements=self._lid_interior(placements, components),
+        )
+        shift = base.hinge_axis_z() + lid._outer_bounds()[3]
+        return lambda solid: cad_helpers.translate(cad_helpers.mirror_z(solid), 0.0, 0.0, shift)
+
     def _fastening_validation(self, config, components, placements, assembly, base, size):
         """Section, Seam and fastening checks (HARD), CAD-free.
 
@@ -422,9 +437,13 @@ class BuildPipeline:
         role_map = {id(c): role for role, c in components.items()}
 
         if "assembly" in buckets:
-            parts["assembly"] = assembly.build()
+            # The Lid's parts are placed in its own frame (the closed Lid
+            # turned face-up); fold them onto the Base for the closed view.
+            close = self._lid_closer(config, components, placements, assembly, base, size)
+            lid_ids = {id(p.component): close for p in self._lid_interior(placements, components)}
+            parts["assembly"] = assembly.build_subset(placements, transform=lid_ids)
             gltf_parts["assembly"] = assembly.build_colored(
-                placements=placements, role_map=role_map
+                placements=placements, role_map=role_map, transform=lid_ids
             )
 
         # Keyboard placement is needed for base and hinge.
@@ -566,8 +585,16 @@ class BuildPipeline:
             visor_report = ValidationReport()
             visor_profile = lid.visor
             check_visor_flush(
-                base_obj.deck_top_at, visor_profile.height_at,
+                base_obj.wall_top_at, visor_profile.height_at,
                 -size.depth / 2.0, size.depth / 2.0, visor_report,
+            )
+            # Closed, the glass faces the keyboard: every keycap stays a shell
+            # clearance under the Lid's underside.
+            key_top = max(p.z_bounds()[1] for p in placements if p.component is components.get("keyboard"))
+            gap = base_obj.closed_plane_z() - key_top
+            visor_report.add(
+                "keys-clear-glass", gap >= config.clearance.shell - 1e-9,
+                f"keycaps {gap:.2f} mm under the closed Lid (>= {config.clearance.shell:g})",
             )
             visor_report.goals["closed thickness (mm)"] = (
                 base_obj.closed_plane_z() + lid.height()
@@ -679,9 +706,7 @@ class BuildPipeline:
             axis_z = base_obj.hinge_axis_z()
             # The Lid is built in its own frame (the closed Lid turned over,
             # axis at its outer top): flip it back onto the Base first.
-            lid_closed = cad_helpers.translate(
-                cad_helpers.mirror_z(lid_solid), 0.0, 0.0, axis_z + lid._outer_bounds()[3]
-            )
+            lid_closed = self._lid_closer(config, components, placements, assembly, base_obj, size)(lid_solid)
             lid_open = cad_helpers.rotate_about(
                 lid_closed, (0.0, axis_y, axis_z), (1.0, axis_y, axis_z), hinge.travel
             )

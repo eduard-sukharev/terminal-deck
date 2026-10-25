@@ -140,11 +140,10 @@ def test_every_section_declares_an_orientation_and_has_a_bed_face(rebuilt_metric
 def test_screw_counts(rebuilt_metrics):
     screws = rebuilt_metrics["_pipeline"]["screws"]
     assert screws["plate"] == 8
-    assert screws["bezel"] == 8
+    assert screws["bezel"] == 12
     assert screws["deck"] >= 2
     assert screws["hinge_bolts"] == 2
-    assert screws["hinge_flange"] >= 1
-    assert screws["hinge_deck"] >= 2  # at least one per Deck Section
+    assert screws["deck_seam_lug"] == 2
 
 
 def test_no_hard_check_fails(rebuilt_metrics):

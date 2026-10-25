@@ -1,11 +1,12 @@
-"""Screw joints that hold adjacent Sections of a part together (ADR 0003).
+"""Pinned joints that hold adjacent Sections of a part together (ADR 0003, 0006).
 
 A joint is a square lug that straddles the Seam and grows from the part's
-floor and the wall at the end of the Seam. A horizontal M2 screw runs along X
-through it: a clearance bore on the left side, a heat-set insert pocket on
-the right. The lug is added to the whole part before it is split, so each
-Section receives its share, and both stay connected to the floor. A part with
-three Sections gets its own pair of lugs on each Seam.
+floor and the wall at the end of the Seam. A through-bore runs along X across
+it; once the Sections are put together, a length of filament is pushed
+through, glued, and trimmed flush at both ends. The lug is added to the whole
+part before it is split, so each Section receives its share, and both stay
+connected to the floor. A part with three Sections gets its own pair of lugs
+on each Seam.
 
 Sites are chosen clear of the components inside and of the structural
 features (bosses, standoffs, columns, cradles) given as ``keepouts``.
@@ -15,37 +16,31 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from utilities import cad_helpers, fasteners
+from utilities import cad_helpers
 
 
 @dataclass(frozen=True)
 class JointSpec:
-    """Calculated lug dimensions for one screw/insert pair (mm)."""
+    """Calculated lug dimensions for one glued pin (mm)."""
 
     size: float
     left_length: float
     right_length: float
-    clearance_diameter: float
-    insert_diameter: float
-    insert_depth: float
+    bore_diameter: float
 
 
-def joint_spec(screw_size: str, sleeve: float = 1.2) -> JointSpec:
-    """Lug dimensions from the fastener library.
+def joint_spec(pin) -> JointSpec:
+    """Lug dimensions from a ``config.seam_pin`` (``SeamPin``).
 
-    The lug is square, one insert bore plus a ``sleeve`` of material per
-    side. The right side holds the insert; the left side holds the rest of the
-    screw shank, so the tip reaches the insert's full depth.
+    The lug is square, the pin bore plus a ``sleeve`` of material per side,
+    and reaches ``engagement`` along X to each side of the Seam.
     """
-    screw = fasteners.screw(screw_size)
-    insert = fasteners.heat_insert(screw_size)
+    bore = pin.diameter + pin.fit
     return JointSpec(
-        size=insert.printed_hole_diameter + 2 * sleeve,
-        left_length=screw.length - insert.depth,
-        right_length=insert.depth + sleeve,
-        clearance_diameter=screw.clearance,
-        insert_diameter=insert.printed_hole_diameter,
-        insert_depth=insert.depth,
+        size=bore + 2 * pin.sleeve,
+        left_length=pin.engagement,
+        right_length=pin.engagement,
+        bore_diameter=bore,
     )
 
 
@@ -156,7 +151,7 @@ def add_joints(
     keepouts=(),
     sites=None,
 ):
-    """Add ``count`` Seam-straddling lugs (with bores) to ``body``.
+    """Add ``count`` Seam-straddling lugs, bored through for the pin, to ``body``.
 
     The sites come from :meth:`plan_joints` unless given as ``sites`` (a
     caller that needs the footprints first plans, then adds).
@@ -167,14 +162,10 @@ def add_joints(
     )
     for sx, sy, backed in chosen:
         body = cad_helpers.union(body, _lug(spec, sx, sy, z, wall, backed))
+    total = spec.left_length + spec.right_length
     for sx, sy, _ in chosen:
-        left = cad_helpers.rotate_y(
-            cad_helpers.cylinder_centered(spec.clearance_diameter, spec.left_length + 1.0), 90
-        )
-        left = cad_helpers.translate(left, sx - spec.left_length / 2.0 - 0.5, sy, z)
-        right = cad_helpers.rotate_y(
-            cad_helpers.cylinder_centered(spec.insert_diameter, spec.insert_depth), 90
-        )
-        right = cad_helpers.translate(right, sx + spec.insert_depth / 2.0, sy, z)
-        body = cad_helpers.cut(body, left, right)
+        # Through-bore, open at both lug ends so the pin goes in after assembly.
+        bore = cad_helpers.rotate_y(cad_helpers.cylinder_centered(spec.bore_diameter, total + 1.0), 90)
+        bore = cad_helpers.translate(bore, sx + (spec.right_length - spec.left_length) / 2.0, sy, z)
+        body = cad_helpers.cut(body, bore)
     return body

@@ -76,13 +76,9 @@ class Deck:
         Typing slope in degrees. The deck plane tilts about X so the rear
         (-Y, hinge side) rises while the front edge stays at the flat-case
         deck level, wedging the base. ``0.0`` reproduces the flat deck.
-    seam_screw_reach : float
-        Farthest a Deck screw may sit from the Deck Seam and still count as
-        clamping it (mm); every Deck Section needs one within this reach.
     """
 
     slope: float = 0.0
-    seam_screw_reach: float = 15.0
 
 
 @dataclass(frozen=True)
@@ -149,8 +145,8 @@ class Hinge:
     washer_stack: float = 1.2     # steel + spring washer between rubbing faces
     land: float = 8.0             # solid bolt-bearing length at each Base knuckle end
     end_cheek: float = 5.0        # thickness of each outer Base end cheek
-    flange: float = 4.0           # thickness of the Base knuckle's mounting flange
-    flange_depth: float = 9.5     # how far the flange reaches under the Tray floor
+    saddle: float = 6.0           # Deck saddle block depth behind the Base knuckle's flat
+    fit: float = 0.2              # gap between the Base knuckle and its Deck pocket
     cap_thickness: float = 2.0    # removable service cap head thickness
     cap_plug: float = 4.0         # service cap plug depth into the head recess
     end_inset: float = 9.0        # hinge span inset from each case side
@@ -309,10 +305,33 @@ class Edges:
 
     chamfer_factor: float = 0.5
     bed_chamfer: float = 0.5
+    #: How much larger (mm) the convex corner of a Seam step is rounded than
+    #: the concave fillet of the notch it fits into, so the two nest.
+    seam_convex_extra: float = 0.5
 
     def __post_init__(self) -> None:
-        if self.chamfer_factor < 0 or self.bed_chamfer < 0:
+        if self.chamfer_factor < 0 or self.bed_chamfer < 0 or self.seam_convex_extra < 0:
             raise ValueError("edges sizes must be >= 0")
+
+
+@dataclass(frozen=True)
+class SeamPin:
+    """Glued filament pin through every Seam lug (ADR 0006).
+
+    A length of ``diameter`` filament is pushed through a through-bore of
+    ``diameter + fit`` that runs along X across the Seam, glued, and trimmed
+    flush. ``engagement`` is the bore length on each side of the Seam and
+    ``sleeve`` the lug wall around the bore.
+    """
+
+    diameter: float = 1.75
+    fit: float = 0.15
+    engagement: float = 5.0
+    sleeve: float = 1.0
+
+    def __post_init__(self) -> None:
+        if min(self.diameter, self.engagement, self.sleeve) <= 0 or self.fit < 0:
+            raise ValueError("seam_pin needs positive diameter/engagement/sleeve and fit >= 0")
 
 
 @dataclass(frozen=True)
@@ -363,6 +382,7 @@ class Config:
     parting: Parting = field(default_factory=Parting)
     merged_boss: MergedBoss = field(default_factory=MergedBoss)
     edges: Edges = field(default_factory=Edges)
+    seam_pin: SeamPin = field(default_factory=SeamPin)
     feet: Feet = field(default_factory=Feet)
     well: Well = field(default_factory=Well)
     topics: tuple[str, ...] = field(default_factory=tuple)
@@ -466,6 +486,7 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
         parting=Parting(**{k: float(v) for k, v in (raw.get("parting") or {}).items()}),
         merged_boss=MergedBoss(**{k: float(v) for k, v in (raw.get("merged_boss") or {}).items()}),
         edges=Edges(**{k: float(v) for k, v in (raw.get("edges") or {}).items()}),
+        seam_pin=SeamPin(**{k: float(v) for k, v in (raw.get("seam_pin") or {}).items()}),
         feet=Feet(**{k: float(v) for k, v in (raw.get("feet") or {}).items()}),
         well=Well(**{k: float(v) for k, v in (raw.get("well") or {}).items()}),
         topics=topics,

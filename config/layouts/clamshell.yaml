@@ -228,11 +228,17 @@ constraints:
     target: keyboard
     offset_x: 0.0
     offset_y: "0.0 - ({keyboard.depth} / 2) - ({battery.width} / 2) + 3.5"
+  # offset -8.2 stands the pack off the right wall so the rear-right Deck
+  # column (Merged into both walls, 8.6 mm across plus the screw clearance)
+  # fits in the corner — the smallest stand-off that frees the corner, found
+  # against `Base._column_positions` itself; less and that column falls back
+  # inboard of the cells.
   - kind: edge_alignment
     subject: battery
     subject_edge: right
     target: enclosure
     target_edge: right
+    offset: "-8.2"
   # relative_placement sets z from the keyboard's own (tilted, raised) z —
   # fine for a part riding the deck, wrong for the battery, which sits on
   # its own floor cradles regardless of where the keyboard's origin ends up.
@@ -268,17 +274,20 @@ constraints:
   #     start at y >= 2.0; at +23.3 it starts at y = 2.0 and ends at 32.0,
   #     short of the upper row gap at y = 36.5.
   # The lower-left Seam standoff then sits left of the plug (the plug now
-  # spans x -14.4..3.1), within one key unit of the Seam.
+  # spans x -15.4..2.1), within one key unit of the Seam.
   #
   # offset_x threads the plugged USB-C cable (below) through the gap between
   # the hub's east edge and the battery's west edge — the only clear run to
-  # the rear wall. 14.4 (was 12.4) keeps the plug clear of the Seam standoff
-  # while still threading that gap. Enforced by the plug's own clearance
+  # the rear wall. 13.4 is the leftmost the SBC can go: one step further and
+  # the mini-HDMI plug blocks the plate's lower-left Seam standoff (or pushes
+  # it beyond one key unit of the plate Seam). It moved left from 14.4 when the
+  # battery stood off the right wall for the corner Deck column, keeping the
+  # USB-C plug 1.7 mm clear of the cells. Enforced by the plug's own clearance
   # checks, not by this number alone.
   - kind: relative_placement
     subject: sbc
     target: keyboard
-    offset_x: 14.4
+    offset_x: 13.4
     offset_y: "({sbc.depth} - {keyboard.depth}) / 2 + 23.3"
     rotation: 0.0
   # x/y come from the relative_placement above; z is set separately because

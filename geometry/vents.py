@@ -1,12 +1,19 @@
 """Vent pattern generator.
 
-Produces vent slot layouts (cooling for the SBC / display). Slot size,
-spacing, and pattern are calculated parameters — never hardcoded.
+Produces a row of vertical vent slots through a wall (cooling for the SBC).
+Slot size, spacing, and pattern are calculated parameters — never hardcoded.
+A slot may stand over a connector cutout as long as it starts a web above it;
+it is dropped only where its X range must stay solid (Seam bands, features
+fused into the wall).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+
+#: Default distance (mm) from the panel edges to the slots, along the row and
+#: from the floor/roof.
+MARGIN = 3.0
 
 
 @dataclass(frozen=True)
@@ -15,53 +22,63 @@ class VentSpec:
 
     Attributes
     ----------
-    slot_length : float
-        Slot length along the vent axis (mm).
     slot_width : float
-        Slot width (mm).
+        Slot width along the wall (mm).
     gap : float
         Material gap between slots (mm).
     margin : float
         Distance from the panel edge to the first slot (mm).
     positions : tuple[float, ...]
-        Slot center offsets along the vent axis (mm).
+        Slot center offsets along the wall (mm); an X repeats where a solid
+        band splits its slot in two.
+    spans : tuple[tuple[float, float], ...]
+        ``(z0, z1)`` of each slot, matching ``positions`` (mm).
     """
 
-    slot_length: float
     slot_width: float
     gap: float
     margin: float
     positions: tuple[float, ...] = field(default_factory=tuple)
+    spans: tuple[tuple[float, float], ...] = field(default_factory=tuple)
 
 
 def vent_slots(
     vent_axis_extent: float,
-    perpendicular_extent: float,
+    z_range: tuple[float, float],
     slot_width: float | None = None,
     gap: float | None = None,
-    margin: float = 3.0,
+    margin: float = MARGIN,
     keepouts: tuple[tuple[float, float], ...] = (),
+    raised: tuple[tuple[float, float, float], ...] = (),
+    min_length: float | None = None,
+    solid_bands: tuple[tuple[float, float], ...] = (),
 ) -> VentSpec:
-    """Compute a row of vent slots.
+    """Compute a row of vertical vent slots.
 
     Parameters
     ----------
     vent_axis_extent : float
-        Panel extent along the slot axis (mm).
-    perpendicular_extent : float
-        Panel extent perpendicular to the slot axis (mm).
+        Wall extent along the row (mm); the row is centered on 0.
+    z_range : tuple[float, float]
+        Lowest and highest Z any slot may reach (mm).
     slot_width : float or None
         Slot short dimension (mm); defaults to the printable minimum 0.8.
     gap : float or None
         Material between slots (mm); defaults to ``slot_width``.
     margin : float
-        Edge margin (mm).
+        Edge margin along the row (mm).
     keepouts : tuple[tuple[float, float], ...]
-        ``(x0, x1)`` ranges (same axis/frame as the returned ``positions``)
-        to leave solid — any slot whose own width would overlap one is
-        dropped. Meant for connector cutouts sharing this wall: a vent slat
-        interleaved with a cutout leaves a thin, unsupported, unprintable
-        sliver of wall material once both are cut.
+        ``(x0, x1)`` ranges left solid over the whole height: any slot whose
+        width overlaps one is dropped (Seam bands, features fused into the
+        wall).
+    raised : tuple[tuple[float, float, float], ...]
+        ``(x0, x1, z)``: a slot overlapping ``x0..x1`` starts no lower than
+        ``z`` (a connector cutout below it, plus a web).
+    min_length : float or None
+        Shortest slot worth cutting (mm); defaults to three slot widths.
+    solid_bands : tuple[tuple[float, float], ...]
+        ``(z0, z1)`` bands left solid along the whole row (e.g. either side
+        of a parting plane); a slot crossing one is split around it.
 
     Returns
     -------
@@ -70,53 +87,51 @@ def vent_slots(
     """
     slot_width = slot_width if slot_width is not None else 0.8
     gap = gap if gap is not None else slot_width
-    slot_length = perpendicular_extent - 2 * margin
+    min_length = min_length if min_length is not None else 3 * slot_width
+    z0, z1 = z_range
     usable = vent_axis_extent - 2 * margin
     step = slot_width + gap
     count = max(0, int(usable // step))
-    candidates = (
-        -vent_axis_extent / 2 + margin + step / 2 + i * step for i in range(count)
-    )
-
-    def clear(pos: float) -> bool:
+    positions, spans = [], []
+    for i in range(count):
+        pos = -vent_axis_extent / 2 + margin + step / 2 + i * step
         lo, hi = pos - slot_width / 2, pos + slot_width / 2
-        return all(hi <= k0 or lo >= k1 for k0, k1 in keepouts)
-
-    positions = tuple(pos for pos in candidates if clear(pos))
+        if not all(hi <= k0 or lo >= k1 for k0, k1 in keepouts):
+            continue
+        bottom = max([z0] + [z for k0, k1, z in raised if hi > k0 and lo < k1])
+        pieces = [(bottom, z1)]
+        for b0, b1 in solid_bands:
+            pieces = [
+                part for a, b in pieces
+                for part in ((a, min(b, b0)), (max(a, b1), b)) if part[1] > part[0]
+            ]
+        for a, b in pieces:
+            if b - a >= min_length:
+                positions.append(pos)
+                spans.append((a, b))
     return VentSpec(
-        slot_length=slot_length,
-        slot_width=slot_width,
-        gap=gap,
-        margin=margin,
-        positions=positions,
+        slot_width=slot_width, gap=gap, margin=margin,
+        positions=tuple(positions), spans=tuple(spans),
     )
 
 
 def build(spec: VentSpec, wall_thickness: float):
-    """Generate vent slot cut solids for a shell face.
+    """Generate the vent slot cutters, centered on the wall midplane at y=0.
 
-    Slots run along Y at the calculated X positions and are tall enough to
-    cross the shell wall (depth = ``wall_thickness`` plus the slot width on
-    each side). All slots are produced as a single compound so the caller can
-    remove them with one boolean cut.
-
-    Parameters
-    ----------
-    spec : VentSpec
-        Calculated vent layout.
-    wall_thickness : float
-        Shell wall thickness the slots cross (mm).
-
-    Returns
-    -------
-    Shape
-        Compound of all slot solids (centered on the wall midplane at z=0),
-        to subtract from the shell as a single cut.
+    Each slot is ``slot_width`` along X, crosses the wall along Y (the wall
+    plus a slot width either side, so it always cuts through) and runs over
+    its own ``(z0, z1)`` span in Z. All slots come back as one compound, to
+    subtract from the shell with a single cut.
     """
     from utilities import cad_helpers
 
-    # Slot cut boxes are centered on the wall midplane (z=0); each spans the
-    # wall plus the slot width top and bottom so it always crosses through.
+    if not spec.positions:
+        return cad_helpers.empty_solid()
     depth = wall_thickness + 2 * spec.slot_width
-    points = [(pos, 0.0) for pos in spec.positions]
-    return cad_helpers.sketch_slots(points, spec.slot_width, spec.slot_length, depth)
+    slots = [
+        cad_helpers.translate(
+            cad_helpers.box_centered(spec.slot_width, depth, z1 - z0), x, 0.0, (z0 + z1) / 2.0
+        )
+        for x, (z0, z1) in zip(spec.positions, spec.spans)
+    ]
+    return cad_helpers.make_compound(slots)

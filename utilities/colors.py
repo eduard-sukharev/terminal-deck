@@ -30,8 +30,8 @@ COMPONENT_COLORS: dict[str, Color] = {
     "hdmi_plug_sbc": (0.90, 0.35, 0.65, 1.0),     # pink
     "hdmi_plug_driver": (0.45, 0.85, 0.90, 1.0),  # light cyan
     "hinge": (0.55, 0.55, 0.58, 1.0),        # steel grey
-    "base_knuckle": (0.95, 0.55, 0.20, 1.0), # orange: the separate Base knuckle part
-    "end_cheek": (0.85, 0.35, 0.15, 1.0),    # darker orange: its outer end cheeks
+    "base_knuckle": (0.95, 0.55, 0.20, 1.0), # orange: the separate Base knuckle
+    "end_cheek": (0.85, 0.35, 0.15, 1.0),    # darker orange: the end cheeks (fused to the Deck)
     "lid_knuckle": (0.30, 0.55, 0.85, 1.0),  # blue: Lid knuckles fused to the Lid shell
     "hinge_hardware": (0.80, 0.80, 0.82, 1.0),  # bolts, nuts, washers, service caps
     "section_left": (0.62, 0.78, 0.92, 1.0),    # printed Sections, one color each so

@@ -312,11 +312,12 @@ def check_hinge_clearance(
     report: ValidationReport,
     extra_boxes: dict[str, tuple[float, float, float, float, float, float]] | None = None,
 ) -> None:
-    """Fail if a placed component intrudes on the Base knuckle part's reach.
+    """Fail if a placed component intrudes on the Base-side hinge pieces.
 
     ``knuckle_box`` is ``(x0, x1, y0, y1, z0, z1)`` in world coordinates: the
     part of the Base knuckle bar that sits inside the case. ``extra_boxes``
-    names the rest of the part (the end cheeks, the flange) the same way.
+    names the other Base-side hinge pieces (the end cheeks, the saddles) the
+    same way.
     """
     boxes = {"Base knuckle": knuckle_box, **(extra_boxes or {})}
     hits = []
@@ -329,8 +330,8 @@ def check_hinge_clearance(
     report.add(
         "hinge-clears",
         not hits,
-        f"components inside the Base knuckle part's reach: {', '.join(hits)}" if hits
-        else "no component inside the Base knuckle part's reach",
+        f"components inside the hinge's Base-side pieces: {', '.join(hits)}" if hits
+        else "no component inside the hinge's Base-side pieces",
     )
 
 
@@ -338,32 +339,24 @@ def check_hinge_sweep(
     cheek_spans: tuple[tuple[float, float], ...],
     bar_span: tuple[float, float],
     lid_notches: tuple[tuple[float, float], ...],
-    web_top: float,
-    swing_radius: float,
     report: ValidationReport,
 ) -> None:
-    """Fail unless the Lid's opening sweep clears the Base knuckle part.
+    """Fail unless the Lid's opening sweep clears the Base-side hinge pieces.
 
-    The Lid swings about the hinge axis, so every Base-side piece within the
-    Lid's width must lie in a Lid shell notch (the end cheeks and the bar), and
-    the web and flange below the axis must stay under the swing circle
-    (``web_top`` is its top relative to the axis, negative).
+    The Lid swings about the hinge axis, so every Base-side piece on the axis
+    within the Lid's width (the end cheeks and the Base knuckle) must lie in a
+    Lid shell notch. Nothing else of the hinge reaches below the Deck
+    (ADR 0005).
     """
     uncovered = [
         f"{kind} {lo:g}..{hi:g}"
         for kind, (lo, hi) in [("cheek", c) for c in cheek_spans] + [("bar", bar_span)]
         if not any(n0 <= lo + 1e-9 and hi <= n1 + 1e-9 for n0, n1 in lid_notches)
     ]
-    low_web = web_top > -swing_radius + 1e-9
-    problems = []
-    if uncovered:
-        problems.append(f"not inside a Lid notch: {', '.join(uncovered)}")
-    if low_web:
-        problems.append(f"web top {web_top:g} mm is inside the Lid's {swing_radius:g} mm swing")
     report.add(
-        "hinge-sweep-clears", not problems,
-        "; ".join(problems) if problems
-        else "end cheeks, bar, web and flange clear the Lid's opening sweep",
+        "hinge-sweep-clears", not uncovered,
+        f"not inside a Lid notch: {', '.join(uncovered)}" if uncovered
+        else "end cheeks and Base knuckle clear the Lid's opening sweep",
     )
 
 
@@ -521,7 +514,7 @@ def check_seams(
 class Feature:
     """A structural feature's XY footprint (mm), for Seam clearance.
 
-    ``kind`` is rib, boss, standoff, column, cradle, vent, lug or knuckle.
+    ``kind`` is rib, boss, standoff, column, cradle, vent, lug, saddle or knuckle.
     ``joins`` names the Seam (``"<part>:<index>"``, as keyed by
     :func:`seam_bands`) that a Seam-joint lug is *meant* to straddle; that one
     Seam is exempt, every other Seam must still keep clear of it. ``part``
@@ -638,25 +631,6 @@ def check_plate_seam_screws(
         "plate-seam-screws", not problems,
         "; ".join(problems) if problems
         else f"{len(holes)} plate screws, a lower and an upper one within {unit:g} mm of the Seam per Section",
-    )
-
-
-def check_deck_seam_screws(
-    screw_xs: list[float], seam_x: float, reach: float, report: ValidationReport
-) -> None:
-    """Fail unless each Deck Section has a Deck screw within ``reach`` of its Seam.
-
-    The straight Deck Seam at ``seam_x`` is clamped from both sides: a Section
-    with no screw near it would let that side lift off (ADR 0003).
-    """
-    missing = [
-        side for side, sign in (("left", -1.0), ("right", 1.0))
-        if not any(sign * (x - seam_x) > 0 and abs(x - seam_x) <= reach + 1e-9 for x in screw_xs)
-    ]
-    report.add(
-        "deck-seam-screws", not missing,
-        f"a Deck screw within {reach:g} mm of the Seam on both Sections" if not missing
-        else f"no Deck screw within {reach:g} mm of the Seam on the {' and '.join(missing)} Section",
     )
 
 

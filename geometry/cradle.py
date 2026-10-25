@@ -49,6 +49,10 @@ class CradleSpec:
         Minimum wall thickness left beyond the groove opening at the
         block's top edge (mm) — real material to actually print, not a
         feather edge.
+    min_half_width : float
+        Least half-width of the block (mm). Cells lying side by side pass
+        half their pitch, so neighbouring saddles meet flush and fuse into
+        one block instead of leaving a sliver of a gap between them.
     """
 
     diameter: float
@@ -57,6 +61,7 @@ class CradleSpec:
     width: float
     clearance: float = 0.3
     wall: float = 2.0
+    min_half_width: float = 0.0
 
     @property
     def groove_radius(self) -> float:
@@ -83,7 +88,7 @@ class CradleSpec:
     def block_half_width(self) -> float:
         """Half-width of the saddle block (mm): the groove opening plus a
         real wall on each side, so the top edge is never a feather edge."""
-        return self.opening_half_width + self.wall
+        return max(self.opening_half_width + self.wall, self.min_half_width)
 
 
 def build(spec: CradleSpec):

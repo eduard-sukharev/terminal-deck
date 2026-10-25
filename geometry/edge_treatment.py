@@ -7,6 +7,11 @@ orientation (a fillet there would print as a curved overhang), a fillet where
 it runs along print Z. Each Section's bed-face outer edge gets a small chamfer
 against elephant's foot.
 
+A stepped Seam leaves each Section a notch on one side of a step and a tab on
+the other. The notch's inside corner gets the concave fillet above, so the
+tab's outside corner that fits into it is rounded too, a little larger
+(``round_seam_corners``), or the two would not mate.
+
 OCC cannot always apply a chamfer (tight spots, thin neighbours). The edges
 are tried together and, on failure, split in halves until the failing edge is
 isolated; that edge is skipped and recorded as a SOFT warning, so a tight spot
@@ -88,3 +93,33 @@ def bed_chamfer(shape, orientation: PrintOrientation, size: float, report):
         return shape
     infos = cad_helpers.bed_boundary_edges(shape, orientation.normal)
     return _apply(shape, infos, size, cad_helpers.chamfer_edges, "bed-edge chamfer", report)
+
+
+def seam_corner_points(seams, depth: float) -> list[tuple[float, float]]:
+    """XY of both corners of every step of ``seams`` (anything with
+    ``segments(depth) -> [(y0, y1, x)]``)."""
+    points = []
+    for seam in seams:
+        segments = seam.segments(depth)
+        for (_, y, xa), (_, _, xb) in zip(segments, segments[1:]):
+            if abs(xa - xb) > 1e-9:
+                points += [(xa, y), (xb, y)]
+    return points
+
+
+def round_seam_corners(shape, orientation: PrintOrientation, seams, depth: float, radius: float, report, tol: float = 1e-2):
+    """Fillet the outside corners at the steps of ``seams`` by ``radius`` mm.
+
+    Only edges running along print Z through a step corner are touched: the
+    tab corners that fit the (concave-filleted) notches of the neighbouring
+    Section. Edges that don't take the fillet are skipped with a SOFT warning.
+    """
+    points = seam_corner_points(seams, depth)
+    if radius <= 0.0 or not points:
+        return shape
+    infos = [
+        info for info in cad_helpers.convex_edges(shape)
+        if ConcaveEdge(info).vertical(orientation)
+        and any(abs(info.key[0] - x) < tol and abs(info.key[1] - y) < tol for x, y in points)
+    ]
+    return _apply(shape, infos, radius, cad_helpers.fillet_edges, "seam corner fillet", report)

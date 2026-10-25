@@ -222,18 +222,21 @@ class Base(BaseFastening):
         )
 
     def _mount_hinge(self, body):
-        """Notch ``body`` where the Lid knuckles swing.
+        """Seat the hinge in the Deck ``body`` (ADR 0005).
 
-        The Base knuckle is its own part (ADR 0004), so nothing is fused on;
-        without a hinge, ``body`` is returned unchanged.
+        Cuts the Base knuckle's pocket and the notches where the Lid knuckles
+        swing and the service caps sit, fuses on the end cheeks and bores them
+        for the friction bolts. The Base knuckle itself is its own part.
+        Without a hinge, ``body`` is returned unchanged.
         """
         from utilities import cad_helpers
 
         if self.hinge is None:
             return body
-        return cad_helpers.cut(
-            body, self._on_hinge_axis(self.hinge.build_base_notches(self.size().width))
-        )
+        width = self.size().width
+        body = cad_helpers.cut(body, self._on_hinge_axis(self.hinge.build_base_notches(width)))
+        body = cad_helpers.union(body, self._on_hinge_axis(self.hinge.build_cheeks(width)))
+        return cad_helpers.cut(body, self._on_hinge_axis(self.hinge.build_cheek_bores(width)))
 
     def _slope_cut_tool(self, z_at_front: float, size, height: float):
         """A half-space solid lying above the deck-parallel plane through
@@ -442,15 +445,26 @@ class Base(BaseFastening):
         return self._memo[key]
 
     def vent_spec(self):
-        """Rear-wall vent slots, clear of the Seam bands, columns and cutouts."""
+        """Rear-wall vent slots: vertical, clear of the Seam bands and the
+        features fused into the rear wall, starting a wall above any connector
+        cutout they stand over and stopping a wall below the hinge pocket."""
         from geometry import vents
 
         key = "vent_spec"
         if key not in self._memo:
             b = self.wall_bounds()
+            wall = self.config.wall_thickness
+            margin = vents.MARGIN
+            top = self.deck_rear_level() - margin
+            if self.hinge is not None:
+                reach = max(self.hinge.radius + self.hinge.fit, self.hinge.notch_radius)
+                top = min(top, self.hinge_axis_z() - reach - wall)
             self._memo[key] = vents.vent_slots(
-                b.x1 - b.x0, self.deck_rear_level() - self.config.wall_thickness,
-                keepouts=self.vent_keepout_ranges(),
+                b.x1 - b.x0, (margin, top),
+                keepouts=self.vent_keepout_ranges(), raised=self.vent_raised_ranges(),
+                # A wall's band of solid across the Parting plane, so neither
+                # the Tray's top edge nor the Deck's bed face is a comb.
+                solid_bands=((self.parting_height() - wall / 2.0, self.parting_height() + wall / 2.0),),
             )
         return self._memo[key]
 
@@ -465,17 +479,11 @@ class Base(BaseFastening):
     def fastening_report(self, report) -> None:
         """Run the Base's data-level fastening checks onto ``report`` (HARD)."""
         from utilities.validation import (
-            check_deck_screw, check_deck_seam_screws, check_screw_heads_clear_of_feet,
+            check_deck_screw, check_screw_heads_clear_of_feet,
             check_seam_clearance,
         )
 
         columns = self.columns()
-        deck = self._split("deck")
-        if deck is not None:
-            check_deck_seam_screws(
-                [c.x for c in columns], deck.seams()[0].x,
-                self.config.deck.seam_screw_reach, report,
-            )
         check_deck_screw(self.config.screws.deck, self.deck_screw_grip(), report)
         feet = [(fx, fy, self.config.feet.diameter / 2.0) for fx, fy in self.foot_positions()]
         report.add(
@@ -495,25 +503,25 @@ class Base(BaseFastening):
         self.knuckle_report(report)
 
     def knuckle_report(self, report) -> None:
-        """Base knuckle mounting checks: HARD that it is screwed down at all, HARD
-        that every Deck Section has a screw into its rear skirt, SOFT for each
-        Tray Section without a floor screw (the Deck columns hold it instead)."""
-        sites = self.knuckle_screw_sites()
-        deck = self.deck_knuckle_sites()
-        total = sum(len(v) for v in sites.values()) + sum(len(v) for v in deck.values())
-        report.add(
-            "knuckle-screwed-to-tray", total >= 1,
-            f"{sum(len(v) for v in sites.values())} floor screw(s) into the Tray ("
-            + ", ".join(f"{n} {len(p)}" for n, p in sites.items())
-            + f") and {sum(len(v) for v in deck.values())} into the Deck skirt ("
-            + ", ".join(f"{n} {len(p)}" for n, p in deck.items()) + ")",
-        )
-        if deck:
-            bare = [n for n, pts in deck.items() if not pts]
+        """Hinge seating and Deck Seam checks (ADR 0005): HARD that each saddle
+        backs the Base knuckle at least a wall deep, HARD that every Deck Seam
+        has its lug."""
+        if self.hinge is not None:
+            wall = self.config.wall_thickness
+            depths = {n: y1 - y0 for n, (_, _, y0, y1) in self.saddle_rects().items()}
+            thin = [n for n, d in depths.items() if d < wall - 1e-9]
             report.add(
-                "knuckle-screwed-to-deck", not bare,
-                "every Deck Section has a knuckle screw" if not bare
-                else f"no knuckle screw into the Deck Section(s): {', '.join(bare)}",
+                "knuckle-saddles", not thin,
+                ", ".join(f"{n} {d:.1f} mm" for n, d in depths.items())
+                + (f" (thinner than the {wall:g} mm wall: {', '.join(thin)})" if thin else " deep"),
+            )
+        lugs = self.deck_lug_sites()
+        if lugs:
+            bare = [sid for sid, pts in lugs.items() if not pts]
+            report.add(
+                "deck-seam-lug", not bare,
+                "every Deck Seam has its front and rear lug" if not bare
+                else f"no room for the lugs on Deck Seam(s): {', '.join(bare)}",
             )
 
     # -- Tray -------------------------------------------------------------------
@@ -564,10 +572,7 @@ class Base(BaseFastening):
             if not isinstance(p.component, Battery):
                 continue
             battery = p.component
-            spec = cradle.CradleSpec(
-                diameter=battery.cell_diameter, rest_height=p.z,
-                height=battery.cradle_height, width=wall * 3,
-            )
+            spec = self.cradle_spec(p)
             saddle = cradle.build(spec)
             if p.rotation:
                 saddle = cad_helpers.rotate_z(saddle, p.rotation)
@@ -579,12 +584,6 @@ class Base(BaseFastening):
                     wx, wy, _ = p.world_offset(cx, cy_end, 0.0)
                     features.append(cad_helpers.translate(saddle, wx, wy, 0.0))
 
-        # Base knuckle screw bosses: M3 insert bosses merged into the rear wall.
-        kspec = self.knuckle_boss_spec()
-        for pts in self.knuckle_screw_sites().values():
-            for kx, ky in pts:
-                features.append(self._boss_with_hull(kspec, kx, ky, bore=False))
-
         # Stiffening ribs, kept clear of every boss: a rib crossing a bore
         # would plug the screw hole. Cradles are deliberately not cleared (no
         # bore to plug).
@@ -592,10 +591,6 @@ class Base(BaseFastening):
         rib_solids = ribs.build(rspec, interior_w, interior_d)
         keepouts = [(x, y, spec.base_diameter) for x, y, spec, _ in self.component_boss_specs()]
         keepouts += [(c.x, c.y, c.base_diameter) for c in self.columns()]
-        keepouts += [
-            (kx, ky, kspec.base_diameter)
-            for pts in self.knuckle_screw_sites().values() for kx, ky in pts
-        ]
         for bx, by, diameter in keepouts:
             clearance_cyl = cad_helpers.cylinder_centered(diameter + wall, rspec.height)
             clearance_cyl = cad_helpers.translate(clearance_cyl, bx, by, rspec.height / 2.0)
@@ -614,20 +609,10 @@ class Base(BaseFastening):
             through = cad_helpers.translate(through, col.x, col.y, (zp - wall) / 2.0)
             body = cad_helpers.cut(body, cb, through)
 
-        # Insert bores of the knuckle bosses.
-        insert = fasteners.heat_insert("M3")
-        for pts in self.knuckle_screw_sites().values():
-            for kx, ky in pts:
-                bore = cad_helpers.cylinder_centered(insert.printed_hole_diameter, insert.depth)
-                body = cad_helpers.cut(
-                    body, cad_helpers.translate(bore, kx, ky, kspec.height - insert.depth / 2.0)
-                )
-
         # Vents and connector cutouts through the walls.
-        slots = vents.build(self.vent_spec(), wall)
-        if slots:
-            rear_dl = self.deck_rear_level()
-            slots = cad_helpers.translate(slots, 0.0, -size.depth / 2 + wall / 2.0, rear_dl / 2.0)
+        if self.vent_spec().positions:
+            slots = vents.build(self.vent_spec(), wall)
+            slots = cad_helpers.translate(slots, 0.0, -size.depth / 2 + wall / 2.0, 0.0)
             body = cad_helpers.cut(body, slots)
         body = cutouts.build(self.cutouts(), body, wall, chamfer=config.corners.cutout_chamfer)
 
@@ -652,43 +637,13 @@ class Base(BaseFastening):
 
     # -- Base knuckle -----------------------------------------------------------
 
-    def knuckle_drop(self) -> float:
-        """Hinge axis height above the Tray floor's outer face (mm)."""
-        return self.hinge_axis_z() + self.config.wall_thickness
-
     def build_knuckle(self):
-        """The Base knuckle part, in world position (ADR 0004).
-
-        D-bar with the display cable tunnel, outer end cheeks, a web behind the
-        rear face and a flange under the Tray floor, screwed from below into
-        the Tray's knuckle bosses. Flange cuts clear the rubber feet and the
-        Deck screw heads. Prints flange down.
-        """
-        from utilities import cad_helpers
-
+        """The Base knuckle, in world position (ADR 0004, 0005): the D-bar with
+        the display cable tunnel, seated in the Deck's pocket. Prints flat face
+        down."""
         if self.hinge is None:
             raise ValueError("no hinge configured")
-        size = self.size()
-        rear_y = -size.depth / 2.0
-        screws = tuple(
-            (x, y - rear_y) for pts in self.knuckle_screw_sites().values() for x, y in pts
-        )
-        cuts = [
-            (fx, fy - rear_y, self.config.feet.diameter / 2.0 + 0.5)
-            for fx, fy in self.foot_positions()
-        ]
-        cuts += [
-            (c.x, c.y - rear_y, c.counterbore_diameter / 2.0 + 0.5) for c in self.columns()
-        ]
-        side_screws = tuple(
-            (x, z - self.hinge_axis_z())
-            for pts in self.deck_knuckle_sites().values() for x, z in pts
-        )
-        part = self.hinge.build_base_part(
-            size.width, self.knuckle_drop(), screws=screws, flange_cuts=tuple(cuts),
-            side_screws=side_screws,
-        )
-        return cad_helpers.translate(part, 0.0, rear_y, self.hinge_axis_z())
+        return self._on_hinge_axis(self.hinge.build_base_part(self.size().width))
 
     # -- Deck -------------------------------------------------------------------
 
@@ -698,7 +653,9 @@ class Base(BaseFastening):
         The Deck is the shell above the Parting plane: a skirt of wall from the
         plane up to the sloped underside, then the one-wall-thick slab with the
         keyboard opening and its Well rim, plus a heat-set-insert boss over each
-        Tray column. It prints Parting face down, supports under the roof.
+        Tray column, the saddles, the Seam lug, the end cheeks and the Base
+        knuckle's pocket. It prints Parting face down, supports under the roof
+        and the cheeks.
 
         Returns
         -------
@@ -784,20 +741,30 @@ class Base(BaseFastening):
             cutout = cad_helpers.translate(cutout, *pose)
             deck = cad_helpers.cut(deck, cutout)
 
-        # Knuckle screw bosses on the rear skirt: a horizontal insert boss on a
-        # solid block down to the Parting plane, so nothing overhangs.
-        kspec = self.knuckle_boss_spec()
-        insert = fasteners.heat_insert("M3")
-        rear_in = self.wall_bounds().y0
-        rear_out = rear_in - wall
-        for kx, kz in (pt for pts in self.deck_knuckle_sites().values() for pt in pts):
-            along_y = cad_helpers.rotate_x(cad_helpers.cylinder_centered(kspec.outer_diameter, kspec.height), 90)
-            block = cad_helpers.box_centered(kspec.outer_diameter, kspec.height, kz - zp)
-            boss_solid = cad_helpers.union(
-                cad_helpers.translate(along_y, kx, rear_in + kspec.height / 2.0, kz),
-                cad_helpers.translate(block, kx, rear_in + kspec.height / 2.0, (kz + zp) / 2.0),
-            )
-            deck = cad_helpers.union(deck, boss_solid)
+        # Saddles: solid blocks inside the rear skirt, from the Parting plane
+        # into the roof, that the Base knuckle's flat bears against at each
+        # land (ADR 0005). The pocket cut in _mount_hinge trims their rear face.
+        for x0, x1, y0, y1 in self.saddle_rects().values():
+            top = self.deck_level_at(y1) + wall / 2.0
+            block = cad_helpers.box_centered(x1 - x0, y1 - y0 + wall / 2.0, top - zp)
+            deck = cad_helpers.union(deck, cad_helpers.translate(
+                block, (x0 + x1) / 2.0, (y0 + y1 - wall / 2.0) / 2.0, (zp + top) / 2.0))
+
+        # Deck Seam lugs, standing on the Parting plane; split with the Deck.
+        from geometry import seam_joint
+
+        split = config.split.get("deck")
+        if split is not None:
+            sites = self.deck_lug_sites()
+            for i, seam in enumerate(split.seams()):
+                if sites.get(f"deck:{i}"):
+                    deck = seam_joint.add_joints(
+                        deck, seam, size.depth, wall, self._lug_spec(), floor_top=zp,
+                        sites=sites[f"deck:{i}"],
+                    )
+            # The lug is sunk half a millimetre to fuse with a floor; the Deck has
+            # none, so trim it back to the Parting plane (the Deck's bed face).
+            deck = cad_helpers.intersect(deck, self._above_parting(zp, below=False))
 
         # Insert bores, opening on the Parting face.
         for col in columns:
@@ -805,26 +772,12 @@ class Base(BaseFastening):
             bore = cad_helpers.translate(bore, col.x, col.y, zp - 1.0 + (col.insert_depth + 1.0) / 2.0)
             deck = cad_helpers.cut(deck, bore)
 
-        # Insert bores of the knuckle bosses (open to the interior) and the
-        # screw's clearance bore through the wall.
-        screw = fasteners.screw("M3")
-        for kx, kz in (pt for pts in self.deck_knuckle_sites().values() for pt in pts):
-            bore = cad_helpers.rotate_x(cad_helpers.cylinder_centered(insert.printed_hole_diameter, insert.depth + 1.0), 90)
-            deck = cad_helpers.cut(deck, cad_helpers.translate(
-                bore, kx, rear_in + kspec.height - insert.depth / 2.0 + 0.5, kz))
-            lead = kspec.height - insert.depth + wall + 1.0
-            thru = cad_helpers.rotate_x(cad_helpers.cylinder_centered(screw.clearance, lead + 1.0), 90)
-            deck = cad_helpers.cut(deck, cad_helpers.translate(
-                thru, kx, rear_out - 1.0 + (lead + 1.0) / 2.0, kz))
-
         # Vents and connector cutouts that reach above the Parting plane.
         from geometry import vents
 
-        slots = vents.build(self.vent_spec(), wall)
-        if slots:
-            slots = cad_helpers.translate(
-                slots, 0.0, -size.depth / 2 + wall / 2.0, self.deck_rear_level() / 2.0
-            )
+        if self.vent_spec().positions:
+            slots = vents.build(self.vent_spec(), wall)
+            slots = cad_helpers.translate(slots, 0.0, -size.depth / 2 + wall / 2.0, 0.0)
             deck = cad_helpers.cut(deck, slots)
         deck = cutouts.build(
             [c for c in self.cutouts() if c["z"] + c["height"] / 2.0 > zp],

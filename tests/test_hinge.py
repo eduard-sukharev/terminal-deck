@@ -47,22 +47,35 @@ def test_friction_bolt_stock_length_covers_the_clamped_stack():
     assert run - h.bolt_length() < 5  # the next stock size up would not fit
 
 
-def test_base_knuckle_part_fits_the_build_volume():
+def test_base_knuckle_is_one_bar_within_its_span():
     if not cad_helpers.cad_available():
         pytest.skip("build123d not installed")
     h = hinge()
-    x, y, z = cad_helpers.bounding_box_mm(h.build_base_part(WIDTH, drop=29.0))
-    assert x <= 220.0 and cad_helpers.solid_count(h.build_base_part(WIDTH, drop=29.0)) == 1
-
-
-def test_base_part_is_one_solid_with_cheeks_joined_through_the_flange():
-    if not cad_helpers.cad_available():
-        pytest.skip("build123d not installed")
-    h = hinge()
-    part = h.build_base_part(WIDTH, drop=29.0, screws=((20.0, 4.7),))
+    part = h.build_base_part(WIDTH)
     assert cad_helpers.solid_count(part) == 1
     x, y, z = cad_helpers.bounding_box_mm(part)
-    assert math.isclose(x, h.span(WIDTH), rel_tol=1e-6)
+    b0, b1 = h.base_knuckle_span(WIDTH)
+    assert math.isclose(x, b1 - b0, rel_tol=1e-6) and x <= 220.0
+    # Nothing below the bar: no web, no flange (ADR 0005).
+    assert math.isclose(z, h.diameter, rel_tol=1e-6)
+
+
+def test_cheeks_are_bored_and_recessed():
+    if not cad_helpers.cad_available():
+        pytest.skip("build123d not installed")
+    h = hinge()
+    cheeks = h.build_cheeks(WIDTH)
+    bored = cad_helpers.cut(cheeks, h.build_cheek_bores(WIDTH))
+    assert cad_helpers.solid_count(cheeks) == 2
+    assert cad_helpers.volume_mm3(bored) < cad_helpers.volume_mm3(cheeks)
+
+
+def test_lands_flank_the_tunnel():
+    h = hinge()
+    (a0, a1), (c0, c1) = h.land_spans(WIDTH)
+    t0, t1 = h.tunnel_span(WIDTH)
+    assert (a1, c0) == (t0, t1)
+    assert math.isclose(a1 - a0, h.land) and math.isclose(c1 - c0, h.land)
 
 
 def test_lid_knuckles_are_bored_for_the_bolt():
@@ -87,11 +100,15 @@ def test_hinge_fits_check():
 def test_notches_cover_the_other_shells_pieces_with_clearance():
     h = hinge()
     b0, b1 = h.base_knuckle_span(WIDTH)
-    (cl0, cl1), (cr0, cr1) = h.corner_notch_spans(WIDTH)
     (l0, l1), (r0, r1) = h.lid_knuckle_spans(WIDTH)
-    # Deck notches hold the Lid knuckles and reach past the case side.
-    assert cl0 < -WIDTH / 2 and cr1 > WIDTH / 2
-    assert cl0 <= l0 and cl1 >= l1 and cr0 <= r0 and cr1 >= r1
+    # Deck notches hold the Lid knuckles and the service caps, reach past the
+    # case side, and leave the fused cheeks alone.
+    notches = h.corner_notch_spans(WIDTH)
+    assert notches[0][0] < -WIDTH / 2 and notches[-1][1] > WIDTH / 2
+    for lo, hi in [(l0, l1), (r0, r1)]:
+        assert any(n0 <= lo and hi <= n1 for n0, n1 in notches)
+    for lo, hi in h.cheek_spans(WIDTH):
+        assert not any(n0 < hi - 1e-9 and lo + 1e-9 < n1 for n0, n1 in notches)
     # Lid notches hold the Base bar and both cheeks, with clearance, and touch no Lid knuckle.
     notches = h.lid_notch_spans(WIDTH)
     for lo, hi in [h.cheek_spans(WIDTH)[0], (b0, b1), h.cheek_spans(WIDTH)[1]]:
@@ -118,7 +135,7 @@ def test_lid_roll_spans_the_full_width_on_the_hinge_axis():
     assert math.isclose(y, h.diameter, rel_tol=1e-6) and math.isclose(z, h.diameter, rel_tol=1e-6)
 
 
-def test_hinge_clears_check_covers_cheeks_and_flange():
+def test_hinge_clears_check_covers_the_cheeks():
     from types import SimpleNamespace
 
     from utilities.validation import ValidationReport, check_hinge_clearance
@@ -142,10 +159,9 @@ def test_hinge_clears_check_covers_cheeks_and_flange():
 def test_sweep_check_needs_the_cheeks_and_bar_in_lid_notches():
     from utilities.validation import ValidationReport, check_hinge_sweep
 
-    ok, bad, low = ValidationReport(), ValidationReport(), ValidationReport()
+    ok, bad = ValidationReport(), ValidationReport()
     cheeks, bar = ((-100.0, -95.0), (95.0, 100.0)), (-60.0, 60.0)
     notches = ((-110.0, -94.0), (-61.0, 61.0), (94.0, 110.0))
-    check_hinge_sweep(cheeks, bar, notches, -7.0, 6.5, ok)
-    check_hinge_sweep(cheeks, bar, notches[1:], -7.0, 6.5, bad)
-    check_hinge_sweep(cheeks, bar, notches, -6.0, 6.5, low)
-    assert ok.passed and not bad.passed and not low.passed
+    check_hinge_sweep(cheeks, bar, notches, ok)
+    check_hinge_sweep(cheeks, bar, notches[1:], bad)
+    assert ok.passed and not bad.passed

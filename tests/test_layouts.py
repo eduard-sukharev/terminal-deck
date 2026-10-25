@@ -439,13 +439,14 @@ def test_deck_columns_spread_across_most_of_the_case_width():
     assert max(xs) - min(xs) >= 0.5 * (size.width - 2 * cfg.wall_thickness)
 
 
-def test_every_deck_section_has_a_column_near_its_seam():
+def test_no_deck_column_stands_in_the_hdmi_cable_run():
     base, cfg = _base()
-    reach = cfg.deck.seam_screw_reach
-    seam_x = cfg.split["deck"].seams()[0].x
-    xs = [c.x for c in base.columns()]
-    assert any(seam_x - reach <= x < seam_x for x in xs)
-    assert any(seam_x < x <= seam_x + reach for x in xs)
+    runs = base.cable_runs()
+    assert runs, "the mini-HDMI plug's ribbon needs a run to the rear wall"
+    r = base.column_geometry()["outer"] / 2.0
+    for x0, x1, y0, y1 in runs:
+        for c in base.columns():
+            assert not (c.x + r > x0 and c.x - r < x1 and c.y + r > y0 and c.y - r < y1), (c.x, c.y)
 
 
 def test_plate_has_eight_standoffs_and_the_seam_ones_clear_the_sbc():
@@ -472,28 +473,109 @@ def _hinged_base():
     return base, cfg
 
 
-def test_every_deck_section_has_a_knuckle_screw_above_the_hub():
+def test_saddles_back_both_bolt_lands_from_the_rear_wall():
     base, cfg = _hinged_base()
-    sites = base.deck_knuckle_sites()
-    assert set(sites) == {"left", "right"}
-    r = base.knuckle_boss_spec().outer_diameter / 2
+    saddles = base.saddle_rects()
+    wall = cfg.wall_thickness
+    rear_in = base.wall_bounds().y0
+    lands = base.hinge.land_spans(base.size().width)
+    assert set(saddles) == {"left", "right"}
+    for (x0, x1, y0, y1), (l0, l1) in zip(saddles.values(), lands):
+        assert (x0, x1) == (l0, l1)
+        assert y0 == rear_in and wall <= y1 - y0 <= base.hinge.saddle
+
+
+def test_saddles_stop_short_of_the_components():
+    base, cfg = _hinged_base()
     zp = base.parting_height()
-    seam_x = cfg.split["deck"].seams()[0].x
-    for name, pts in sites.items():
-        assert pts, f"no knuckle screw into the {name} Deck Section"
-        for x, z in pts:
-            assert z - r >= zp  # the boss stands on the Parting plane, over the hub
-            assert (x < seam_x) == (name == "left")
-            assert abs(x - seam_x) > r  # clear of the Seam
+    gap = cfg.clearance.shell
+    rects = base.assembly.keepout_rects(zp, base.deck_level_at(base.wall_bounds().y0), base._base_placements())
+    for x0, x1, y0, y1 in base.saddle_rects().values():
+        for ox0, ox1, oy0, oy1 in rects:
+            if ox0 < x1 and ox1 > x0:
+                assert y1 <= oy0 - gap + 1e-9
 
 
-def test_deck_knuckle_screw_is_stock_and_engages_the_insert():
+def test_deck_seam_has_a_front_and_a_rear_lug_on_the_parting_plane():
     base, _ = _hinged_base()
-    screw = base.deck_knuckle_screw()
-    assert screw.size == "M3" and screw.engagement >= 3.0
+    sites = base.deck_lug_sites()
+    assert set(sites) == {"deck:0"} and len(sites["deck:0"]) == 2
+    (_, y_rear, rear_backed), (_, y_front, front_backed) = sites["deck:0"]
+    assert rear_backed and front_backed and y_rear < 0 < y_front
 
 
-def test_deck_knuckle_bosses_clear_the_seam_check():
+def test_front_deck_lug_fits_under_the_keyboard_plate():
+    base, cfg = _hinged_base()
+    zp = base.parting_height()
+    spec = base._lug_spec()
+    x0, x1, y0, y1 = base.deck_lug_rects()["deck:0"][1]
+    gap = cfg.clearance.shell
+    for ox0, ox1, oy0, oy1 in base.assembly.keepout_rects(zp, zp + spec.size + gap, base._base_placements()):
+        assert not (ox0 < x1 + gap and ox1 > x0 - gap and oy0 < y1 + gap and oy1 > y0 - gap)
+
+
+def test_rear_right_corner_takes_a_deck_column_beside_the_battery():
     base, _ = _hinged_base()
-    names = [f.name for f in base.structural_features() if f.name.startswith("deck knuckle")]
-    assert len(names) == sum(len(p) for p in base.deck_knuckle_sites().values())
+    b = base.wall_bounds()
+    corner = [c for c in base.columns() if set(c.walls) == {"right", "rear"}]
+    assert corner, [(c.x, c.y, c.walls) for c in base.columns()]
+    battery = next(p for p in base.assembly.placements if p.component.name == "Battery")
+    assert battery.box[2] < corner[0].x - corner[0].spec.outer_diameter / 2.0
+    assert corner[0].x > b.x1 - corner[0].spec.outer_diameter
+
+
+def test_deck_lug_and_saddles_clear_the_seam_check():
+    base, _ = _hinged_base()
+    features = base.structural_features()
+    assert sum(f.kind == "saddle" for f in features) == 2
+    assert any(f.kind == "lug" and f.joins == "deck:0" for f in features)
+
+
+def test_bezel_has_six_screws_per_section():
+    from case.lid import Lid
+
+    p = BuildPipeline("config/default.yaml")
+    cfg = p.load_config()
+    lid = Lid(p.load_components()["display"], cfg, footprint=(235.7, 120.4))
+    screws = lid.screw_positions()
+    seam = cfg.split["bezel"].seams()[0].x
+    assert len(screws) == 12
+    assert sum(x < seam for x, _ in screws) == sum(x > seam for x, _ in screws) == 6
+    # Beside the Seam: two rows above and two below the glass; the outer row is
+    # level with the corner screws, the inner one clear of the display panel.
+    corner_rows = {round(abs(y), 6) for _, y in lid._corner_positions()}
+    rows = sorted({round(abs(y), 6) for _, y in lid._seam_screw_positions()})
+    assert len(rows) == 2 and rows[1] in corner_rows
+    assert rows[0] - lid.boss_outer_diameter() / 2.0 >= cfg.display.height / 2.0
+
+
+def test_side_by_side_cell_cradles_meet_flush():
+    base, _ = _base()
+    rects = sorted(base.cradle_rects(), key=lambda r: (r[0], r[2]))
+    # Cradles of one cell end pair up across the cells: no gap between them.
+    for a, b in zip(rects, rects[1:]):
+        if abs(a[0] - b[0]) < 1e-6:
+            assert b[2] <= a[3] + 1e-6, (a, b)
+
+
+def test_vents_stand_over_ports_without_touching_them():
+    base, cfg = _hinged_base()
+    spec = base.vent_spec()
+    w = spec.slot_width
+    rear = [c for c in base.cutouts() if c["direction"][1] < 0]
+    over = 0
+    for x, (z0, _) in zip(spec.positions, spec.spans):
+        for c in rear:
+            half = c["width"] / 2 + cfg.corners.cutout_chamfer
+            if x + w / 2 > c["x"] - half and x - w / 2 < c["x"] + half:
+                over += 1
+                top = c["z"] + c["height"] / 2 + cfg.corners.cutout_chamfer
+                assert z0 >= top + cfg.wall_thickness - 1e-9
+    assert over, "no vent slot stands over a rear port"
+
+
+def test_vents_keep_a_solid_band_across_the_parting_plane():
+    base, cfg = _hinged_base()
+    zp, wall = base.parting_height(), cfg.wall_thickness
+    for z0, z1 in base.vent_spec().spans:
+        assert z1 <= zp - wall / 2 + 1e-9 or z0 >= zp + wall / 2 - 1e-9

@@ -304,27 +304,6 @@ def test_a_lug_may_straddle_its_own_seam_but_not_another():
 
 # -- Deck screws and feet -------------------------------------------------------
 
-def test_every_deck_section_needs_a_screw_near_its_seam():
-    from utilities.validation import check_deck_seam_screws
-
-    ok, no_left, no_right = ValidationReport(), ValidationReport(), ValidationReport()
-    check_deck_seam_screws([-12.0, 9.0, 80.0], 0.0, 15.0, ok)
-    check_deck_seam_screws([9.0, 80.0, -80.0], 0.0, 15.0, no_left)
-    check_deck_seam_screws([-9.0, -80.0, 80.0], 0.0, 15.0, no_right)
-    assert ok.passed, ok.summary()
-    assert [c.name for c in no_left.failures] == ["deck-seam-screws"]
-    assert "left" in no_left.failures[0].message
-    assert "right" in no_right.failures[0].message
-
-
-def test_deck_seam_screw_reach_is_inclusive_and_measured_from_the_seam():
-    from utilities.validation import check_deck_seam_screws
-
-    r = ValidationReport()
-    check_deck_seam_screws([0.0, 40.0], 20.0, 20.0, r)   # seam at x=20, both exactly at reach
-    assert r.passed, r.summary()
-
-
 def test_screw_head_in_a_foot_recess_fails():
     from utilities.validation import check_screw_heads_clear_of_feet
 

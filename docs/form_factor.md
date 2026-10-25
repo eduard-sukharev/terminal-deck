@@ -37,9 +37,11 @@ point) minus the Deck top. Each run checks `visor-closes-flush`,
 
 * Display centered in the Lid. The driver board stays directly behind the
   panel (the FPC runs straight; do not move it).
-* Bezel held by eight exposed countersunk M2 screws from the front — a
-  design element, not hidden: four at the corners, and one above and one
-  below the glass on each side of the Bezel's straight centre Seam.
+* Bezel held by twelve exposed countersunk M2 screws from the front — a
+  design element, not hidden: six per Bezel Section, two at its outer
+  corners and four beside the straight centre Seam — two above and two below
+  the glass, one next to the display panel and one level with the corner
+  screws at the Bezel's edge.
 
 ## Base
 
@@ -55,29 +57,46 @@ point) minus the Deck top. Each run checks `visor-closes-flush`,
   configured fraction of the front wall height clamped to min/max mm, so the
   Deck has a flat face and a wall skirt. The Deck is held by M3 screws from
   below — through counterbored Tray columns into heat-set inserts in Deck
-  bosses — at least one per Deck Section near its Seam; nothing stands proud
-  of the Deck under the hands.
+  bosses; nothing stands proud of the Deck under the hands. The Deck Seam
+  needs no column of its own (its Sections are pinned, ADR 0006), and no
+  column stands in the strip behind the SBC's mini-HDMI plug where its
+  ribbon runs to the hinge (`Base.cable_runs`).
 * The keyboard plate is held by eight M2 screws on Tray-floor standoffs: four
   at its edges and two per Section within 1u of its Seam, one in the upper
   and one in the lower rows, in row gaps clear of stabilizers. The build fails
   if they don't fit around the parts buried below.
+* The rear wall carries a row of vertical 0.8 mm vent slots
+  (`geometry/vents.py`). A slot may stand over a connector cutout, starting a
+  wall above it (or beside it); it is left out only over the Seam bands and
+  what is fused to the wall's inside (merged columns, saddles, Deck Seam
+  lugs). A wall-thick solid band runs across the Parting plane, so neither
+  the Tray's top edge nor the Deck's bed face is a comb, and the slots stop a
+  wall below the hinge pocket.
+* Battery cells lie in printed floor cradles; side-by-side cells' cradles
+  meet flush and print as one block.
 
 ## Hinge
 
-Printed friction hinge (ADR 0004), Jornada P6 layout: a Lid knuckle at each
-corner and one long Base knuckle in the middle. Each Lid knuckle is clamped
-between the Base knuckle and an outer Base end cheek by an M3 bolt whose head
-and captive nyloc nut are both on the stationary Base side, with steel and
-spring washers between the rubbing faces; the head sits under a removable
-service cap and tightening it sets the friction. The Base knuckle is a
-separate D-profile part with a flat mounting flange, screwed from below to
-every Tray Section so it bridges the Tray Seams, and is hollow between its
-lands: the display cable tunnel (`hinge.wire_tunnel`). Knuckle diameter must
-leave at least `wall.thickness` around the tunnel. The Lid knuckles are fused
-to the Lid shell's side Sections (no Seam crosses them); the Lid's rear edge
-is rolled (`Hinge.build_lid_roll`) and the roll counts as wall, so Lid shell
-Seams pass through it. All dimensions are in the `hinge:` config section and
-the layout math stays in `components/hinge.py`.
+Printed friction hinge (ADR 0004, amended by ADR 0005), Jornada P6 layout: a
+Lid knuckle at each corner and one long Base knuckle in the middle. Each Lid
+knuckle is clamped between the Base knuckle and an outer end cheek by an M3
+bolt whose head and captive nyloc nut are both on the stationary Base side,
+with steel and spring washers between the rubbing faces; the head sits under a
+removable service cap and tightening it sets the friction. The end cheeks are
+fused to the Deck, one per Deck Section. The Base knuckle is a separate
+D-profile bar, hollow between its lands (the display cable tunnel,
+`hinge.wire_tunnel`), that sits in a pocket in the Deck's rear edge with its
+flat against the Deck: the two friction bolts hold it along the axis and tie
+the Deck Sections together, and a saddle block on the inside of the rear skirt
+backs its flat at each land, from the Parting plane up to the Deck roof (as
+deep as `hinge.saddle`, less where a component stands closer; the build fails
+if a saddle is thinner than a wall). Nothing of the hinge reaches below the
+Parting plane, so the Tray's rear wall and its ports stay clear. Knuckle
+diameter must leave at least `wall.thickness` around the tunnel. The Lid
+knuckles are fused to the Lid shell's side Sections (no Seam crosses them);
+the Lid's rear edge is rolled (`Hinge.build_lid_roll`) and the roll counts as
+wall, so Lid shell Seams pass through it. All dimensions are in the `hinge:`
+config section and the layout math stays in `components/hinge.py`.
 
 ## Printing
 
@@ -103,19 +122,25 @@ are exempt.
 Concave joints (wall–floor, boss–wall, boss–floor, rib–floor, Merged
 boss–wall) get a stress-relief edge of `0.5·wall` by default: a 45° chamfer
 where the edge is horizontal in print orientation, a fillet allowed where it
-runs along print Z. The bed-face outer edge gets a 0.5 mm chamfer against
-elephant's foot. Where an edge treatment doesn't fit it is skipped with a
-SOFT warning.
+runs along print Z. A stepped Seam's notch corner gets that fillet like any
+other, so the tab corner of the neighbouring Section that fits into it is
+rounded too, `edges.seam_convex_extra` (0.5 mm) larger, and the two still
+mate. The bed-face outer edge gets a 0.5 mm chamfer against elephant's foot.
+Where an edge treatment doesn't fit it is skipped with a SOFT warning.
 
-Each Seam of the Tray and the Lid shell is joined by two lugs
-(`geometry/seam_joint.py`): a lug straddles the Seam on the floor, and a
-horizontal M2 screw runs along X from a clearance bore in one Section into a
-heat-set insert pocket in the next. Sites are tried at the Seam's end segments,
-then the interior ones, skipping any whose lug would touch the components
-inside, a boss, column, cradle or connector cutout; the build fails if fewer
-than two clear sites exist on a Seam. Ribs are laid out between the Seam bands
-and the lugs. Deck Sections are joined through the Tray (see Base); Bezel
-Sections through the Lid shell bosses.
+Sections of one part are joined for good by Seam lugs (ADR 0006,
+`geometry/seam_joint.py`): a lug straddles the Seam, bored through along X
+for a length of 1.75 mm filament that is pushed in after the Sections are put
+together, glued, and trimmed flush (`seam_pin` in the config). Each Seam of
+the Tray and the Lid shell gets two lugs on the floor, the Deck's Seam two
+standing on the Parting plane — one in the front skirt under the keyboard
+plate, one in the rear skirt under the Base knuckle. Sites are tried at the
+Seam's end segments, then the interior ones, skipping any whose lug would
+touch the components inside, a boss, column, cradle, saddle or connector
+cutout; the build fails if fewer than two clear sites exist on a Seam. Ribs
+are laid out between the Seam bands and the lugs. Bezel Sections are joined
+through the Lid shell bosses; screws stay wherever one part is held to
+another, so the case still opens for service.
 
 Seam defaults are tuned per part: the Tray's sit at ±59 mm (clear of the SBC
 bosses, the battery cradles and the rear-wall connector cutouts); the Lid
@@ -125,14 +150,9 @@ mirrors about it.
 Fitting the plate Seam standoffs meant moving the SBC 10.3 mm forward and 2 mm
 right in `config/layouts/clamshell.yaml` (and raising the plate by 0.8 mm to
 keep the board's clearance): a standoff runs floor to plate and cannot pass
-through the board. The Base knuckle's flange screws thread into a Merged boss
-on the rear wall of the centre Tray Section; the hub and the battery sit
-against that wall elsewhere, and the Tray wall is only as tall as the Parting
-plane, so no boss fits above the hub. The left and right Sections are reached
-from the Deck instead: horizontal M3 screws through the knuckle web and the
-rear wall into heat-set insert bosses on the Deck's rear skirt (above the
-Parting plane, on a solid block so nothing overhangs), two per Deck Section.
-The build fails if a Deck Section has none.
+through the board. The Base knuckle used to be screwed to the Tray floor (ADR 0004); the hub
+and the battery stand against the rear wall and the Tray wall is only as tall
+as the Parting plane, so it is seated in the Deck instead (ADR 0005).
 
 ## Review renders
 

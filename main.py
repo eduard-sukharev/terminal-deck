@@ -565,19 +565,15 @@ class BuildPipeline:
                     )
                     for side, (c0, c1) in zip(("left", "right"), hinge.cheek_spans(size.width))
                 } | {
-                    "flange": (
-                        hinge.part_span(size.width)[0], hinge.part_span(size.width)[1],
-                        rear_y, rear_y + hinge.flange_depth,
-                        -config.wall_thickness - hinge.flange, 0.0,
-                    )
+                    f"{side} saddle": (x0, x1, y0, y1, base_obj.parting_height(), axis_z)
+                    for side, (x0, x1, y0, y1) in base_obj.saddle_rects().items()
                 },
             )
             from utilities.validation import check_hinge_sweep
 
             check_hinge_sweep(
                 hinge.cheek_spans(size.width), hinge.base_knuckle_span(size.width),
-                hinge.lid_notch_spans(size.width),
-                hinge.web_top, hinge.radius, visor_report,
+                hinge.lid_notch_spans(size.width), visor_report,
             )
             print("[pipeline] closed-device validation:")
             print(visor_report.summary())
@@ -624,21 +620,17 @@ class BuildPipeline:
             on_axis = lambda s: cad_helpers.translate(s, 0.0, -size.depth / 2.0, hinge_z)
             hardware = on_axis(hinge.build_hardware(size.width))
             lid_knuckles = on_axis(hinge.build_lid_knuckles(size.width))
-            parts["hinge"] = cad_helpers.union(hardware, lid_knuckles, knuckle_solid)
-            # One color per hinge piece: the Base knuckle part, its end cheeks,
-            # the Lid knuckles and the bolts/nuts/washers/caps.
+            # The end cheeks are Deck (ADR 0005); shown here for context.
+            cheek_solid = on_axis(cad_helpers.cut(
+                hinge.build_cheeks(size.width), hinge.build_cheek_bores(size.width)
+            ))
+            parts["hinge"] = cad_helpers.union(hardware, lid_knuckles, knuckle_solid, cheek_solid)
+            # One color per hinge piece: the Base knuckle, the end cheeks, the
+            # Lid knuckles and the bolts/nuts/washers/caps.
             colored = cad_helpers.new_assembly()
-            cheeks = []
-            for c0, c1 in hinge.cheek_spans(size.width):
-                box = cad_helpers.translate(
-                    cad_helpers.box_centered(c1 - c0, 4 * hinge.diameter, 4 * hinge.diameter),
-                    (c0 + c1) / 2.0, -size.depth / 2.0, hinge_z,
-                )
-                cheeks.append(cad_helpers.intersect(knuckle_solid, box))
-            cheek_solid = cad_helpers.union(*cheeks)
             for role, label, shape in (
-                ("base_knuckle", "Base knuckle", cad_helpers.cut(knuckle_solid, cheek_solid)),
-                ("end_cheek", "End cheeks", cheek_solid),
+                ("base_knuckle", "Base knuckle", knuckle_solid),
+                ("end_cheek", "End cheeks (Deck)", cheek_solid),
                 ("lid_knuckle", "Lid knuckles", lid_knuckles),
                 ("hinge_hardware", "Bolts, nuts, washers, caps", hardware),
             ):
@@ -710,7 +702,7 @@ class BuildPipeline:
             #   Hinge at (0, -depth/2, hinge_z) → (0, hinge_z, depth/2)
             base_u = cad_helpers.rotate_x(base_solid, -90)
             lid_u = cad_helpers.rotate_x(lid_solid, -90)
-            hinge_u = hinge.build(case_depth=size.width, drop=base_obj.knuckle_drop())
+            hinge_u = hinge.build(case_depth=size.width)
             hinge_u = cad_helpers.translate(
                 hinge_u, 0.0, -depth / 2.0, hinge_z
             )
@@ -820,9 +812,13 @@ class BuildPipeline:
                 # bed face a small outer chamfer against elephant's foot (which
                 # trims the Seam faces too).
                 treated = ValidationReport()
-                section = edge_treatment.relieve_concave_joints(
-                    section, BED_DOWN, config.edges.chamfer_factor * config.wall_thickness,
-                    treated,
+                relief = config.edges.chamfer_factor * config.wall_thickness
+                section = edge_treatment.relieve_concave_joints(section, BED_DOWN, relief, treated)
+                # The tab corners of a stepped Seam fit the filleted notches of
+                # the neighbour: round them a little larger so the two mate.
+                section = edge_treatment.round_seam_corners(
+                    section, BED_DOWN, seams, part_depth,
+                    relief + config.edges.seam_convex_extra, treated,
                 )
                 section = edge_treatment.bed_chamfer(
                     section, BED_DOWN, config.edges.bed_chamfer, treated
@@ -962,8 +958,7 @@ class BuildPipeline:
                     "bezel": len(lid_data.screw_positions()) if lid_data else 0,
                     "deck": len(base.columns()),
                     "hinge_bolts": 2,
-                    "hinge_flange": sum(len(v) for v in base.knuckle_screw_sites().values()),
-                    "hinge_deck": sum(len(v) for v in base.deck_knuckle_sites().values()),
+                    "deck_seam_lug": sum(len(v) for v in base.deck_lug_sites().values()),
                 },
                 "checks": {c.name + (f"#{i}" if sum(1 for d in fastening_report.checks if d.name == c.name) > 1 else ""): c.passed
                            for i, c in enumerate(fastening_report.checks)},

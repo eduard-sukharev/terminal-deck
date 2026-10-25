@@ -596,6 +596,25 @@ def concave_edges(shape: Any) -> list[EdgeInfo]:
     return found
 
 
+def convex_edges(shape: Any) -> list[EdgeInfo]:
+    """Every outside-corner edge of ``shape`` (two faces meeting at an angle)."""
+    found = []
+    for edge, faces in _edge_faces(shape):
+        if len(faces) != 2:
+            continue
+        try:
+            mid = edge.position_at(0.5)
+            n1, n2 = faces[0].normal_at(mid), faces[1].normal_at(mid)
+            if n1.cross(n2).length < 1e-6 or _is_concave(shape, edge, faces):
+                continue  # tangent (smooth) or inside corner
+        except Exception:  # a degenerate edge: leave it alone
+            continue
+        found.append(EdgeInfo(
+            key=_edge_key(edge), length=edge.length, tangent=_unit(edge.tangent_at(0.5)),
+        ))
+    return found
+
+
 def bed_boundary_edges(shape: Any, normal: tuple[float, float, float], tol: float = 1e-3) -> list[EdgeInfo]:
     """Outer-boundary edges of the planar face(s) lying on the bed (convex or not)."""
     extreme = max(

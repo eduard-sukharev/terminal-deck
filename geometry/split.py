@@ -19,11 +19,21 @@ _MARGIN: float = 1.0
 BUILD_VOLUME: tuple[float, float, float] = (220.0, 220.0, 256.0)
 
 
-def _left_region(seam, depth: float, x_extent: float, z_extent: float):
-    """Solid covering everything left of the Seam (oversized in X/Z)."""
+def _left_region(seam, depth: float, y_extent: float, x_extent: float, z_extent: float):
+    """Solid covering everything left of the Seam (oversized in X/Y/Z).
+
+    The steps sit where ``seam.segments(depth)`` puts them, the same places the
+    Seam bands and lug sites are planned at; only the end segments run on out
+    to ``y_extent`` so the region overhangs the part.
+    """
     pad = 2.0 * x_extent
     pieces = []
-    for y0, y1, sx in seam.segments(depth):
+    segments = list(seam.segments(depth))
+    y0, y1, sx = segments[0]
+    segments[0] = (min(y0, -y_extent), y1, sx)
+    y0, y1, sx = segments[-1]
+    segments[-1] = (y0, max(y1, y_extent), sx)
+    for y0, y1, sx in segments:
         width = sx + pad
         box = cad_helpers.box_centered(width, y1 - y0, 2.0 * z_extent)
         pieces.append(cad_helpers.translate(box, sx - width / 2.0, (y0 + y1) / 2.0, 0.0))
@@ -43,12 +53,13 @@ def split_sections(shape, seams, depth: float) -> list:
     seam_x = max(abs(x) for seam in seams for _, _, x in seam.segments(depth))
     x_extent = max(abs(box.xmin), abs(box.xmax), seam_x) + _MARGIN
     z_extent = max(abs(box.zmin), abs(box.zmax)) + _MARGIN
-    # Pad Y so Sections of a part slightly off-center are still fully covered.
-    y_depth = max(depth, 2.0 * max(abs(box.ymin), abs(box.ymax))) + 2.0 * _MARGIN
+    # Reach past the part in Y so Sections of a part slightly off-center are
+    # still fully covered.
+    y_extent = max(depth / 2.0, abs(box.ymin), abs(box.ymax)) + _MARGIN
     sections = []
     remainder = shape
     for seam in seams:
-        region = _left_region(seam, y_depth, x_extent, z_extent)
+        region = _left_region(seam, depth, y_extent, x_extent, z_extent)
         sections.append(cad_helpers.intersect(remainder, region))
         remainder = cad_helpers.cut(remainder, region)
     sections.append(remainder)

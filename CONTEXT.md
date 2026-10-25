@@ -36,8 +36,9 @@ hub and battery.
 **Section** — One of the printable pieces a part is split into along X to
 fit the build volume: left/right for two-piece parts (Bezel, Deck, keyboard
 plate), left/center/right for three-piece parts (Tray, Lid shell), whose two
-Seams mirror each other about the centerline. Sections are joined by screws
-and bosses.
+Seams mirror each other about the centerline. Tray, Deck and Lid shell
+Sections are joined for good by Seam lugs; the thin plates' Sections (Bezel,
+keyboard plate) are held by screws into the part behind them.
 _Avoid:_ "Half" (a part may have three Sections); "half" for Base vs Lid —
 say Base or Lid.
 
@@ -45,7 +46,7 @@ say Base or Lid.
 parts screwed to each other (they don't line up) and never cross a structural feature (rib, boss,
 standoff, cradle, vent). Outward-facing Seams are stepped lines
 (`__--__--__`) seen from above, with plain butt-joint step faces held by
-screws and bosses — except the Bezel's and the Deck's, which are straight on
+Seam lugs — except the Bezel's and the Deck's, which are straight on
 the centerline and echo each other. The Bezel's screws are exposed as a design
 element; the Deck's are driven from below so nothing stands proud under the
 hands.
@@ -54,6 +55,22 @@ hands.
 part-way up the Base's walls rather than at the Deck's edge, so the Deck has a
 flat face and a skirt of wall below the keyboard surface.
 _Avoid:_ "seam" for the Tray/Deck joint — a Seam joins Sections of one part.
+
+**Seam lug** — A pinned joint straddling a Seam: a block shared by the two
+Sections with a glued filament pin along X through both. Joins Sections of
+one part for good, as opposed to screws holding one part to another, which
+come apart for service.
+
+**Base knuckle** — The long middle knuckle of the hinge: a separate printed
+bar on the Base side, seated in the Deck's rear edge, carrying the display
+cable through its hollow middle.
+_Avoid:_ "bracket", "Base knuckle part" (it no longer includes the cheeks).
+
+**End cheek** — The fixed block at each end of the hinge, outboard of a Lid
+knuckle, holding the friction bolt's head. Part of the Deck.
+
+**Saddle** — The block inside the Deck's rear skirt that the Base knuckle's
+flat bears against, one at each end of the bar.
 
 **Merged boss** — A boss, column or lug standing close enough to a wall
 that it is fused into it instead of standing free; the wall then serves as

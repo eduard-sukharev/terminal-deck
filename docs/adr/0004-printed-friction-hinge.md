@@ -1,5 +1,6 @@
 ---
 status: accepted
+amended_by: ADR-0005
 ---
 
 # Printed friction hinge with a separate Base knuckle

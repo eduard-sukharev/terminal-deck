@@ -4,10 +4,11 @@ The Lid is split into two parts that sandwich the display assembly:
 
 * **Lid shell** — the rear shell tray (open at +Z toward the user).  Five solid
   walls (left, right, front, back, bottom) form a bucket that the display
-  assembly drops into.  Eight bosses hold heat-set inserts for the bezel
-  screws: four at the corners, and one above and one below the glass on each
-  side of the Bezel's straight centre Seam.
-* **Lid bezel** — the front plate with a glass cutout and eight countersunk
+  assembly drops into.  Twelve bosses hold heat-set inserts for the bezel
+  screws: four at the corners, and on each side of the Bezel's straight
+  centre Seam two above and two below the glass (one beside the display
+  panel, one level with the corner screws).
+* **Lid bezel** — the front plate with a glass cutout and twelve countersunk
   mounting holes.
   Sits *inside* the lid_shell opening (XY = interior dimensions) so its front
   face is flush with the Lid shell walls.
@@ -130,21 +131,27 @@ class Lid:
         ]
 
     def _seam_screw_positions(self) -> list[tuple[float, float]]:
-        """The 4 screws beside the Bezel's centre Seam (mm, XY).
+        """The 8 screws beside the Bezel's centre Seam (mm, XY).
 
-        One above and one below the glass on each side of the Seam, centred in
-        the band between the glass opening and the Bezel's edge, where the
-        display panel is not.
+        Four on each side of the Seam: above and below the glass, one row as
+        close to the display panel as its boss clears, one row level with the
+        corner screws at the Bezel's edge.
         """
         b = self.wall_bounds()
-        glass_half = self.glass_recess()["height"] / 2.0
-        y = glass_half + (b.y1 - glass_half) / 2.0
+        inset = self.config.bezel.corner_inset
+        near = (
+            self.config.display.height / 2.0 + self.config.clearance.shell
+            + self.boss_outer_diameter() / 2.0
+        )
+        rows = (near, b.y1 - inset)
         seam = self.config.split["bezel"].seams()[0].x if "bezel" in self.config.split else 0.0
         dx = self.config.bezel.seam_screw_offset
-        return [(seam + sx * dx, sy * y) for sx in (-1, 1) for sy in (-1, 1)]
+        return [
+            (seam + sx * dx, sy * y) for sx in (-1, 1) for sy in (-1, 1) for y in rows
+        ]
 
     def screw_positions(self) -> list[tuple[float, float]]:
-        """All eight Bezel screw positions (mm, XY): corners, then Seam side."""
+        """All twelve Bezel screw positions (mm, XY): corners, then Seam side."""
         return self._corner_positions() + self._seam_screw_positions()
 
     def boss_outer_diameter(self) -> float:
@@ -195,7 +202,7 @@ class Lid:
         if split is not None:
             wall = self.config.wall_thickness
             depth = self._outer_bounds()[1]
-            spec = seam_joint.joint_spec(self.config.screws.body)
+            spec = seam_joint.joint_spec(self.config.seam_pin)
             keepouts = self._interior_rects(self._floor_top() + spec.size + self.config.clearance.shell)
             r = self.boss_outer_diameter() / 2.0
             keepouts += [(x - r, x + r, y - r, y + r) for x, y in self.screw_positions()]
@@ -214,7 +221,7 @@ class Lid:
         from utilities.validation import Feature
 
         wall = self.config.wall_thickness
-        spec = seam_joint.joint_spec(self.config.screws.body)
+        spec = seam_joint.joint_spec(self.config.seam_pin)
         r = self.boss_outer_diameter() / 2.0
         features = []
         for x, y in self.screw_positions():
@@ -332,7 +339,7 @@ class Lid:
                 ),
             )
 
-        # Screw lugs on each Lid shell Seam, two per Seam, at the planned sites.
+        # Pinned lugs on each Lid shell Seam, two per Seam, at the planned sites.
         split = config.split.get("lid_shell")
         if split is not None:
             from geometry import seam_joint
@@ -340,7 +347,7 @@ class Lid:
             sites = self.lug_sites()
             for i, seam in enumerate(split.seams()):
                 body = seam_joint.add_joints(
-                    body, seam, depth, wall, seam_joint.joint_spec(config.screws.body),
+                    body, seam, depth, wall, seam_joint.joint_spec(config.seam_pin),
                     floor_top=floor_top, sites=sites[f"lid_shell:{i}"],
                 )
 

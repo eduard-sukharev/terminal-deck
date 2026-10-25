@@ -1,4 +1,4 @@
-"""Printed friction hinge (ADR 0004): P6-style layout, separate Base knuckle.
+"""Printed friction hinge (ADR 0004, 0005): P6-style layout, separate Base knuckle.
 
 A dedicated subsystem, never integrated into the enclosure math. Along the
 hinge axis (X) it is, left to right::
@@ -10,9 +10,11 @@ hinge axis (X) it is, left to right::
 * one long Base knuckle in the middle: a D-profile bar whose flat faces the
   case interior; between its two bolt lands it is hollow, the display cable
   tunnel (``wire_tunnel``), which opens into the case through the flat
-* two outer Base end cheeks, connected to the Base knuckle through a web and a
-  mounting flange under the Tray floor: one separate printed part, the **Base
-  knuckle part** (:meth:`Hinge.build_base_part`), screwed from below to the Tray
+* the Base knuckle is its own printed part (:meth:`Hinge.build_base_part`),
+  seated in a pocket in the Deck's rear edge (:meth:`Hinge.build_base_notches`)
+  with its flat against the Deck's saddle blocks (ADR 0005)
+* two outer end cheeks (:meth:`Hinge.build_cheeks`), fused to the Deck, one per
+  Deck Section
 * per side, an M3 friction bolt: head in a recess in the cheek's outer face
   under a removable service cap, through the cheek, a washer stack, the Lid
   knuckle, a second stack and the Base land into a captive nyloc nut in a hex
@@ -48,8 +50,8 @@ class HingeParameters:
     washer_stack: float
     land: float
     end_cheek: float
-    flange: float
-    flange_depth: float
+    saddle: float
+    fit: float
     cap_thickness: float
     cap_plug: float
     end_inset: float
@@ -73,8 +75,8 @@ class Hinge(Component):
         self.washer_stack = float(data.get("washer_stack", 1.2))
         self.land = float(data.get("land", 8.0))
         self.end_cheek = float(data.get("end_cheek", 5.0))
-        self.flange = float(data.get("flange", 4.0))
-        self.flange_depth = float(data.get("flange_depth", 9.5))
+        self.saddle = float(data.get("saddle", 6.0))
+        self.fit = float(data.get("fit", 0.2))
         self.cap_thickness = float(data.get("cap_thickness", 2.0))
         self.cap_plug = float(data.get("cap_plug", 4.0))
         self.end_inset = float(data.get("end_inset", 9.0))
@@ -102,7 +104,7 @@ class Hinge(Component):
             diameter=self.diameter, wire_tunnel=self.wire_tunnel,
             wall_thickness=self.wall_thickness, lid_knuckle=self.lid_knuckle,
             washer_stack=self.washer_stack, land=self.land, end_cheek=self.end_cheek,
-            flange=self.flange, flange_depth=self.flange_depth,
+            saddle=self.saddle, fit=self.fit,
             cap_thickness=self.cap_thickness, cap_plug=self.cap_plug,
             end_inset=self.end_inset, friction_bolt=self.friction_bolt,
             swing_clearance=self.swing_clearance, side_overrun=self.side_overrun,
@@ -140,16 +142,12 @@ class Hinge(Component):
         lo, hi = self.base_knuckle_span(case_width)
         return (lo + self.land, hi - self.land)
 
-    def part_span(self, case_width: float) -> tuple[float, float]:
-        """(x_min, x_max) of the whole Base knuckle part: cheek to cheek (mm)."""
-        half = self.span(case_width) / 2.0
-        return (-half, half)
-
-    @property
-    def web_top(self) -> float:
-        """Top of the Base knuckle's web relative to the axis (mm): just under the
-        circle the Lid knuckles and roll sweep."""
-        return -(self.radius + self.swing_clearance)
+    def land_spans(self, case_width: float) -> tuple[tuple[float, float], tuple[float, float]]:
+        """((x_min, x_max) left, right) of the Base knuckle's solid bolt lands (mm):
+        where the Deck's saddle blocks back the bar."""
+        b0, b1 = self.base_knuckle_span(case_width)
+        t0, t1 = self.tunnel_span(case_width)
+        return ((b0, t0), (t1, b1))
 
     def bolt_length(self) -> int:
         """Stock length of the friction bolt (mm).
@@ -185,15 +183,19 @@ class Hinge(Component):
         body = cad_helpers.rotate_y(cad_helpers.cylinder_centered(diameter, x1 - x0), 90)
         return cad_helpers.translate(body, (x0 + x1) / 2.0, 0, 0)
 
-    def _d_bar(self, x0: float, x1: float):
-        """A D-profile bar: the knuckle circle trimmed flat at the wall's inner face."""
+    def _d_bar(self, x0: float, x1: float, grow: float = 0.0):
+        """A D-profile bar: the knuckle circle trimmed flat at the wall's inner face.
+
+        ``grow`` inflates the round and moves the flat inward by that much (the
+        pocket a bar sits in)."""
         from utilities import cad_helpers
 
-        tube = self._x_cylinder(self.diameter, x0, x1)
-        reach = self.radius + 1.0
+        tube = self._x_cylinder(self.diameter + 2 * grow, x0, x1)
+        reach = self.radius + grow + 1.0
+        flat = self.wall_thickness + grow
         keep = cad_helpers.translate(
-            cad_helpers.box_centered(x1 - x0 + 2.0, reach + self.wall_thickness, self.diameter + 2.0),
-            (x0 + x1) / 2.0, (self.wall_thickness - reach) / 2.0, 0.0,
+            cad_helpers.box_centered(x1 - x0 + 2.0, reach + flat, self.diameter + 2 * grow + 2.0),
+            (x0 + x1) / 2.0, (flat - reach) / 2.0, 0.0,
         )
         return cad_helpers.intersect(tube, keep)
 
@@ -216,79 +218,50 @@ class Hinge(Component):
             out.append(cad_helpers.cut(tube, self._x_cylinder(bolt.clearance, x0 - 1.0, x1 + 1.0)))
         return cad_helpers.union(*out)
 
-    def build_base_part(
-        self,
-        case_width: float = 80.0,
-        drop: float = 30.0,
-        screws: tuple[tuple[float, float], ...] = (),
-        flange_cuts: tuple[tuple[float, float, float], ...] = (),
-        side_screws: tuple[tuple[float, float], ...] = (),
-    ):
-        """The Base knuckle part: bar, cheeks, web and flange as one printed solid.
+    def build_base_part(self, case_width: float = 80.0):
+        """The Base knuckle: a D-bar with the cable tunnel between its two lands.
 
-        ``drop`` is the axis height above the Tray floor's outer face; the
-        flange lies under that face. ``screws`` are ``(x, y)`` flange screw
-        positions (``y`` from the rear face, +Y inward); ``flange_cuts`` are
-        ``(x, y, radius)`` discs cut from the flange (rubber feet, Deck screw
-        heads). ``side_screws`` are ``(x, z)`` horizontal screw positions through
-        the web (``z`` from the axis) into the Deck's rear skirt. Print
-        orientation: flange down.
+        Each land is bored for the friction bolt, with a captive nyloc nut
+        pocket opening into the tunnel. Seated in the Deck's pocket, flat
+        against the saddle blocks (ADR 0005). Prints flat face down.
         """
         from utilities import cad_helpers
 
-        r = self.radius
-        t = self.wall_thickness
         bolt = fasteners.screw(self.friction_bolt)
         nut = fasteners.nut_trap(self.friction_bolt)
-        cheeks = self.cheek_spans(case_width)
         b0, b1 = self.base_knuckle_span(case_width)
-        p0, p1 = self.part_span(case_width)
-        web_top = self.web_top
-
-        pieces = [self._d_bar(b0, b1)] + [self._d_bar(*c) for c in cheeks]
-        # Web: behind the rear face, from the flange up to just under the Lid
-        # knuckles' swing, and posts up to the bar and the cheeks.
-        pieces.append(self._box(p0, p1, -t, 0.0, -drop - self.flange, web_top))
-        for x0, x1 in (cheeks[0], (b0, b1), cheeks[1]):
-            pieces.append(self._box(x0, x1, -t, 0.0, web_top - 1.0, -r * 0.5))
-        # Flange under the floor, reaching forward from the rear face.
-        pieces.append(self._box(p0, p1, -t, self.flange_depth, -drop - self.flange, -drop))
-        body = cad_helpers.union(pieces[0], *pieces[1:])
-
-        cuts = []
-        # Display cable tunnel through the middle, open into the case through the flat.
         t0, t1 = self.tunnel_span(case_width)
-        cuts.append(self._x_cylinder(self.wire_tunnel, t0, t1))
-        # Bolt bores through each cheek and land, nut pocket opening into the tunnel,
-        # head recess in the cheek's outer face.
-        recess = self.head_recess_depth()
-        cb = max(bolt.head_diameter, fasteners.washer(self.friction_bolt).diameter) + 0.4
-        for side, (c0, c1) in zip((-1.0, 1.0), cheeks):
-            outer = c0 if side < 0 else c1
-            land_inner = t0 if side < 0 else t1
-            far = land_inner
-            lo, hi = sorted((outer - side * 1.0, far))
+        cuts = [self._x_cylinder(self.wire_tunnel, t0, t1)]
+        for side, (outer, land_inner) in zip((-1.0, 1.0), ((b0, t0), (b1, t1))):
+            lo, hi = sorted((outer - side * 1.0, land_inner))
             cuts.append(self._x_cylinder(bolt.clearance, lo, hi))
-            lo, hi = sorted((outer + side * 1.0, outer - side * recess))
-            cuts.append(self._x_cylinder(cb, lo, hi))
             pocket = self._hex_prism(nut.across_flats + nut.clearance, nut.height + 0.2)
             cx = land_inner - side * (nut.height + 0.2) / 2.0 + side * 0.1
             cuts.append(self._translated_x(pocket, cx))
-        # Flange screws, from below: clearance bore with a head counterbore.
-        screw = fasteners.screw("M3")
-        for sx, sy in screws:
-            cuts.append(self._z_cylinder(screw.clearance, sx, sy, -drop - self.flange - 1.0, -drop + 1.0))
-            cuts.append(self._z_cylinder(
-                screw.head_diameter + 0.6, sx, sy, -drop - self.flange - 1.0,
-                -drop - self.flange + screw.head_depth + 0.2,
-            ))
-        # Web screws: a clearance bore straight through; the head seats proud on
-        # the rear face, below the circle the Lid knuckles sweep.
-        for sx, sz in side_screws:
-            cuts.append(self._y_cylinder(screw.clearance, sx, sz, -t - 1.0, 1.0))
-        for fx, fy, fr in flange_cuts:
-            cuts.append(self._z_cylinder(2 * fr, fx, fy, -drop - self.flange - 1.0, -drop + 0.5))
-        return cad_helpers.cut(body, *cuts)
+        return cad_helpers.cut(self._d_bar(b0, b1), *cuts)
+
+    def build_cheeks(self, case_width: float = 80.0):
+        """The two end cheeks, solid: the Deck fuses them on, then re-cuts
+        :meth:`build_cheek_bores`."""
+        from utilities import cad_helpers
+
+        return cad_helpers.union(*[self._d_bar(*c) for c in self.cheek_spans(case_width)])
+
+    def build_cheek_bores(self, case_width: float = 80.0):
+        """Bolt bore through each cheek and the head recess in its outer face."""
+        from utilities import cad_helpers
+
+        bolt = fasteners.screw(self.friction_bolt)
+        recess = self.head_recess_depth()
+        cb = max(bolt.head_diameter, fasteners.washer(self.friction_bolt).diameter) + 0.4
+        cuts = []
+        for side, (c0, c1) in zip((-1.0, 1.0), self.cheek_spans(case_width)):
+            outer, inner = (c0, c1) if side < 0 else (c1, c0)
+            lo, hi = sorted((outer + side * 1.0, inner - side * 1.0))
+            cuts.append(self._x_cylinder(bolt.clearance, lo, hi))
+            lo, hi = sorted((outer + side * 1.0, outer - side * recess))
+            cuts.append(self._x_cylinder(cb, lo, hi))
+        return cad_helpers.union(*cuts)
 
     def _z_cylinder(self, diameter: float, x: float, y: float, z0: float, z1: float):
         from utilities import cad_helpers
@@ -331,13 +304,19 @@ class Hinge(Component):
         """Radius of the clearance notch around a knuckle (mm): knuckle plus the swing clearance."""
         return self.radius + self.swing_clearance
 
-    def corner_notch_spans(self, case_width: float) -> tuple[tuple[float, float], tuple[float, float]]:
-        """((x_min, x_max) left, right) Deck notches over the Lid knuckles (mm).
+    def corner_notch_spans(self, case_width: float) -> tuple[tuple[float, float], ...]:
+        """(x_min, x_max) Deck notches around the fused end cheeks (mm).
 
-        Run from the Lid knuckle's own washer stack outward past the case side."""
+        Per side: the Lid knuckle's swing, from its own washer stack out to the
+        cheek, and the service cap's room, from the cheek past the case side.
+        The cheek itself stays Deck."""
         (l0, l1), (r0, r1) = self.lid_knuckle_spans(case_width)
+        (c0, c1), (d0, d1) = self.cheek_spans(case_width)
         out = case_width / 2.0 + self.side_overrun
-        return ((-out, l1 + self.washer_stack / 2.0), (r0 - self.washer_stack / 2.0, out))
+        return (
+            (-out, c0), (c1, l1 + self.washer_stack / 2.0),
+            (r0 - self.washer_stack / 2.0, d0), (d1, out),
+        )
 
     def lid_notch_spans(self, case_width: float) -> tuple[tuple[float, float], ...]:
         """(x_min, x_max) ranges of the Lid shell notched for the Base bar and cheeks (mm)."""
@@ -348,18 +327,15 @@ class Hinge(Component):
         return ((-out, c1 + gap), (b0 - gap, b1 + gap), (d0 - gap, out))
 
     def build_base_notches(self, case_width: float = 80.0):
-        """Voids to cut from the Deck where the Lid knuckles swing, and the pocket
-        the Base bar and cheeks sit in."""
+        """Voids to cut from the Deck: the pocket the Base knuckle sits in (with
+        ``fit`` all round, washer stacks included), and the notches where the
+        Lid knuckles swing and the service caps sit."""
         from utilities import cad_helpers
 
-        left, right = self.corner_notch_spans(case_width)
         b0, b1 = self.base_knuckle_span(case_width)
-        cheeks = self.cheek_spans(case_width)
-        pocket = [self._d_bar(b0, b1)] + [self._d_bar(*c) for c in cheeks]
-        swing = [self._x_cylinder(2 * self.notch_radius, *left), self._x_cylinder(2 * self.notch_radius, *right)]
-        # The cheeks' own span lies inside the swing notch's outer reach: keep the
-        # pocket authoritative there by cutting the swing notch only past the cheeks.
-        return cad_helpers.union(*pocket, *swing)
+        pocket = self._d_bar(b0 - self.washer_stack / 2.0, b1 + self.washer_stack / 2.0, grow=self.fit)
+        swing = [self._x_cylinder(2 * self.notch_radius, *s) for s in self.corner_notch_spans(case_width)]
+        return cad_helpers.union(pocket, *swing)
 
     def build_lid_notch(self, case_width: float = 80.0):
         """Void to cut from the Lid shell where the Base bar and cheeks swing."""
@@ -417,13 +393,15 @@ class Hinge(Component):
             parts.append(self._x_cylinder(bolt.head_diameter + 0.2, lo, hi))
         return cad_helpers.union(*parts)
 
-    def build(self, case_depth: float = 80.0, drop: float = 30.0):
-        """The combined hinge solid for ``case_depth`` (the case width along X)."""
+    def build(self, case_depth: float = 80.0):
+        """The combined separate hinge parts for ``case_depth`` (the case width
+        along X): Lid knuckles, Base knuckle and hardware. The end cheeks belong
+        to the Deck."""
         from utilities import cad_helpers
 
         return cad_helpers.union(
             self.build_lid_knuckles(case_depth),
-            self.build_base_part(case_depth, drop),
+            self.build_base_part(case_depth),
             self.build_hardware(case_depth),
         )
 

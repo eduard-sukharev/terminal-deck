@@ -9,7 +9,8 @@ Terms (see ``CONTEXT.md`` and ADR 0003): the **Parting plane** is the
 horizontal plane the Tray top and the Deck bottom are both cut to; a
 **column** is a Tray post, counterbored from the floor, that the Deck screw
 runs up through into a heat-set insert in a **Deck boss**; a **Seam** joins
-Sections of one part.
+Sections of one part; a **saddle** backs the Base knuckle's flat inside the
+Deck's rear skirt (ADR 0005).
 """
 
 from __future__ import annotations
@@ -140,6 +141,7 @@ class BaseFastening:
         ]
         rects += [(r, margin) for r in self.cradle_rects()]
         rects += [(r, margin) for r in self.cutout_rects()]
+        rects += [(r, margin) for r in self.cable_runs()]
         # The Deck boss needs Deck material above it: stay out of the keyboard
         # opening, with a printable sliver of Deck beside it.
         kb = self._keyboard_placement()
@@ -156,6 +158,28 @@ class BaseFastening:
             for bx, by, spec in self.assembly.bosses(self._base_placements())
         ]
         return rects, circles
+
+    def cable_runs(self) -> list[tuple[float, float, float, float]]:
+        """XY strips ``(x0, x1, y0, y1)`` kept free for ribbon cables (mm).
+
+        The mini-HDMI cable leaving the SBC is a flat FPC routed to the hinge
+        tunnel: past its plug it may lie over the hub or fold sideways, which
+        no placement models. Its strip runs from the plug's back to the rear
+        wall, the plug's width plus a shell clearance either side, and keeps
+        Deck columns out of the way.
+        """
+        from components.hdmi_plug import MiniHdmiPlug
+
+        clr = self.config.clearance.shell
+        rear = self.wall_bounds().y0
+        runs = []
+        # All placements: the plug rides its host's connector height, above the
+        # ``_base_placements`` floor threshold (the driver-side plug is in the Lid).
+        for p in self.assembly.placements:
+            if isinstance(p.component, MiniHdmiPlug) and p.z_bounds()[1] < self.parting_height():
+                x0, y0, x1, _ = p.box
+                runs.append((x0 - clr, x1 + clr, rear, y0))
+        return runs
 
     def _column_flare_extra(self) -> float:
         """How far the column's floor flare reaches beyond its post (mm)."""
@@ -197,14 +221,12 @@ class BaseFastening:
         return conflicts
 
     def _column_positions(self) -> list[tuple[float, float]]:
-        """Deck column positions (mm, XY): near-Seam ones first, then spread.
+        """Deck column positions (mm, XY).
 
-        Every Deck Section gets one within ``deck.seam_screw_reach`` of the
-        Deck Seam when a free spot exists (the check in
-        :func:`utilities.validation.check_deck_seam_screws` fails the build
-        if not); the rest are nominally the four corners plus three points on
-        the rear inset line, each snapped to the nearest free spot. A column
-        may sit as close to a wall as a Merged boss's bore allows.
+        Nominally the four corners plus three points on the rear inset line,
+        each snapped to the nearest free spot. The Deck Seam needs none of its
+        own: its Sections are pinned together (ADR 0006). A column may sit as
+        close to a wall as a Merged boss's bore allows.
         """
         key = "column_positions"
         if key in self._memo:
@@ -221,19 +243,6 @@ class BaseFastening:
 
         rear_line = ly0 + 0.0
         spots: list[tuple[float, float]] = []
-
-        deck = self._split("deck")
-        if deck is not None:
-            seam_x = deck.seams()[0].x
-            reach = self.config.deck.seam_screw_reach
-            for sign in (-1.0, 1.0):
-                lo, hi = sorted((seam_x, seam_x + sign * reach))
-                sub = (max(lo, bounds[0]), bounds[1], min(hi, bounds[2]), bounds[3])
-                spot = nearest_free_spot(
-                    (seam_x + sign * reach / 2.0, rear_line), conflicts, sub
-                )
-                if spot is not None:
-                    spots.append(spot)
 
         half_iw = (bounds_w.x1 - bounds_w.x0) / 2
         targets = [
@@ -281,21 +290,33 @@ class BaseFastening:
 
     # -- Footprints of structural features ---------------------------------------
 
+    def cradle_spec(self, placement):
+        """The cradle saddle for a placed battery pack.
+
+        Side-by-side cells' saddles are at least half the cell pitch wide, so
+        neighbours meet flush and fuse into one block.
+        """
+        from geometry import cradle
+
+        battery = placement.component
+        xs = sorted({round(cx, 6) for cx, _ in battery._cell_centers()})
+        pitch = min((b - a for a, b in zip(xs, xs[1:])), default=0.0)
+        return cradle.CradleSpec(
+            diameter=battery.cell_diameter, rest_height=placement.z,
+            height=battery.cradle_height, width=self.config.wall_thickness * 3,
+            min_half_width=pitch / 2.0,
+        )
+
     def cradle_rects(self) -> list[tuple[float, float, float, float]]:
         """XY footprint of every battery cradle saddle (mm)."""
         from components.battery import Battery
-        from geometry import cradle
 
-        wall = self.config.wall_thickness
         rects = []
         for p in self.assembly.placements:
             if not isinstance(p.component, Battery):
                 continue
             battery = p.component
-            spec = cradle.CradleSpec(
-                diameter=battery.cell_diameter, rest_height=p.z,
-                height=battery.cradle_height, width=wall * 3,
-            )
+            spec = self.cradle_spec(p)
             end_offset = max(0.0, battery.cell_length / 2.0 - spec.width / 2.0)
             half_x, half_y = spec.block_half_width, spec.width / 2.0
             for cx, cy in battery._cell_centers():
@@ -357,7 +378,7 @@ class BaseFastening:
     # -- Seam lugs --------------------------------------------------------------
 
     def _lug_spec(self):
-        return seam_joint.joint_spec(self.config.screws.body)
+        return seam_joint.joint_spec(self.config.seam_pin)
 
     def tray_lug_sites(self) -> dict[str, list[tuple[float, float, bool]]]:
         """Seam-joint sites per Tray Seam (``"tray:<index>"``), two each.
@@ -382,7 +403,7 @@ class BaseFastening:
                 for bx, by, spec_b in self.assembly.bosses(self._base_placements())
             ]
             keepouts += [self.column_rect(c) for c in self.columns()]
-            keepouts += self.cradle_rects() + self.cutout_rects() + self.knuckle_rects()
+            keepouts += self.cradle_rects() + self.cutout_rects()
             for i, seam in enumerate(split.seams()):
                 sites[f"tray:{i}"] = seam_joint.plan_joints(
                     seam, size.depth, wall, spec, floor_top=0.0,
@@ -415,24 +436,33 @@ class BaseFastening:
         return tuple(ranges)
 
     def vent_keepout_ranges(self) -> tuple[tuple[float, float], ...]:
-        """X ranges the rear-wall vent slots keep clear of (mm): Seam bands,
-        columns merged into the rear wall, and connector cutouts."""
+        """X ranges the rear-wall vent slots keep clear of over their whole
+        height (mm): Seam bands, and what is fused to the rear wall's inside —
+        columns merged into it, saddles and the Deck Seam lugs."""
         chamfer = self.config.corners.cutout_chamfer
-        self.size()
         ranges = [(r[0], r[1]) for r in self._band_rects()]
-        for c in self.cutouts():
-            if c["direction"][1] < 0 and abs(c["direction"][1]) >= abs(c["direction"][0]):
-                ranges.append((c["x"] - c["width"] / 2 - chamfer, c["x"] + c["width"] / 2 + chamfer))
-        r = self.knuckle_boss_spec().outer_diameter / 2.0
-        for pts in self.knuckle_screw_sites().values():
-            ranges += [(x - r - chamfer, x + r + chamfer) for x, _ in pts]
-        for x0, x1, _, _ in self.deck_knuckle_rects():
+        for x0, x1, _, _ in self.saddle_rects().values():
             ranges.append((x0 - chamfer, x1 + chamfer))
+        for rects in self.deck_lug_rects().values():
+            ranges += [(x0 - chamfer, x1 + chamfer) for x0, x1, _, _ in rects]
         for col in self.columns():
             if "rear" in col.walls:
                 r = col.base_diameter / 2.0
                 ranges.append((col.x - r - chamfer, col.x + r + chamfer))
         return tuple(ranges)
+
+    def vent_raised_ranges(self) -> tuple[tuple[float, float, float], ...]:
+        """``(x0, x1, z)`` per rear-wall connector cutout: a vent slot over it
+        (or within a wall of its side) starts at ``z``, a wall above the
+        cutout's chamfered top, so the two never touch."""
+        chamfer = self.config.corners.cutout_chamfer
+        wall = self.config.wall_thickness
+        out = []
+        for c in self.cutouts():
+            if c["direction"][1] < 0 and abs(c["direction"][1]) >= abs(c["direction"][0]):
+                half = c["width"] / 2 + chamfer + wall
+                out.append((c["x"] - half, c["x"] + half, c["z"] + c["height"] / 2 + chamfer + wall))
+        return tuple(out)
 
     # -- Feature list for the Seam clearance check -------------------------------
 
@@ -452,10 +482,8 @@ class BaseFastening:
             features.append(Feature("column", f"({col.x:.1f}, {col.y:.1f})", x0, x1, y0, y1))
         for i, (x0, x1, y0, y1) in enumerate(self.cradle_rects()):
             features.append(Feature("cradle", f"#{i}", x0, x1, y0, y1, part="tray"))
-        for i, (x0, x1, y0, y1) in enumerate(self.knuckle_rects()):
-            features.append(Feature("boss", f"knuckle screw #{i}", x0, x1, y0, y1, part="tray"))
-        for i, (x0, x1, y0, y1) in enumerate(self.deck_knuckle_rects()):
-            features.append(Feature("boss", f"deck knuckle screw #{i}", x0, x1, y0, y1, part="deck"))
+        for name, (x0, x1, y0, y1) in self.saddle_rects().items():
+            features.append(Feature("saddle", name, x0, x1, y0, y1, part="deck"))
         for i, (x0, x1, y0, y1) in enumerate(self.vent_rects(vents, vent_width)):
             features.append(Feature("vent", f"#{i}", x0, x1, y0, y1))
         zp = self.parting_height()
@@ -465,6 +493,9 @@ class BaseFastening:
         for sid, rects in self.lug_rects().items():
             for x0, x1, y0, y1 in rects:
                 features.append(Feature("lug", f"({(x0 + x1) / 2:.1f}, {(y0 + y1) / 2:.1f})", x0, x1, y0, y1, joins=sid, part="tray"))
+        for sid, rects in self.deck_lug_rects().items():
+            for x0, x1, y0, y1 in rects:
+                features.append(Feature("lug", f"({(x0 + x1) / 2:.1f}, {(y0 + y1) / 2:.1f})", x0, x1, y0, y1, joins=sid, part="deck"))
         return features
 
     def component_boss_specs(self) -> list[tuple[float, float, BossSpec, Any]]:
@@ -490,159 +521,77 @@ class BaseFastening:
                 out.append((bx, by, spec, component))
         return out
 
-    # -- Base knuckle screws ----------------------------------------------------
+    # -- Base knuckle saddles (ADR 0005) ----------------------------------------
 
-    def knuckle_boss_spec(self) -> BossSpec:
-        """The Tray boss the Base knuckle's flange screws thread into (M3 insert)."""
-        insert = fasteners.heat_insert("M3")
-        wall = self.config.wall_thickness
-        return BossSpec(
-            hole_diameter=insert.printed_hole_diameter,
-            outer_diameter=insert.printed_hole_diameter + 2 * COLUMN_SLEEVE,
-            height=insert.depth + 1.0, wall_thickness=wall,
-        )
+    def saddle_rects(self) -> dict[str, tuple[float, float, float, float]]:
+        """XY footprint ``(x0, x1, y0, y1)`` of each Deck saddle block, keyed
+        ``"left"``/``"right"``.
 
-    def knuckle_screw_sites(self) -> dict[str, list[tuple[float, float]]]:
-        """Flange-screw positions per Tray Section (``"left"``/``"center"``/``"right"``).
-
-        Merged bosses on the rear wall's inner face, up to two per Section,
-        where the rear strip leaves room (the hub and the battery sit against
-        the rear wall, so a Section may have none: reported as SOFT).
+        A saddle spans its bolt land along X and runs inward from the rear
+        wall's inner face ``hinge.saddle`` deep, or less where a component,
+        column or connector cutout above the Parting plane stands closer (less
+        the shell clearance). It stands from the Parting plane to the Deck roof.
         """
-        key = "knuckle_sites"
+        key = "saddle_rects"
         if key in self._memo:
             return self._memo[key]
-        spec = self.knuckle_boss_spec()
+        if self.hinge is None:
+            self._memo[key] = {}
+            return {}
         b = self.wall_bounds()
-        r = spec.outer_diameter / 2.0
-        y = b.y0 + spec.hole_diameter / 2.0 + self.config.merged_boss.bore_margin
-        margin = self.config.clearance.screw
-        top = spec.height
-        rects = [(rc, margin) for rc in self.assembly.keepout_rects(0.0, top, self._base_placements())]
-        rects += [(rc, margin) for rc in self.cradle_rects() + self.cutout_rects()]
-        rects += [(self.column_rect(c), margin) for c in self.columns()]
-        rects += [(rc, 0.0) for rc in self._band_rects()]
-        circles = [
-            (bx, by, bspec.base_diameter / 2.0 + margin)
-            for bx, by, bspec, _ in self.component_boss_specs()
-        ]
+        zp = self.parting_height()
+        gap = self.config.clearance.shell
+        top = self.deck_level_at(b.y0)
+        obstacles = list(self.assembly.keepout_rects(zp, top, self._base_placements()))
+        obstacles += [self.column_rect(c) for c in self.columns()]
+        obstacles += [rc for rc, c in zip(self.cutout_rects(), self.cutouts())
+                      if c["z"] + c["height"] / 2.0 + self.config.corners.cutout_chamfer > zp]
+        out = {}
+        for name, (x0, x1) in zip(("left", "right"), self.hinge.land_spans(self.size().width)):
+            depth = self.hinge.saddle
+            for ox0, ox1, oy0, oy1 in obstacles:
+                if ox0 < x1 + gap and ox1 > x0 - gap and oy1 > b.y0:
+                    depth = min(depth, oy0 - gap - b.y0)
+            out[name] = (x0, x1, b.y0, b.y0 + max(depth, 0.0))
+        self._memo[key] = out
+        return out
 
-        def free(x: float) -> bool:
-            for (x0, x1, y0, y1), m in rects:
-                if x + r + m > x0 and x - r - m < x1 and y + r + m > y0 and y - r - m < y1:
-                    return False
-            return all(math.hypot(x - bx, y - by) >= r + br for bx, by, br in circles)
+    # -- Deck Seam lugs ------------------------------------------------------------
 
-        split = self._split("tray")
-        seams = split.seams() if split is not None else []
-        cuts = [s.x_range for s in seams]
-        bounds = [(b.x0, cuts[0][0] if cuts else b.x1)]
-        for (_, hi), (lo, _) in zip(cuts, cuts[1:]):
-            bounds.append((hi, lo))
-        if cuts:
-            bounds.append((cuts[-1][1], b.x1))
-        names = ("left", "center", "right") if len(bounds) == 3 else ("left", "right") if len(bounds) == 2 else ("all",)
-        sites: dict[str, list[tuple[float, float]]] = {}
-        for name, (lo, hi) in zip(names, bounds):
-            found: list[float] = []
-            x = lo + r + 1.0
-            while x <= hi - r - 1.0 and len(found) < 2:
-                if free(x) and all(abs(x - f) >= 2 * r + 2 * margin for f in found):
-                    found.append(x)
-                    x += 2 * r + 2 * margin
-                else:
-                    x += 0.5
-            sites[name] = [(fx, y) for fx in found]
-        self._memo[key] = sites
-        return sites
-
-    # -- Base knuckle screws into the Deck's rear skirt ---------------------------
-
-    def deck_knuckle_z(self) -> float:
-        """Height of the Deck knuckle screws' axis (mm).
-
-        As high as the knuckle web still covers the screw head, so the boss
-        keeps the most room above the Parting plane and the hub below it.
-        """
-        head = fasteners.screw("M3").head_diameter + self.config.clearance.screw
-        return self.hinge_axis_z() + self.hinge.web_top - head / 2.0 - self.config.clearance.screw
-
-    def deck_knuckle_screw(self):
-        """The stock screw: through web, wall and a 1 mm lead-in into the insert."""
-        wall = self.config.wall_thickness
-        spec = self.knuckle_boss_spec()
-        insert = fasteners.heat_insert("M3")
-        return deck_screw("M3", 2 * wall + (spec.height - insert.depth))
-
-    def deck_knuckle_sites(self) -> dict[str, list[tuple[float, float]]]:
-        """Horizontal flange-screw positions ``(x, z)`` per Deck Section.
-
-        Insert bosses on the Deck's rear skirt, above the Parting plane and so
-        above the hub, behind the Base knuckle's web. Up to two per Section,
-        inside the Base bar's span and clear of the Seam band, columns,
-        connector cutouts and whatever component rises into the skirt.
-        """
-        key = "deck_knuckle_sites"
+    def deck_lug_sites(self) -> dict[str, list[tuple[float, float, bool]]]:
+        """Seam-lug sites per Deck Seam (``"deck:<index>"``), two each (front and
+        rear skirt), standing on the Parting plane; empty if they don't fit."""
+        key = "deck_lug_sites"
         if key in self._memo:
             return self._memo[key]
         split = self._split("deck")
-        if self.hinge is None or split is None:
-            self._memo[key] = {}
-            return {}
-        names = self._deck_section_names(split)
-        spec = self.knuckle_boss_spec()
-        r = spec.outer_diameter / 2.0
-        b = self.wall_bounds()
-        zp = self.parting_height()
-        margin = self.config.clearance.screw
-        z = self.deck_knuckle_z()
-        if z - r < zp + margin:
-            self._memo[key] = {name: [] for name in names}
-            return self._memo[key]
-        rects = [(rc, margin) for rc in self.assembly.keepout_rects(zp, z + r, self._base_placements())]
-        rects += [(self.column_rect(c), margin) for c in self.columns()]
-        rects += [(rc, margin) for rc, c in zip(self.cutout_rects(), self.cutouts())
-                  if c["z"] + c["height"] / 2.0 + self.config.corners.cutout_chamfer > zp]
-        rects += [(rc, 0.0) for rc in self._band_rects()]
-
-        def free(x: float) -> bool:
-            for (x0, x1, y0, y1), m in rects:
-                if x + r + m > x0 and x - r - m < x1 and b.y0 + spec.height + m > y0 and b.y0 - m < y1:
-                    return False
-            return True
-
-        bar0, bar1 = self.hinge.base_knuckle_span(self.size().width)
-        cuts = [s.x_range for s in split.seams()]
-        bounds = [(b.x0, cuts[0][0])] + [(hi, lo) for (_, hi), (lo, _) in zip(cuts, cuts[1:])]
-        bounds.append((cuts[-1][1], b.x1))
-        sites: dict[str, list[tuple[float, float]]] = {}
-        for name, (lo, hi) in zip(names, bounds):
-            lo, hi = max(lo, bar0), min(hi, bar1)
-            found: list[float] = []
-            x = lo + r + 1.0
-            while x <= hi - r - 1.0 and len(found) < 2:
-                if free(x) and all(abs(x - f) >= 2 * r + 2 * margin for f in found):
-                    found.append(x)
-                    x += 2 * r + 2 * margin
-                else:
-                    x += 0.5
-            sites[name] = [(fx, z) for fx in found]
+        sites: dict[str, list] = {}
+        if split is not None:
+            spec = self._lug_spec()
+            wall = self.config.wall_thickness
+            zp = self.parting_height()
+            gap = self.config.clearance.shell
+            keepouts = list(self.assembly.keepout_rects(zp, zp + spec.size + gap, self._base_placements()))
+            keepouts += [self.column_rect(c) for c in self.columns()]
+            keepouts += [rc for rc, c in zip(self.cutout_rects(), self.cutouts())
+                         if c["z"] + c["height"] / 2.0 + self.config.corners.cutout_chamfer > zp]
+            keepouts += list(self.saddle_rects().values())
+            for i, seam in enumerate(split.seams()):
+                try:
+                    sites[f"deck:{i}"] = seam_joint.plan_joints(
+                        seam, self.size().depth, wall, spec, floor_top=zp,
+                        clearance=gap, keepouts=keepouts,
+                    )
+                except ValueError:
+                    sites[f"deck:{i}"] = []
         self._memo[key] = sites
         return sites
 
-    @staticmethod
-    def _deck_section_names(split) -> tuple[str, ...]:
-        n = len(split.seams()) + 1
-        return ("left", "center", "right") if n == 3 else ("left", "right") if n == 2 else ("all",)
-
-    def deck_knuckle_rects(self) -> list[tuple[float, float, float, float]]:
-        """Footprints ``(x0, x1, y0, y1)`` of the Deck knuckle bosses, for the Seam check."""
-        spec = self.knuckle_boss_spec()
-        r = spec.outer_diameter / 2.0
-        y0 = self.wall_bounds().y0
-        return [(x - r, x + r, y0, y0 + spec.height)
-                for pts in self.deck_knuckle_sites().values() for x, _ in pts]
-
-    def knuckle_rects(self) -> list[tuple[float, float, float, float]]:
-        r = self.knuckle_boss_spec().base_diameter / 2.0
-        return [(x - r, x + r, y - r, y + r) for pts in self.knuckle_screw_sites().values() for x, y in pts]
+    def deck_lug_rects(self) -> dict[str, list[tuple[float, float, float, float]]]:
+        """XY footprint of each Deck Seam's lug, keyed by Seam id."""
+        spec = self._lug_spec()
+        wall = self.config.wall_thickness
+        return {
+            sid: [seam_joint.lug_footprint(spec, sx, sy, wall, backed) for sx, sy, backed in sites]
+            for sid, sites in self.deck_lug_sites().items()
+        }

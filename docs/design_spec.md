@@ -6,7 +6,7 @@ This document defines the architecture, conventions, directory layout, APIs, and
 
 # Project Goal
 
-Design a completely parametric clamshell cyberdeck for field debugging of 3D printers.
+Design a completely parametric **slider** cyberdeck for field debugging of 3D printers: a screen lid that slides along the face to reveal a 40% keyboard (ADR-0009).
 
 Primary use cases:
 
@@ -28,7 +28,7 @@ Avoid:
 * LEDs everywhere
 * Meshtastic
 * SDR
-* decorative cyberpunk elements
+* decorative cyberpunk elements (including decorative picatinny rails and antennas; the accessory rail interface is functional, not printed)
 
 Priorities:
 
@@ -81,13 +81,14 @@ QMK/Vial firmware
 
 ## Case Style
 
-See `docs/form_factor.md` (references: NEC MobilePro 900, Jornada P6,
-Micro Journal Rev.2 ReVamp's visor). Not copied.
+See `docs/form_factor.md` (form reference: the central-unit slider; the
+clamshell references are retired with the clamshell, ADR-0009). Not copied.
 
 Desired characteristics:
 
-* clamshell
-* compact
+* slider: the screen lid slides along the face over the chassis
+* closed, the device reads as one screen panel; opening reveals the keyboard
+* flat face (no deck slope), compact closed face height
 * flat bottom
 * no palm rest
 * minimal bezel
@@ -156,7 +157,7 @@ cyberdeck/
         usb_breakout.py
         usb_c_plug.py
         heatset_insert.py
-        hinge.py
+        slide.py
 
     geometry/
 
@@ -177,10 +178,14 @@ cyberdeck/
 
         assembly.py
 
+    routing/
+
+        cable_routing.py
+
     case/
 
-        base.py
-        lid.py
+        chassis.py
+        screen_lid.py
 
     exports/
 
@@ -224,7 +229,7 @@ All components must follow one coordinate convention.
 Origin:
 
 ```
-center of base
+center of the chassis footprint (on the table plane)
 ```
 
 Never redefine origins.
@@ -471,9 +476,9 @@ Placed components
 Output:
 
 ```
-Base shell
+Chassis shell
 
-Lid shell
+Screen lid shell
 
 Bosses
 
@@ -599,25 +604,30 @@ head depth
 
 ---
 
-# Hinges
+# Slide
 
-Separate subsystem.
+Separate subsystem (`components/slide.py`, `config/slide.yaml`).
 
 Exports
 
 ```
-left hinge
+guide rod
 
-right hinge
+linear bearing
 
-pin
+bearing clamp
 
-wire tunnel
+travel stop
 
-rotation stop
+retention
+
+drag-chain channel
 ```
 
-Never integrate hinge math into enclosure.
+Never integrate slide math into the enclosure. Two guide rods run inside the
+screen lid's side walls; one LM…LUU bearing per rod is clamped in a Bearing
+clamp on the chassis deck behind the keyboard. The bearing size is config
+data; the face-height budget checks the chosen combination.
 
 ---
 
@@ -639,6 +649,8 @@ Outputs
 
 ```
 minimum bend radius
+
+drag-chain channel
 
 clearance tunnel
 ```
@@ -736,13 +748,17 @@ Minimum wall thickness
 
 Minimum screw clearance
 
-Minimum cable bend
+Minimum cable bend (drag chain)
 
 No connector blocked
 
-Lid closes
+Closed lid covers the chassis
 
-Hinge clears
+Slide travel exposes the keyboard
+
+Slide sweep clears over the whole travel
+
+Guide span and lid retention
 ```
 
 ---
@@ -781,7 +797,7 @@ Generate bosses
 
 ↓
 
-Generate hinge
+Generate slide
 
 ↓
 
@@ -835,7 +851,7 @@ The architecture should support replacing any major module without modifying unr
 * SBC (Orange Pi → Raspberry Pi CM5 → Radxa)
 * Display (8.8" ultrawide → 7" 16:10 → 10.1")
 * Keyboard (40% → 60% → split)
-* Hinge (barrel → torque → friction)
+* Hinge (barrel → torque → friction) → Slide (rod + bushing → rail → telescoping)
 * Battery (internal Li-ion pack, implemented)
 * Alternate lid designs (single panel → dual display → accessory panel)
 

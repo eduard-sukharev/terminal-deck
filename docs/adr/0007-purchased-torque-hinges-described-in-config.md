@@ -1,9 +1,14 @@
 ---
-status: accepted
+status: superseded
+superseded_by: ADR-0009
 supersedes: ADR-0004, ADR-0005
 ---
 
 # Purchased torque hinges described in config; the case adapts to them
+
+> Superseded by ADR-0009: the slider replaces the clamshell and has no hinge.
+> This record is kept for the case-adapts-to-purchased-hardware pattern, which
+> the slide guide reuses.
 
 The printed friction hinge (ADR 0004/0005) looks fragile for field use. The
 hinge becomes two purchased metal Torque hinges (reference part:

@@ -3,151 +3,167 @@
 Agreed shape of the device. Terms are defined in `/CONTEXT.md`; decisions
 with lasting trade-offs are in `docs/adr/`.
 
+The device is a **slider**: a field terminal whose screen lid slides along the
+face to reveal a 40% keyboard. The screen stays visible with the device closed,
+so it reads as a tablet with a slide-out keyboard. This replaces the clamshell
+(ADR-0009).
+
 ## References
 
-* **NEC MobilePro 900** — overall footprint (~243 × 126 mm). Our Envelope is
-  display-limited at ~236 × 118 mm, already in that class.
-* **Jornada P6** (r/cyberDeck prototype; images in `docs/reference/`) —
-  keyboard Well, recessed feet, lid proportions (its printed hinge and
-  rounded rear roll gave way to Torque hinges, ADR 0007).
-* **Micro Journal Rev.2 ReVamp** — the Visor.
+* **Central unit** (`central-unit.step`) — the form and the slide mechanism:
+  two guide rods, bearing clamps, a screen lid sliding over a chassis. Not
+  copied: its 335 × 80.6 mm envelope is decorative/accessory volume.
+* The earlier clamshell references (NEC MobilePro 900, HP Jornada P6, Micro
+  Journal Rev.2 ReVamp) are **retired** with the clamshell. Only their
+  handheld-PC size class remains relevant.
 
-No palm rest. The Micro Journal "large palm rest" requirement is dropped.
+No palm rest. No decorative rails, antennas or greebles; the picatinny
+interface is functional (accessories) and is not part of the printed shell.
 
-## Clamshell
+## Envelope
 
-* Symmetric clamshell: the Lid has the same footprint as the Base and is
-  thinner.
-* Closed, the device is a box (top parallel to bottom). The Deck keeps its
-  slope (`config.deck.slope`); the Lid absorbs it with a **Visor**: tapered
-  walls on the front and both sides, full height at the front, zero at the
-  hinge. Opened, the Visor hoods the top edge of the screen. See
-  `docs/reference/visor-side-view.svg`.
-* Closed, the Bezel's glass faces the keyboard, so the Lid's flat underside
-  (the closed plane) lies a shell clearance above the highest keycap. The
-  Base's outer walls stand that far above the Deck (`Base.rim_rise()`),
-  following its slope; the Lid itself holds only the panel and its driver.
-  `keys-clear-glass` fails the build otherwise.
-* Thickness: strive for thinner, no hard limit. Closed thickness is a GOAL
-  metric in the constraint report. Permitted levers: deck slope, keycap
-  profile (config), minimal Lid. The buried-SBC layout stays.
+| Dimension | Target | Driver |
+|---|---|---|
+| Face height (closed) | **140 mm, HARD** | slide travel + bearing + lid bezel |
+| Thickness | ≈ 56 mm, GOAL | keyboard/SBC chassis + screen lid |
+| Width | ≈ 260 mm, derived | keyboard 230.15 / panel 231 + two side pods |
 
-The Visor is built by `geometry/visor.py` from `Base.visor_profile()` and
-added to the Lid shell: a wall-thick ring on the shell outline, trimmed to a
-height that equals the Lid's flat underside plane (through the walls' rear
-top) minus the wall top. Each run checks `visor-closes-flush`,
-`visor-zero-at-hinge` and `visor-non-negative`, and reports closed thickness
-(Base to closed Lid top) as a GOAL line in the "closed-device validation".
+The face is the plane carrying the keyboard and the screen. **Face height** is
+the extent along the slide; **thickness** is the extent normal to the face.
+In the model, the device lies face-up: face height is Y, thickness is Z.
 
-## Lid
+The 140 mm budget, in the order the build computes it:
 
-* Display centered in the Lid. The driver board stays directly behind the
-  panel (the FPC runs straight; do not move it).
-* Bezel held by twelve exposed countersunk M2 screws from the front — a
-  design element, not hidden: six per Bezel Section, two at its outer
-  corners and four beside the straight centre Seam — two above and two below
-  the glass, one next to the display panel and one level with the corner
-  screws at the Bezel's edge.
+```
+chassis height   = keyboard front offset + keyboard.depth + rear band
+travel           = keyboard front offset + keyboard.depth + open clearance  (≈ 93)
+guide span       = travel + bearing.length + end supports
+closed face      = max(chassis height, guide span) + lid top bezel
+```
 
-## Base
+With the JD40 keyboard at 77.75 mm deep and one LM6LUU (35 mm), the closed
+face lands at ≈ 140 mm. A second bearing per rod (95 → 93 + spacing + 35
+≈ 160) does not fit; nor does LM8LUU with two bearings. The build fails if the
+chosen bearing, travel and margins exceed the face-height limit.
 
-* Keyboard sits in a **Well**: a rim around it at or below switch-top
-  height, so it adds no thickness. The rim is a wall-wide ring around the Deck
-  opening, `well.switch_margin` (config) below the switch tops
-  (`geometry/well.py`), and is clipped to the closed Lid's underside plane, so
-  it tapers away toward the hinge like the Visor.
-* Four 15 mm round recesses, 1 mm deep, in the floor for rubber feet. Feet
-  and bosses are placed independently — neither positions the other, but no
-  screw head may land in a foot recess.
-* Tray and Deck meet at the **Parting plane** (ADR 0003): horizontal, at a
-  configured fraction of the front wall height clamped to min/max mm, so the
-  Deck has a flat face and a wall skirt. The Deck is held by M3 screws from
-  below — through counterbored Tray columns into heat-set inserts in Deck
-  bosses; nothing stands proud of the Deck under the hands. The Deck Seam
-  needs no column of its own (its Sections are pinned, ADR 0006), and no
-  column stands in the strip behind the SBC's mini-HDMI plug where its
-  ribbon runs to the hinge (`Base.cable_runs`).
-* The keyboard plate is held by eight M2 screws on Tray-floor standoffs: four
-  at its edges and two per Section within 1u of its Seam, one in the upper
-  and one in the lower rows, in row gaps clear of stabilizers. The build fails
-  if they don't fit around the parts buried below.
-* The rear wall carries a row of vertical 0.8 mm vent slots
-  (`geometry/vents.py`). A slot may stand over a connector cutout, starting a
-  wall above it (or beside it); it is left out only over the Seam bands and
-  what is fused to the wall's inside (merged columns, hinge pads, Deck Seam
-  lugs). A wall-thick solid band runs across the Parting plane, so neither
-  the Tray's top edge nor the Deck's bed face is a comb, and the slots stop a
-  wall below the Base leaf's pocket.
-* Battery cells lie in printed floor cradles; side-by-side cells' cradles
-  meet flush and print as one block.
+## Poses and kinematics
 
-## Hinge
+**Closed pose** — the screen lid covers the whole chassis; the keyboard is
+hidden under the lid's flat back. The device reads as one screen panel.
 
-Two purchased metal Torque hinges (ADR 0007; reference part XK574-6-16,
-2 N·m), the left one the mirror of the right about the centerline. The part is
-data in the `hinge:` config section: a barrel on the Hinge axis and two
-Leaves, each with its offset from the axis, its extent and its holes, all in
-the hinge's own frame. Only the right hinge's X is configured (`hinge.x`,
-between the hub and the battery, whose cells stand taller than the Base leaf,
-and clear of the rear Deck column).
+**Open pose** — the lid slides **+Y** (toward the screen end, away from the
+user) by the slide travel; the keyboard is fully exposed. The open face height
+is `closed face + travel` (≈ 233), and the lid still overlaps the chassis by
+the bearing zone, so it cannot come off.
 
-The case adapts to that description (`components/hinge.py`):
+**Slide travel** — the distance the lid moves: keyboard front offset +
+keyboard depth + clearance. It is computed, never a constant. The lid's lower
+edge must pass the keyboard's *upper* edge, which is why the travel is ≈ 93 mm
+and not the keyboard's 77.75 mm depth.
 
-* The Hinge axis lies in the closed plane (Lid underside), set back behind
-  the rear face by the barrel's or the Cable guard's radius plus a swing
-  clearance. With the axis outside the shells the Lid swings through
-  `hinge.travel` without a rear roll or notches; the build fails if any
-  point of the Lid's side profile or its Leaf would enter the Base.
-* Each Leaf lies flat inside its shell: the Base leaf under the Deck slab,
-  the Lid leaf against the Lid's back. Each gets a pocket (`hinge.fit` all
-  round, through the rear wall) and a pad a wall wider than the Leaf from the
-  Leaf to the shell, with an M4 heat-set insert per hole. The build fails if
-  an insert has no room, a hole's insert falls outside the case, a Leaf
-  leaves its shell, or a component stands in a Leaf's pad.
-* The display FPC makes one turn round the Cable guard on the axis, facing
-  the driver's HDMI plug: a core (the FPC's minimum bend radius) and a ring,
-  part of the Deck through two end discs and arms, inside a Lid ring that
-  turns with the Lid. Each ring covers only the angles no cable entry ever
-  reaches through the travel. The cable passes through a Cable slot in the
-  Deck's and the Lid shell's rear walls. The build fails if the guard
-  overlaps a hinge or a Deck Seam.
+**Retention and stops** — the guide span covers the bearing at both poses (no
+exposed rods outside the envelope). A hard stop at each end of the travel;
+no detent in v1.
 
-* The Lid opens to `hinge.travel` (120°, a working angle; the hinge itself
-  turns to 196°) and stops there on a rib on the Deck outboard of each
-  barrel, behind the rear face, standing on the Parting plane. Its face lies
-  on the Lid's rear face at `travel`; the build fails if the Lid meets it
-  earlier. Hinge torque ~0.15 N·m each (`hinge.torque`, see ADR 0007): enough
-  to hold the Lid, little enough to open it one-handed.
+**Guide** — two steel rods, one per side, run along the slide **inside the
+screen lid's thickness**, at the sides of the panel, in a C-channel in the
+lid's side walls. The bearings are clamped in **Bearing Clamps standing on the
+chassis deck behind the keyboard**, rising above the base surface; the clamp
+enters the lid's C-channel through a slot. Bearings are LM…LUU
+(config-selectable, default LM6LUU), **one per rod**.
 
-The pads, the stop ribs and the guard are structural features: no Seam may cross them.
+**Drag chain** — the display/driver cable crosses the sliding joint in a
+drag chain running along the slide axis in a channel behind the screen (one
+side, hidden from the keyboard). The channel and its two anchors are reserved
+and checked over the whole travel; the chain links are a separate printable
+part, not part of the enclosure build.
 
-Sections of one part are joined for good by Seam lugs (ADR 0006,
-`geometry/seam_joint.py`): a lug straddles the Seam, bored through along X
-for a length of 1.75 mm filament that is pushed in after the Sections are put
-together, glued, and trimmed flush (`seam_pin` in the config). Each Seam of
-the Tray and the Lid shell gets two lugs on the floor, the Deck's Seam two
-standing on the Parting plane — one in the front skirt under the keyboard
-plate, one in the rear skirt. Sites are tried at the
-Seam's end segments, then the interior ones, skipping any whose lug would
-touch the components inside, a boss, column, cradle, hinge pad or connector
-cutout; the build fails if fewer than two clear sites exist on a Seam. Ribs
-are laid out between the Seam bands and the lugs. Bezel Sections are joined
-through the Lid shell bosses; screws stay wherever one part is held to
-another, so the case still opens for service.
+## Chassis
 
-Seam defaults are tuned per part: the Tray's sit at ±59 mm (clear of the SBC
-bosses, the battery cradles and the rear-wall connector cutouts); the Lid
-shell's at ±66 mm (outboard of the hinge pads and the Cable guard). Stepped Seams jog away from the centerline, so the pair
-mirrors about it.
+The chassis is the half that stays on the table. It slides under the lid, so
+its top (Deck) is a flat keyboard surface, not a lid.
 
-Fitting the plate Seam standoffs meant moving the SBC 10.3 mm forward and 2 mm
-right in `config/layouts/clamshell.yaml` (and raising the plate by 0.8 mm to
-keep the board's clearance): a standoff runs floor to plate and cannot pass
-through the board.
+* **Tray + Deck** at a horizontal Parting plane (ADR-0003): Tray = floor,
+  walls, ribs, vents, connector cutouts; Deck = the top surface with the
+  keyboard Well and the Parting-plane skirt.
+* **Keyboard Well** — a recess in the Deck. The keycaps sit flush with, or
+  just below, the Deck's top surface, so the lid's flat back can slide over
+  them with a 1 mm-class clearance. The Well no longer serves the clamshell's
+  "rim adds no closed thickness" trick; it sets the slide clearance.
+* **Bearing Clamps** — two blocks on the Deck behind the keyboard, at the
+  guide-rod X positions. Each holds one linear bearing and rises above the
+  Deck into the lid's side channel. They are the load-bearing interface
+  between the halves.
+* **Rear band** — the strip of Deck behind the keyboard, between and around
+  the Bearing Clamps, carries the USB hub (the externally reachable I/O) and
+  the cable-chain anchor. It is not used for the battery.
+* **Battery** — external, on the accessory rail (as the reference). An
+  internal pack, ideally a small one that keeps the SBC alive while external
+  packs are swapped, is a later option only if the envelope allows.
+* **Accessory rails** — picatinny interface, **not modelled**: the side walls
+  get square-nut pockets printed in (nuts inserted during a print pause), so
+  user-supplied rail sections bolt on. No rail bars in the shell.
+* **Well contents** — the SBC and the keyboard controller sit under the
+  raised keyboard plate, in the chassis thickness; they do not add face
+  height. The board's connectors are internal (the hub is the external
+  surface).
+
+## Screen lid
+
+* **Bezel = inverted tray**: the front face carries the glass opening, and its
+  walls run back toward the chassis; the panel and the driver sit inside the
+  tray. A **flat back panel** closes it. The front stays clean — the back
+  panel is fastened from the back into heat-set inserts, and it is the side
+  hidden against the chassis when closed.
+* **Guide rods** live in the lid's side walls, beside the panel, in C-channels
+  open toward the chassis for the Bearing Clamps.
+* **Display** centred; the driver stays directly behind the panel (the FPC
+  runs straight; do not move it).
+* **Glass retention** — the panel is held by the tray's front lip and a
+  clamp/retainer, not by a ring of exposed screws.
+* **Drag chain** — one channel along the slide, behind the panel, on one side.
+
+## Sections and fastening
+
+* Sections (ADR-0003, ADR-0006) stay: Tray, Deck and screen lid split into two
+  along X with stepped Seams; the keyboard plate splits in two at the central
+  key-column gap. Every Section must fit the **220 × 220 × 256 mm** build
+  volume, rejoin losslessly, have a flat bed face, and be joined by Seam lugs
+  (1.75 mm filament) or screws into bosses.
+* The lid's back panel is screwed (heat-set inserts); the chassis Tray/Deck
+  use the Parting plane and M3 screws from below. Nothing stands proud of the
+  keyboard Deck under the hands.
+* Seams are staggered between parts screwed to each other and never cross a
+  structural feature (rib, boss, standoff, clamp, guide channel, rail pocket,
+  vent, connector cutout).
+
+## Validation
+
+HARD (the build fails):
+
+* `slide-travel-clears-keyboard` — travel exposes the full keyboard plus
+  clearance in the open pose.
+* `closed-covers-chassis` — in the closed pose the lid covers the complete
+  chassis outline (no internals visible).
+* `slide-sweep-clear` — no collision between lid, chassis and components over
+  the whole travel.
+* `guide-span` — every bearing stays on its rod at both poses, with end
+  supports inside the shell; no rod protrudes beyond the closed envelope.
+* `bearing-fits-height` — travel + bearing + supports + bezel ≤ face-height
+  limit.
+* `chain-path-clear` — the drag chain stays inside its channel and its
+  minimum bend radius over the travel.
+* `lid-retention` — the lid keeps its bearing overlap in the open pose.
+* `section-fits-volume`, `section-rejoins`, `section-bed-face` — unchanged.
+* `keys-clear-lid` — keycaps clear the lid's flat back with the configured
+  clearance.
+
+GOAL (reported, not fatal): closed face height, thickness, mass, open pose
+height.
 
 ## Review renders
 
-Every assembly target is also exported as glTF with one color per component,
-and the Base/Lid shells translucent, so the Sections, Seams and internal parts
-can be told apart when reviewing a design. New parts (Visor, Torque hinges,
-each Section) need their own entry in `utilities/colors.py`.
+Every assembly target is also exported as glTF with one colour per component
+and the chassis/lid shells translucent, so Sections, Seams and internals can
+be told apart. New parts (Bearing Clamp, guide rod, drag chain, rail pockets)
+need their own entry in `utilities/colors.py`.

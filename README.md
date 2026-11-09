@@ -1,6 +1,8 @@
 # Cyberdeck CAD Generator
 
-Fully parametric clamshell cyberdeck for field debugging of 3D printers.
+Fully parametric **slider** cyberdeck for field debugging of 3D printers: the
+screen lid slides along the face to reveal a 40% keyboard, so the screen stays
+visible when the device is closed. The clamshell form was retired in ADR-0009.
 
 Target hardware:
 
@@ -27,8 +29,9 @@ component, or calculated geometry — never intuition.
 ## Coordinate system and units
 
 * Units: millimeters, always.
-* +X -> right, +Y -> forward, +Z -> upward.
-* Origin: center of the base. Never redefine origins.
+* +X -> right, +Y -> along the slide (toward the screen end), +Z -> upward.
+* Origin: centre of the chassis footprint, on the table plane. Never redefine
+  origins.
 
 See `docs/coordinate_system.md`, `docs/component_spec.md`, and
 `docs/cad_api.md` for the full contract.
@@ -41,8 +44,8 @@ components/    hardware components (Component API, measured data)
 geometry/      generative CAD helpers (boss, fillet, shell, ribs, vents, cutouts)
 layouts/       placement-only layout definitions (no CAD)
 assemblies/    collision / clearance / enclosure resolution
-case/          base and lid shell generation
-routing/       cable routing engine (bend radius, clearance tunnels)
+case/          chassis and screen-lid shell generation
+routing/       cable routing engine (bend radius, drag-chain channel)
 exports/       STEP / STL / SVG exporters
 utilities/     constants, cad_helpers, fasteners, validation, config loading
 generated/     output directory for exported files
@@ -63,8 +66,12 @@ python main.py --config config/default.yaml --steps all
 
 CAD generation is implemented on build123d. Create the env once with
 `conda create -n cyberdeck python=3.12 && conda activate cyberdeck &&
-pip install -r requirements.txt`. The case is a symmetric clamshell (Lid has the
-Base's footprint, Visor closes the Deck slope, printed friction hinge with a separate Base knuckle);
-every wide part is exported as 2–3 Sections (left/center/right) that fit the
-220 × 220 × 256 mm build volume, with a horizontal Parting plane between Tray
-and Deck. See `docs/form_factor.md`, `docs/adr/`, and `CONTEXT.md`.
+pip install -r requirements.txt`.
+
+The target form is a **slider** (ADR-0009): a 140 mm closed face height, a
+screen lid sliding on two guide rods over a chassis, and a 40% keyboard
+revealed by the slide. Every wide part is exported as two Sections that fit the
+220 × 220 × 256 mm build volume. The Python case code still builds the retired
+clamshell until the slider skeleton lands; the spec in `docs/form_factor.md`
+and `CONTEXT.md` is already the target. See `docs/form_factor.md`,
+`docs/adr/`, and `CONTEXT.md`.

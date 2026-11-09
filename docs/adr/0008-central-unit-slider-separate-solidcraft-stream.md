@@ -1,8 +1,13 @@
 ---
-status: proposed
+status: deprecated
+superseded_by: ADR-0009
 ---
 
 # Central-unit slider: a separate SolidCraft experimental stream
+
+> Deprecated by ADR-0009: the slider replaces the clamshell and is built in
+> build123d. This separate SolidCraft stream is closed; its measurements and
+> the 140 mm pass are kept in `docs/central-unit-slider.md`.
 
 The mainline is the build123d clamshell (ADR 0002). Separately, an externally
 authored "Central unit" **slider** — a Vaio-UX-style deck whose screen lid

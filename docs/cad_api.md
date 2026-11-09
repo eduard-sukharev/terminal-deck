@@ -9,7 +9,7 @@ or calculated geometry.
 
 ```
 load configuration -> load components -> place layout -> validate placement
--> enclosure -> bosses -> hinge -> cutouts -> ribs -> export -> validate
+-> enclosure -> bosses -> slide -> cutouts -> ribs -> export -> validate
 ```
 
 ## Functions to implement
@@ -31,9 +31,10 @@ load configuration -> load components -> place layout -> validate placement
 
 | Method | Consumes | Produces |
 |--------|----------|----------|
-| `Base.build()` | placements, config | base shell + walls/bosses/ribs/vents/cutouts |
-| `Lid.build_shell()` | display, config | Lid shell (to be renamed, see CONTEXT.md) |
-| `Lid.build_bezel()` | display, config | Bezel + glass opening |
+| `Chassis.build_tray()` | placements, config | chassis floor + walls/bosses/ribs/vents/cutouts |
+| `Chassis.build_deck()` | placements, config | Deck: keyboard Well, Bearing clamps, Rear band |
+| `ScreenLid.build_bezel()` | display, config | inverted-tray front + glass opening |
+| `ScreenLid.build_back()` | display, config | flat back panel + guide-rod C-channels |
 
 ### Components (`components/`)
 
@@ -54,7 +55,7 @@ reference origin.
 * `wall_thickness = config.wall.thickness` is the single wall parameter.
 * Fillets use `config.corners.edge_radius` and `config.corners.radius`.
 * Heat inserts come from `utilities/fasteners.py`, never recreated.
-* Hinge math lives in `components/hinge.py`, never in the enclosure.
+* Slide math lives in `components/slide.py`, never in the enclosure.
 * Cable routing lives in `routing/cable_routing.py`.
 * The keyboard plate is independent of the enclosure
   (`components/keyboard_plate.py`).
@@ -67,5 +68,6 @@ reference origin.
 Every build runs `utilities/validation.run_all(...)`, checking:
 
 no collisions / no floating bosses / minimum wall thickness / minimum screw
-clearance / minimum cable bend / no connector blocked / lid closes / hinge
-clears.
+clearance / minimum cable bend (drag chain) / no connector blocked / closed
+lid covers the chassis / slide travel exposes the keyboard / slide sweep
+clears / guide span and lid retention.

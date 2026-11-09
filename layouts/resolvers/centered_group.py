@@ -83,7 +83,6 @@ class CenteredGroupResolver:
                 placement.rotation,
                 placement.z,
                 placement.flip_x,
-                placement.tilt_x,
             )
 
         return ResolverResult(

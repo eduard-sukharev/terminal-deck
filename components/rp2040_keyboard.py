@@ -7,7 +7,7 @@ cyberdeck adapter that produces the solid.
 
 The controller is **not** part of this component: it is placed separately on
 the case floor (``components/rp2040_zero.py``, role ``controller`` in the
-layout), because it has to sit in the wedge the sloped deck opens up rather
+layout), because it has to sit under the raised keyboard plate rather
 than hang from the tilted plate. See :attr:`switch_bottom_protrusion` for why
 it cannot live directly under the plate.
 
@@ -19,7 +19,6 @@ the plate (the SBC) when the layout calls :meth:`set_plate_raise` with
 
 from __future__ import annotations
 
-import math
 from typing import Any
 
 from components.base import BoundingBox, Component, Hole
@@ -79,20 +78,13 @@ class Rp2040Keyboard(Component):
     def plate_raise_for_buried(
         self,
         part_height: float,
-        part_depth: float,
-        slope: float,
         gap: float,
     ) -> float:
         """Plate standoff (mm) needed to bury a floor-mounted part under the plate.
 
-        The binding point is the buried part's *front* edge, not its centre:
-        on a deck sloped by ``slope`` the plate rises toward the rear, so
-        clearance is worst at the front of anything tucked under it. This
-        assumes the part is pushed rear-flush with the plate, which is how
-        the recipe places it — the deepest position, and therefore the one
-        needing the least raise.
-
-        Note this is clearance under the **switch bodies**, which hang
+        The plate is flat, so the only requirement is the buried part's top
+        plus the required gap under the switch bodies. Note this is clearance
+        under the **switch bodies**, which hang
         :attr:`switch_bottom_protrusion` below the plate: that protrusion,
         not the plate itself, is what the buried part actually has to miss.
 
@@ -101,10 +93,6 @@ class Rp2040Keyboard(Component):
         part_height : float
             Top of the buried part above the case floor (mm) — including any
             standoff/boss raise, not just the part's own thickness.
-        part_depth : float
-            The part's depth along Y (mm).
-        slope : float
-            Deck slope in degrees (``config.deck.slope``).
         gap : float
             Required clearance between the part's top and the switch bodies.
 
@@ -114,21 +102,7 @@ class Rp2040Keyboard(Component):
             The standoff height, never less than the plain
             switch-clearance-plus-floor-gap value.
         """
-        rad = math.radians(slope)
-        plate_depth = self._plate.size().depth
-        # Clearance checks bound each tilted slice by its own worst corner,
-        # so they read a slice as reaching half its depth * sin(tilt) lower
-        # than it does at its centre. Size against that same conservative
-        # bound, or the derivation and the check disagree by exactly that
-        # much and a layout sized here fails the check it was sized for.
-        slice_bias = (plate_depth / self._occupied_volume_slices / 2.0) * math.sin(rad)
-        # Rear-flush: the part's front edge sits `part_depth` in from the
-        # plate's rear edge, and the keyboard's own origin rides half the
-        # plate depth up the slope (see the deck_mount resolver).
-        needed = (
-            part_height + gap + slice_bias
-            + math.sin(rad) * (part_depth - plate_depth)
-        ) / math.cos(rad)
+        needed = part_height + gap
         return max(
             self.switch_bottom_protrusion + self._floor_gap,
             self.switch_bottom_protrusion + needed,

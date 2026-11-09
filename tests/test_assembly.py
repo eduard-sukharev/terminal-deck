@@ -6,11 +6,11 @@ from main import BuildPipeline
 
 
 def _components_and_placements():
-    p = BuildPipeline("config/default.yaml", layout_name="compact")
+    p = BuildPipeline("config/default.yaml", layout_name="slider")
     cfg = p.load_config()
     comps = p.load_components()
     from layouts import make_layout
-    layout = make_layout("compact", comps, config=cfg)
+    layout = make_layout("slider", comps, config=cfg)
     return comps, layout.placements()
 
 
@@ -51,7 +51,7 @@ def test_select_placements_single_component():
 
 def _keyboard_from_pipeline():
     """Return a properly configured Rp2040Keyboard via the pipeline."""
-    p = BuildPipeline("config/default.yaml", layout_name="compact")
+    p = BuildPipeline("config/default.yaml", layout_name="slider")
     p.load_config()
     comps = p.load_components()
     return comps["keyboard"]

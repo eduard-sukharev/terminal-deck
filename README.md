@@ -76,6 +76,6 @@ validates the 140/56/260 budget from the real components, and `make all` /
 `make slider` builds and exports the chassis, screen lid, guide hardware and
 both the closed and open assembly (the lid and rods slid by the travel) as
 STEP/STL/glTF, split into two Sections with stepped Seams that fit the
-220 × 220 × 256 mm build volume. The slider is the default; `--layout compact`
-still reaches the retired clamshell until its code is removed. See
-`docs/form_factor.md`, `docs/adr/`, and `CONTEXT.md`.
+220 × 220 × 256 mm build volume. The slider is the only layout; the retired
+clamshell code is removed. See `docs/form_factor.md`, `docs/adr/`, and
+`CONTEXT.md`.

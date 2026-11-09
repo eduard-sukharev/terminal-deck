@@ -103,9 +103,7 @@ class FixedPosition(Constraint):
     unchanged (or defaults to 0 if no prior placement exists). ``rotation``
     follows the same rule, so pinning one axis later in a recipe does not
     silently un-rotate a part. ``flip`` turns the subject over (see
-    :class:`RelativePlacement`). ``tilt`` sets the wedge angle about X (see
-    :attr:`layouts.base.Placement.tilt_x`) for parts mounted on the sloped
-    base deck.
+    :class:`RelativePlacement`).
     """
     kind: str = field(default="fixed_position", init=False)
     subject: str
@@ -114,7 +112,6 @@ class FixedPosition(Constraint):
     z: float | None = None
     rotation: float | None = None
     flip: bool | None = None
-    tilt: float | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -281,17 +278,12 @@ class RelativePlacement(Constraint):
         at the placed Z and the body hangs below — the mounting convention
         for boards flat against the panel back. ``None`` keeps the subject's
         current orientation.
-    tilt : float or None
-        Tilt about X (degrees), for a part riding the sloped base deck.
-        ``None`` inherits the target's tilt, so a part mounted on a tilted
-        partner follows it without the recipe restating the angle.
     from_top : bool
         Measure ``offset_z`` from the target's occupied top
         (``Placement.z_bounds()[1]``) instead of its origin. Use it when what
         matters is clearing the target rather than sitting a fixed distance
-        from its datum: the lid has to clear the *tallest point* of a base
-        that may be tilted, so measuring from the top keeps it correct as the
-        deck slope changes instead of silently colliding.
+        from its datum: the lid has to clear the *tallest point* of the
+        stack below it.
     """
     kind: str = field(default="relative_placement", init=False)
     subject: str
@@ -302,35 +294,7 @@ class RelativePlacement(Constraint):
     rotation: float | None = None
     use_reference_origin: bool = False
     flip: bool | None = None
-    tilt: float | None = None
     from_top: bool = False
-
-
-@dataclass(frozen=True, kw_only=True)
-class DeckMount(Constraint):
-    """Mount a component on the sloped base deck.
-
-    Tilts the subject by ``config.deck.slope`` and positions it so it pivots
-    about its own front-bottom edge: the front edge stays at ``floor_z`` and
-    the rear rises, exactly as the deck above it does
-    (``case.base.Base.deck_level_at``). At slope 0 this is a no-op beyond
-    setting ``z = floor_z``, so a flat-deck config keeps the old geometry.
-
-    Declaring the mount rather than writing the trig into the recipe keeps
-    the wedge angle in one place: changing ``config.deck.slope`` re-tilts
-    every deck-mounted part together.
-
-    Parameters
-    ----------
-    subject : str
-        Component to mount on the deck.
-    floor_z : float
-        Height of the subject's front-bottom edge (mm). Defaults to 0, the
-        base floor.
-    """
-    kind: str = field(default="deck_mount", init=False)
-    subject: str
-    floor_z: float = 0.0
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -386,7 +350,6 @@ __all__ = [
     "KeyboardMountingHoles",
     "CenteredOn",
     "CenteredGroup",
-    "DeckMount",
     "Clearance",
     "ZStack",
     "SharePlane",

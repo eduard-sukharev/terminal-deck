@@ -1,9 +1,8 @@
-"""Section model: per-part split config, mirrored Seams, target names (ADR 0003)."""
+"""Section model: the Split dataclass and the slider's per-part split config."""
 
 import pytest
 
 from utilities.config_loader import Split, load_config
-from utilities.targets import SECTION_NAMES, requested_sections, resolve_targets
 
 
 def test_two_section_straight_split_has_one_seam():
@@ -41,35 +40,10 @@ def test_invalid_split_is_rejected(kwargs):
         Split(**kwargs)
 
 
-def test_default_config_declares_section_splits():
+def test_slider_config_declares_section_splits():
     cfg = load_config("config/default.yaml")
-    assert cfg.split["tray"].sections == 3
-    assert cfg.split["lid_shell"].sections == 3
-    assert cfg.split["deck"].sections == 2 and cfg.split["deck"].style == "straight"
-    assert cfg.split["bezel"].sections == 2 and cfg.split["bezel"].style == "straight"
-    assert cfg.split["deck"].x == 0.0 and cfg.split["bezel"].x == 0.0
-    # Tray and Lid shell Seams are tuned per part (see config/default.yaml).
-    assert cfg.split["tray"].x > 0 and cfg.split["lid_shell"].x > 0
-
-
-def test_section_names():
-    assert SECTION_NAMES["base_bottom"] == ("left", "center", "right")
-    assert SECTION_NAMES["lid_shell"] == ("left", "center", "right")
-    assert SECTION_NAMES["base_top"] == ("left", "right")
-    assert SECTION_NAMES["lid_bezel"] == ("left", "right")
-    assert SECTION_NAMES["keyboard_plate"] == ("left", "right")
-
-
-def test_center_target_resolves_to_its_part():
-    buckets, _ = resolve_targets(["base_bottom_center", "lid_shell_center"], set())
-    assert buckets == {"base_bottom", "lid_shell"}
-
-
-def test_center_target_on_a_two_section_part_is_unknown():
-    with pytest.raises(ValueError, match="unknown target"):
-        resolve_targets(["base_top_center"], set())
-
-
-def test_center_section_alone_narrows_the_export():
-    assert requested_sections(["base_bottom_center"]) == {"base_bottom_center"}
-    assert requested_sections(["base_bottom_center", "base"]) == set()
+    assert cfg.slide.split["chassis"].sections == 2
+    assert cfg.slide.split["chassis"].style == "stepped"
+    assert cfg.slide.split["screen_lid"].style == "stepped"
+    assert cfg.slide.split["keyboard_plate"].style == "straight"
+    assert cfg.slide.split["chassis"].step > 0

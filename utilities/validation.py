@@ -43,28 +43,16 @@ def _volume_footprint(placement: Any, box: Any) -> tuple[float, float]:
     ``utilities`` sits below ``layouts`` in the import graph (see
     :func:`_rotated_footprint`).
     """
-    eff_w, eff_d = _rotated_footprint(box.width, box.depth, placement.rotation)
-    tilt = getattr(placement, "tilt_x", 0.0)
-    if tilt:
-        rad = math.radians(tilt)
-        eff_d = abs(eff_d * math.cos(rad)) + abs(box.height * math.sin(rad))
-    return eff_w, eff_d
+    return _rotated_footprint(box.width, box.depth, placement.rotation)
 
 
 def _volume_z_span(placement: Any, box: Any, center_z: float) -> tuple[float, float]:
     """World-frame Z range of one sub-volume whose transformed origin sits at
     ``center_z``. Mirrors ``layouts.base.volume_z_span``.
     """
-    z0, z1 = (
-        (center_z - box.height, center_z) if placement.flip_x
-        else (center_z, center_z + box.height)
-    )
-    tilt = getattr(placement, "tilt_x", 0.0)
-    if not tilt:
-        return (z0, z1)
-    _, depth = _rotated_footprint(box.width, box.depth, placement.rotation)
-    half = abs(depth / 2.0 * math.sin(math.radians(tilt)))
-    return (z0 - half, z1 + half)
+    if placement.flip_x:
+        return (center_z - box.height, center_z)
+    return (center_z, center_z + box.height)
 
 
 class SizedComponent(Protocol):
@@ -191,7 +179,7 @@ def check_boss_collisions(
     Parameters
     ----------
     bosses : list of (x, y, diameter, height, owner)
-        World-frame boss geometry, e.g. from ``case.base.Base.all_bosses``.
+        World-frame boss geometry, e.g. from a case builder's ``all_bosses``.
         ``owner`` is the component the boss supports (skipped in that
         component's own check — a mounting boss legitimately touches the
         part it holds up) or ``None`` for a deck-mount standoff, which
@@ -306,163 +294,6 @@ def check_lid_clearance(
     )
 
 
-def check_torque_hinge(
-    hinge: Any,
-    report: ValidationReport,
-    *,
-    case_width: float,
-    case_depth: float,
-    base_top: float,
-    parting: float,
-    lid_height: float,
-    wall: float,
-    minimum_feature: float,
-    base_placements: list[Any],
-    axis_world: tuple[float, float],
-    lid_placements: list[Any],
-    lid_axis: tuple[float, float],
-    deck_seams: list[float],
-    deck_columns: list[tuple[float, float, float, float]] = (),
-) -> None:
-    """HARD checks that the case can take the Torque hinges (ADR 0007).
-
-    Heights are in the hinge frame (axis at 0, closed, Base below): the Deck
-    top ``base_top``, the Parting plane ``parting`` and the Lid's back
-    ``lid_height``. ``axis_world`` is the axis ``(y, z)`` in the world frame
-    of ``base_placements``; ``lid_axis`` the same in the Lid's own (turned
-    over) frame of ``lid_placements``.
-    """
-    rear_y = -case_depth / 2.0
-    insert = hinge.insert()
-    sides = ("left", "right")
-
-    # Each insert bore fits between its Leaf and the shell's outer surface.
-    rooms = {
-        "base": hinge.insert_room("base", base_top, minimum_feature),
-        "lid": hinge.insert_room("lid", lid_height, minimum_feature),
-    }
-    short = [f"{w} {r:.1f} mm" for w, r in rooms.items() if r < insert.depth - 1e-9]
-    report.add(
-        "hinge-insert-depth", not short,
-        f"room for the {insert.size} inserts: "
-        + ", ".join(f"{w} {r:.1f} mm" for w, r in rooms.items())
-        + (f" (< {insert.depth:g} mm: {', '.join(short)})" if short else ""),
-    )
-
-    # The Base leaf stays above the Parting plane (it belongs to the Deck);
-    # the Lid leaf stays inside the Lid's back.
-    base_low = hinge.leaf_z("base")[0] - hinge.fit
-    lid_high = hinge.leaf_z("lid")[1] + hinge.fit
-    report.add(
-        "hinge-leaf-in-shell",
-        base_low >= parting - 1e-9 and lid_high <= lid_height - wall + 1e-9,
-        f"Base leaf down to {base_low:.1f} mm (Parting plane {parting:.1f}), "
-        f"Lid leaf up to {lid_high:.1f} mm (Lid back {lid_height - wall:.1f})",
-    )
-
-    # Every hole's insert sits in the pad, inside the case, with a skin round it.
-    bad = []
-    r = insert.outside_diameter / 2.0 + minimum_feature
-    for which in ("base", "lid"):
-        for side in sides:
-            for x, y, _ in hinge.holes(which, rear_y, side):
-                if y - r < rear_y - 1e-9 or abs(x) + r > case_width / 2.0 - wall + 1e-9:
-                    bad.append(f"{which} {side} ({x:.1f}, {y:.1f})")
-    report.add(
-        "hinge-holes-in-material", not bad,
-        "every Leaf hole's insert sits inside the case" if not bad
-        else f"insert outside the case: {', '.join(bad)}",
-    )
-
-    # The Lid swings clear of the Base through its whole travel.
-    hits = hinge.sweep_hits(lid_depth=case_depth, lid_height=lid_height)
-    report.add(
-        "hinge-sweep-clears", not hits,
-        f"the Lid swings clear through {hinge.travel:g} deg" if not hits
-        else f"the Lid enters the Base at {hits[0][0]:.0f} deg ({len(hits)} sample hits)",
-    )
-
-    # The travel stop: the Lid lands on it at `travel` and not before, along
-    # its rear face, and the ribs stay clear of the Cable guard.
-    if hinge.has_stop:
-        hits = hinge.stop_hits(lid_depth=case_depth, lid_height=lid_height, parting=parting)
-        problems = []
-        if hits:
-            problems.append(f"the Lid meets a stop rib at {hits[0][0]:.0f} deg, before {hinge.travel:g}")
-        if hinge.stop_face > lid_height + 1e-9:
-            problems.append(f"stop face {hinge.stop_face:g} mm longer than the Lid's rear face {lid_height:.1f}")
-        if hinge.guard is not None:
-            gx0, gx1 = hinge.guard.span()
-            problems += [
-                f"{side} rib overlaps the Cable guard"
-                for side in sides
-                if gx0 < hinge.stop_span(side)[1] and gx1 > hinge.stop_span(side)[0]
-            ]
-        report.add(
-            "hinge-stop", not problems,
-            f"the Lid lands on the stop ribs at {hinge.travel:g} deg" if not problems
-            else "; ".join(problems),
-        )
-
-    # No component inside a Leaf or its pad (Base: world frame; Lid: its own).
-    hits = []
-    for which, placements, (ay, az), flip in (
-        ("base", base_placements, axis_world, 1.0),
-        ("lid", lid_placements, lid_axis, -1.0),
-    ):
-        z0, z1 = hinge.leaf_z(which)
-        pad_z = (base_top, z0) if which == "base" else (z1, lid_height)
-        lo, hi = min(z0, pad_z[0], pad_z[1]), max(z1, pad_z[0], pad_z[1])
-        zs = sorted((az + flip * lo, az + flip * hi))
-        for side in sides:
-            kx0, kx1, ky0, ky1 = hinge.pad_rect(which, rear_y, side)
-            for p in placements:
-                x0, y0, x1, y1 = p.box
-                pz0, pz1 = p.z_bounds()
-                if x0 < kx1 and x1 > kx0 and y0 < ky1 and y1 > ky0 and pz0 < zs[1] and pz1 > zs[0]:
-                    hits.append(f"{p.component.__class__.__name__} in the {side} {which} leaf pad")
-    for side in sides:
-        kx0, kx1, ky0, ky1 = hinge.pad_rect("base", rear_y, side)
-        for cx0, cx1, cy0, cy1 in deck_columns:
-            if cx0 < kx1 and cx1 > kx0 and cy0 < ky1 and cy1 > ky0:
-                hits.append(f"Deck column ({(cx0 + cx1) / 2:.1f}, {(cy0 + cy1) / 2:.1f}) in the {side} base leaf pad")
-    report.add(
-        "hinge-clears", not hits,
-        f"components inside the hinge: {', '.join(hits)}" if hits
-        else "no component or Deck column inside a Leaf or its pad",
-    )
-
-    guard = hinge.guard
-    if guard is not None:
-        gx0, gx1 = guard.span()
-        crossing = []
-        for side in sides:
-            x0, x1, _, _ = hinge.pad_rect("base", rear_y, side)
-            if gx0 < x1 and gx1 > x0:
-                crossing.append(f"{side} hinge")
-        crossing += [f"Deck Seam x={x:g}" for x in deck_seams if gx0 - wall < x < gx1 + wall]
-        report.add(
-            "cable-guard-clear", not crossing,
-            f"Cable guard {gx0:.1f}..{gx1:.1f} clear of the hinges and Deck Seams" if not crossing
-            else f"Cable guard {gx0:.1f}..{gx1:.1f} overlaps {', '.join(crossing)}",
-        )
-
-
-def check_hinge_fits(
-    diameter: float, base_rear_height: float, lid_height: float, report: ValidationReport
-) -> None:
-    """Fail if the hinge barrel, centred on the closed interface plane, would
-    reach past the Base's bottom or the Lid's back (half a diameter each side)."""
-    radius = diameter / 2.0
-    room = min(base_rear_height, lid_height)
-    report.add(
-        "hinge-fits",
-        radius <= room,
-        f"barrel radius {radius:.2f} mm vs rear room {room:.2f} mm "
-        f"(Base {base_rear_height:.2f}, Lid {lid_height:.2f})",
-    )
-
-
 def check_dimension_consistency(
     placements: list[Any],
     config: Any,
@@ -502,100 +333,6 @@ def check_dimension_consistency(
         )
     else:
         report.add("dimension-consistency", True, "keyboard/display not both present — skipped")
-
-
-#: Parts screwed to each other, whose Seams must not line up (ADR 0003): the
-#: Tray carries the Deck and the keyboard plate; the Lid shell carries the
-#: Bezel. Base and Lid parts are free to coincide in X, and so are the Deck and
-#: the keyboard plate (the plate is supported independently on Tray standoffs).
-STAGGERED_PAIRS: tuple[tuple[str, str], ...] = (("tray", "deck"), ("lid_shell", "bezel"))
-
-
-def _part_ranges(split: Any) -> list[tuple[float, float]]:
-    return [seam.x_range for seam in split.seams()]
-
-
-Segment = tuple[float, float, float]  # (y0, y1, x)
-
-
-def _seam_lines(
-    segments: list[Segment],
-) -> list[tuple[float, float, float, float]]:
-    """A Seam as axis-aligned lines ``(x0, x1, y0, y1)``: its segments and the
-    jog between each pair."""
-    lines = [(x, x, y0, y1) for y0, y1, x in segments]
-    for (_, ya, xa), (_, _, xb) in zip(segments, segments[1:]):
-        lines.append((min(xa, xb), max(xa, xb), ya, ya))
-    return lines
-
-
-def _line_gap(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
-    dx = max(a[0] - b[1], b[0] - a[1], 0.0)
-    dy = max(a[2] - b[3], b[2] - a[3], 0.0)
-    return math.hypot(dx, dy)
-
-
-def seams_gap(a: list[Segment], b: list[Segment]) -> float:
-    """Closest approach (mm) between two Seams given as ``(y0, y1, x)`` segments."""
-    return min(_line_gap(la, lb) for la in _seam_lines(a) for lb in _seam_lines(b))
-
-
-def check_seams(
-    config: Any,
-    case_width: float,
-    report: ValidationReport,
-    plate_seam: list[Segment] | None = None,
-    case_depth: float = 100.0,
-) -> None:
-    """Fail if Seams of screwed-together parts line up or cut a protected spot.
-
-    * Seams are staggered between parts screwed to each other
-      (:data:`STAGGERED_PAIRS`, plus Tray vs keyboard plate when
-      ``plate_seam`` is given as world-frame ``(y0, y1, x)`` segments): the
-      Seam lines, jogs included, stay at least ``4 * wall`` apart, so no single
-      weak line runs through a joined assembly.
-    * The Tray Seams avoid every foot recess.
-    * The Bezel Seam lies inside the display opening.
-    """
-    splits = config.split
-    min_gap = 4.0 * config.wall_thickness
-
-    def lines(part: str) -> list[list[Segment]]:
-        return [seam.segments(case_depth) for seam in splits[part].seams()]
-
-    clashes = []
-    for a, b in STAGGERED_PAIRS:
-        if a in splits and b in splits:
-            if any(seams_gap(sa, sb) < min_gap for sa in lines(a) for sb in lines(b)):
-                clashes.append(f"{a}/{b}")
-    if plate_seam is not None and "tray" in splits:
-        if any(seams_gap(sa, plate_seam) < min_gap for sa in lines("tray")):
-            clashes.append("tray/keyboard_plate")
-    report.add(
-        "seams-staggered", not clashes,
-        f"no screwed-together Seams within {min_gap:g} mm" if not clashes
-        else f"Seams too close: {', '.join(clashes)}",
-    )
-
-    if "tray" in splits:
-        feet = config.feet
-        hit = [
-            fx for fx in (-1, 1)
-            for cx in [fx * (case_width / 2.0 - feet.inset_x)]
-            for x0, x1 in _part_ranges(splits["tray"])
-            if x1 > cx - feet.diameter / 2.0 and x0 < cx + feet.diameter / 2.0
-        ]
-        ranges = ", ".join(f"{x0:g}..{x1:g}" for x0, x1 in _part_ranges(splits["tray"]))
-        report.add("seam-avoids-feet", not hit, f"tray Seam x={ranges}")
-
-    if "bezel" in splits:
-        half_open = (config.display.width - 2.0 * config.bezel.inset) / 2.0
-        ranges = _part_ranges(splits["bezel"])
-        report.add(
-            "seam-in-display-opening",
-            all(-half_open <= x0 and x1 <= half_open for x0, x1 in ranges),
-            f"bezel Seam x={ranges[0][0]:g}..{ranges[-1][1]:g}, opening +-{half_open:g}",
-        )
 
 
 @dataclass(frozen=True)
@@ -676,6 +413,19 @@ def check_seam_clearance(
     )
 
 
+def _line_gap(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
+    dx = max(a[0] - b[1], b[0] - a[1], 0.0)
+    dy = max(a[2] - b[3], b[2] - a[3], 0.0)
+    return math.hypot(dx, dy)
+
+
+def _seam_lines(
+    segments: list[Segment],
+) -> list[tuple[float, float, float, float]]:
+    """Turn ``(y0, y1, x)`` Seam segments into ``(x0, x1, y0, y1)`` lines."""
+    return [(x, x, y0, y1) for y0, y1, x in segments]
+
+
 def _point_seam_gap(x: float, y: float, segments: list[Segment]) -> tuple[float, str]:
     """Distance (mm) from a point to a Seam line and which side of it the point is on."""
     lines = _seam_lines(segments)
@@ -722,23 +472,6 @@ def check_plate_seam_screws(
     )
 
 
-def check_screw_heads_clear_of_feet(
-    heads: list[tuple[float, float, float]],
-    feet: list[tuple[float, float, float]],
-    report: ValidationReport,
-) -> None:
-    """Fail if any bottom screw head ``(x, y, radius)`` overlaps a foot recess."""
-    hits = [
-        f"head at ({hx:.1f}, {hy:.1f}) in foot recess at ({fx:.1f}, {fy:.1f})"
-        for hx, hy, hr in heads for fx, fy, fr in feet
-        if math.hypot(hx - fx, hy - fy) < hr + fr
-    ]
-    report.add(
-        "screw-heads-clear-of-feet", not hits,
-        "; ".join(hits) if hits else f"{len(heads)} bottom screw head(s) clear of {len(feet)} foot recess(es)",
-    )
-
-
 def check_deck_screw(size: str, grip: float, report: ValidationReport) -> None:
     """Fail unless a stock screw of ``size`` engages the Deck insert across ``grip``."""
     from geometry.parting import deck_screw
@@ -751,38 +484,6 @@ def check_deck_screw(size: str, grip: float, report: ValidationReport) -> None:
     report.add(
         "deck-screw-length", True,
         f"{screw.name}: {screw.engagement:g} mm into the insert across a {grip:g} mm grip",
-    )
-
-
-def check_visor_flush(
-    deck_top_at: Any,
-    visor_height_at: Any,
-    rear_y: float,
-    front_y: float,
-    report: ValidationReport,
-    samples: int = 21,
-    tolerance: float = 1e-6,
-) -> None:
-    """Fail unless the Visor closes the Deck's slope into a box.
-
-    Closed, ``deck_top + visor_height`` must be one constant plane along Y
-    (Lid underside parallel to the Deck's base), the Visor must never be
-    negative, and it must vanish at the hinge end.
-    """
-    ys = [rear_y + (front_y - rear_y) * i / (samples - 1) for i in range(samples)]
-    tops = [deck_top_at(y) + visor_height_at(y) for y in ys]
-    flat = max(tops) - min(tops)
-    report.add(
-        "visor-closes-flush", flat <= tolerance,
-        f"Lid underside varies {flat:.3g} mm over the Deck",
-    )
-    report.add(
-        "visor-zero-at-hinge", abs(visor_height_at(rear_y)) <= tolerance,
-        f"Visor height at hinge {visor_height_at(rear_y):.3g} mm",
-    )
-    report.add(
-        "visor-non-negative", all(visor_height_at(y) >= -tolerance for y in ys),
-        "Visor height >= 0 everywhere",
     )
 
 

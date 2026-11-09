@@ -215,11 +215,6 @@ def clean(shape: Any) -> Any:
     return shape.clean()
 
 
-def fillet_all_edges(shape: Any, radius: float) -> Any:
-    """Fillet every edge of ``shape`` with ``radius`` (mm)."""
-    return require_cad().fillet(shape.edges(), radius)
-
-
 def fillet_vertical_edges(shape: Any, radius: float) -> Any:
     """Fillet only the Z-parallel (vertical) edges of ``shape``.
 
@@ -245,21 +240,6 @@ def shell_open_face(shape: Any, wall_thickness: float, face_ref: FaceRef) -> Any
     b3d = require_cad()
     face = _top_or_bottom_face(shape, face_ref)
     return b3d.offset(shape, amount=-wall_thickness, openings=face)
-
-
-def shell_closed(shape: Any, wall_thickness: float) -> Any:
-    """Hollow ``shape`` into a *closed* shell of ``wall_thickness`` mm walls.
-
-    No face is opened: the result is the outer solid minus its inward
-    offset. This is what ``geometry.shell.offset_shell`` (used by the lid)
-    has always produced — the CadQuery chain it replaced silently dropped
-    the open face — and it is kept bit-for-bit so the geometry baseline
-    (``tests/test_geometry_regression.py``) still holds. The rebuilt Lid
-    shell is meant to be open; this helper goes away with the old one.
-    """
-    b3d = require_cad()
-    inner = b3d.offset(shape, amount=-wall_thickness)
-    return shape.cut(inner)
 
 
 def sketch_slots(

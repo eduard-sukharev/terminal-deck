@@ -1,6 +1,6 @@
 -r requirements.txt
 pytest>=8.0
-# render tools (utilities/render_stl.py, render_section.py)
+# render tools (utilities/render_stl.py)
 numpy
 vtk
 Pillow

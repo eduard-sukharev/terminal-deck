@@ -46,13 +46,6 @@ class Battery(Component):
         self.count = int(data.get("count", 2))
         self.arrangement = str(data.get("arrangement", "side_by_side"))
         self.clearance = float(data.get("clearance", 2.0))
-        #: Height of the floor cradles that key each cell's lateral position
-        #: (mm) — see ``geometry/cradle.py``. Independent of the pack's own
-        #: floor standoff (the recipe raises it by ``config.wall_thickness``,
-        #: the same rib clearance every other floor-mounted part uses, see
-        #: ``geometry.ribs.rib_height``): a taller cradle wraps more of the
-        #: cell's curve, it does not lift the cell any higher.
-        self.cradle_height = float(data.get("cradle_height", 5.0))
 
         if self.count < 1:
             raise ValueError(f"battery.count must be >= 1, got {self.count}")

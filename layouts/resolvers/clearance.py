@@ -18,10 +18,10 @@ def _span_gap(a0: float, a1: float, b0: float, b1: float) -> float:
     """Signed gap between two 1-D intervals given their raw bounds.
 
     Unlike :func:`_separation`, this does not assume the interval is
-    symmetric about a center — needed for Z, where a ``tilt_x`` (see
+    symmetric about a center — needed for Z, where a
     :func:`layouts.base.volume_z_span`) can widen a sub-volume's Z-span
     asymmetrically. Using ``_separation`` with a naive center+height for a
-    tilted volume understates how far it actually reaches, letting a
+    volume understates how far it actually reaches, letting a
     clearance check pass that the equivalent collision check would catch.
     """
     return max(a0 - b1, b0 - a1)

@@ -5,80 +5,17 @@ wall:
   thickness: 2.0        # single wall-thickness parameter; everything derives from it
 
 corners:
-  radius: 4             # corner_radius: outer case corner fillet
-  edge_radius: 2        # edge_radius: general edge fillet
-  cutout_chamfer: 0.5   # lead-in bevel on connector cutout openings
-
-deck:
-  slope: 6.0            # typing slope, degrees; rear (-Y, hinge side) rises,
-                        # front edge stays at the flat-case deck level. Gives
-                        # the keyboard its ergonomic tilt and opens up rear
-                        # interior height for the SBC and battery cells.
-                        # 0 = flat deck (the pre-slope geometry).
+  radius: 4             # outer case corner fillet
 
 clearance:
   shell: 0.35           # air gap between a component and the shell interior
   insert: 0.2           # heat-set insert hole clearance (diameter oversize)
   screw: 0.6            # minimum radial clearance around a screw head / boss
 
-# Torque hinges (ADR 0007): two purchased metal friction hinges, the left one
-# always the mirror of the right about the case centerline. The part is
-# described as data in its own frame (Hinge axis along X at the origin, +Y
-# toward the case interior, Base leaf below the axis and Lid leaf above it
-# when closed); the case adapts to it: the axis is set back behind the rear
-# face far enough to swing clear, each Leaf gets a pocket and a pad with a
-# heat-set insert per hole. Nothing here places the axis by hand.
-hinge:
-  x: 20.0               # X of the right hinge's centre; between the hub and the battery,
-                        # whose cells stand taller than the Base leaf, and left of the rear
-                        # Deck column at x=37
-  travel: 120.0         # opening angle (deg): a comfortable working angle, held there by
-                        # the travel stop (the hinge itself turns to 196)
-  swing_clearance: 0.5  # gap between a swinging part and a fixed one
-  fit: 0.2              # gap around a Leaf in its pocket
-  insert: M4            # heat-set insert per Leaf hole (fastener library)
-  torque: 0.15          # friction torque per hinge (N*m); the pair holds the Lid level
-                        # (~0.26 N*m) yet stays under the Base's own weight (~0.30 N*m)
-                        # so the Lid opens one-handed (ADR 0007)
-  stop:                 # travel stop: a rib on the Deck outboard of each barrel that
-                        # the Lid's rear face lands on at `travel`
-    width: 6.0          # along X
-    face: 8.0           # contact length along the Lid's rear face, from its inner edge
-  part:                 # XK574-6-16, 2 N*m (docs/reference/torque_hinge_xk574-6-16.avif)
-    name: XK574-6-16
-    barrel_diameter: 16.0
-    barrel_length: 18.5 # along X; also each Leaf's width
-    leaf_thickness: 2.0 # TODO: measure
-    leaves:             # offset: axis to the Leaf's near face; start/length: along the
-                        # Leaf from the axis; holes: [u from the axis, v along X from the
-                        # Leaf's centre, diameter]
-      base:
-        offset: 7.5     # TODO: measure (drawing: 9.5 to the far face)
-        start: 7.0
-        length: 26.0
-        width: 18.5
-        holes: [[14.0, 0.0, 4.3], [27.0, 0.0, 4.3]]   # v: TODO: measure
-      lid:
-        offset: 7.5     # TODO: measure
-        start: 7.0
-        length: 26.0
-        width: 18.5
-        holes: [[14.0, 0.0, 4.3], [27.0, 0.0, 4.3]]   # v: TODO: measure
-
-# Cable guard (ADR 0007): one turn of the display FPC around a core on the
-# Hinge axis, facing the driver's HDMI connector, under a two-half cover.
-cable_guard:
-  fpc_width: 14.0       # TODO: measure
-  fpc_thickness: 0.2    # TODO: measure
-  min_bend_radius: 3.0  # TODO: measure; the core radius
-  turns: 1
-  fit: 0.5              # room around the coil and between the moving halves
-  entry_angle: 30.0     # angular width of each cable entry into the guard (deg)
-
 screws:
   body: M2              # case body screws (fastener library)
   standoff: M2.5        # board standoff screws
-  deck: M3              # Deck screws, from below through Tray columns into heat-set inserts
+  deck: M3              # Deck screws, driven from below into heat-set inserts
 
 material:
   name: PLA
@@ -86,29 +23,9 @@ material:
   minimum_feature: 0.6  # printable minimum wall/feature thickness
   min_bed_face_area: 100.0  # mm^2; every Section needs a flat face at least this big on the bed
 
-# Sections (ADR 0003). Every wide part prints as 2 or 3 Sections split along X.
-# `x` is the Seam position: one Seam at x for two Sections, a mirrored pair at
-# -|x| and +|x| for three. `style: stepped` jogs the Seam in plan view
-# (__--__--__): `step` is the jog in X (toward the centerline on a pair),
-# `steps` the number of segments along Y. Bezel and Deck are straight on the
-# centerline, so their Seams echo each other as a design line. Seams are
-# staggered only between parts screwed to each other (Tray/Deck/keyboard
-# plate, Lid shell/Bezel); Base and Lid may coincide in X. No Seam (plus its
-# steps and one wall of margin) may cross a rib, boss, standoff, column,
-# cradle, vent, lug or connector cutout, so the Tray Seams sit at +-59: clear
-# of the SBC bosses (x=-16.6, 41.4), the battery cradles (x>=50.3) and between
-# the rear-wall connector cutouts. The Lid shell Seams sit at +-66: outboard of
-# the Torque hinge pads (|x| <= 31.3) and the Cable guard (x = -58.5..-38.5).
-split:
-  tray:      {sections: 3, x: 59.0, style: stepped, step: 4.0, steps: 6}
-  deck:      {sections: 2, x: 0.0,  style: straight}
-  lid_shell: {sections: 3, x: 66.0, style: stepped, step: 4.0, steps: 6}
-  bezel:     {sections: 2, x: 0.0,  style: straight}   # inside the display opening
-
-# Parting plane (ADR 0003): the horizontal plane where the Deck meets the Tray,
-# part-way up the Base walls. Height = fraction of the front wall height (the
-# Deck's underside at the front edge), clamped to [min, max] mm. `min` keeps the
-# Tray walls above the tallest rear connector cutout.
+# Parting plane (ADR 0003): the horizontal plane where the Deck meets the
+# Tray. Reserved for the Tray/Deck split of the slider chassis; the first
+# generation is one fused shell.
 parting:
   front_wall_fraction: 0.5
   min: 10.0
@@ -118,40 +35,24 @@ parting:
 # closer than `threshold_factor * wall` to a wall face is fused into that wall
 # (hull to the wall, both walls in a corner). Its bore may then come within
 # `bore_margin` mm of the wall's inner face, leaving >= wall + bore_margin to
-# the outer skin. Battery cradles are exempt.
+# the outer skin.
 merged_boss:
   threshold_factor: 2.0
   bore_margin: 0.5
 
 # Edge treatment (ADR 0003): concave joints get a stress-relief chamfer of
-# `chamfer_factor * wall` (45 deg on edges horizontal in print orientation; a
-# fillet is allowed where the edge runs along print Z). `bed_chamfer` is the
-# 45 deg chamfer on each Section's bed-face outer edge (elephant's foot).
+# `chamfer_factor * wall`; `bed_chamfer` is the 45 deg chamfer on each
+# Section's bed-face outer edge (elephant's foot).
 edges:
   chamfer_factor: 0.5
-  bed_chamfer: 0.5   # mm
-  seam_convex_extra: 0.5  # mm; a Seam step's convex corner is rounded this much
-                          # more than the concave fillet of the notch it fits
+  bed_chamfer: 0.5
+  seam_convex_extra: 0.5
 
-# Seam lugs (ADR 0006): Sections of one part are joined for good by a length of
-# 1.75 mm filament pushed through a bore along X across the Seam, glued and
-# trimmed flush. `engagement` is the bore length each side of the Seam,
-# `sleeve` the lug wall around the bore.
+# Seam lugs (ADR 0006, reserved for the Section stage): Sections of one part
+# are joined by a length of 1.75 mm filament pushed through a bore along X,
+# glued and trimmed flush.
 seam_pin:
   diameter: 1.75
   fit: 0.15
   engagement: 5.0
   sleeve: 1.0
-
-# Rubber-foot recesses in the Tray floor, inset from the case corners. Placed
-# independently of bosses (neither positions the other).
-feet:
-  diameter: 15.0
-  depth: 1.0
-  inset_x: 15.0
-  inset_y: 15.0
-
-# Keyboard Well: a rim around the keyboard opening in the Deck. Its top stays
-# `switch_margin` below the switch tops so the rim adds no closed thickness.
-well:
-  switch_margin: 1.0

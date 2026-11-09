@@ -58,33 +58,14 @@ heat_inserts:
   depth: 4
   clearance: 0.2
 
-# Mated USB-C cable plug on the SBC. Modelled as a real obstruction rather
-# than an abstract clearance margin — see components/usb_c_plug.py.
-usb_c_plug:
-  protrusion: 25.0   # how far the plug body stands off the board's port face
-  width: 11.0        # overmold is wider than it is thick
-  height: 7.0
-  port_index: 0      # which SBC USB-C port carries the cable: 0 = OTG (the
-                     # hub link), 1 = power. Assembly-time choice.
-
-# Mated mini-HDMI cable connector, one placed at each end of the ribbon that
-# runs from the SBC to the display driver board — see
-# components/hdmi_plug.py. Same dimensions both ends (it's the same cable).
-mini_hdmi_plug:
-  protrusion: 21.0   # how far the plug body stands off the board's port face
-  width: 17.5
-  height: 4.5
-
 battery:
-  present: true            # sealed deck: internal power source (USB hub is the
-                           # only external connectivity)
-  # 18650 cells, laid flat in the wedge under the sloped deck. The pack
-  # outline is calculated from these by components/battery.py — cell count
-  # and packing, not a hand-written box.
+  present: true            # external accessory pack on the side rail; the model
+                           # is retained but the pack is not a chassis placement
+  # 18650 cells, laid flat in the external pack. The pack outline is calculated
+  # from these by components/battery.py — cell count and packing, not a
+  # hand-written box.
   cell_diameter: 18.6      # 18650 nominal: 18.6 max dia (18.0 + wrap)
   cell_length: 65.2        # 18650 nominal: 65.2 max length (button top)
   count: 2                 # at least two cells
   arrangement: side_by_side  # side_by_side ("two barrels") | end_to_end ("snake")
-  clearance: 2.0           # keepout margin around the pack in the compartment
-  cradle_height: 5.0       # floor cradle rim height (mm); also the pack's
-                           # own floor standoff, see components/battery.py
+  clearance: 2.0           # keepout margin around the pack

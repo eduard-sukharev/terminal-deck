@@ -20,12 +20,12 @@ load configuration -> load components -> place layout -> validate placement
 |----------|----------|----------|
 | `boss.build(spec, x, y)` | `BossSpec` | boss solid with bore |
 | `boss.boss_spec(...)` | wall, screw, insert | `BossSpec` (implemented) |
-| `fillet.fillet_edges(shape, edge_radius)` | solid, radius | filleted solid |
-| `fillet.fillet_corners(shape, corner_radius)` | solid, radius | filleted solid |
-| `shell.offset_shell(shape, wall_thickness)` | solid, wall | hollowed solid |
 | `ribs.build(spec, w, d)` | `RibSpec` | rib solids |
 | `vents.build(spec)` | `VentSpec` | vent slots |
 | `cutouts.build(cutouts, shell)` | `Cutout[]`, shell | shell with openings |
+| `split.split(...)` | part, `Split` | printable Sections |
+| `seam_joint.*` | Seam, `SeamPin` | Seam lugs |
+| `edge_treatment.*`, `printability.*` | Sections | chamfers, bed faces |
 
 ### Case (`case/`)
 

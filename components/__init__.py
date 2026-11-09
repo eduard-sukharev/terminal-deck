@@ -15,8 +15,6 @@ from components.base import (
 from components.display_88 import Display88
 from components.hdmi_driver import HdmiDriver
 from components.heatset_insert import HeatSetInsert
-from components.cable_guard import CableGuard
-from components.hinge import Hinge, TorqueHinge
 from components.keyboard_plate import KeyboardPlate
 from components.orange_pi_zero2w import OrangePiZero2W
 from components.rp2040_keyboard import Rp2040Keyboard
@@ -32,9 +30,6 @@ __all__ = [
     "Display88",
     "HdmiDriver",
     "HeatSetInsert",
-    "Hinge",
-    "CableGuard",
-    "TorqueHinge",
     "KeyboardPlate",
     "OrangePiZero2W",
     "Rp2040Keyboard",

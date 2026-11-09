@@ -155,22 +155,28 @@ cyberdeck/
         rp2040_keyboard.py
         rp2040_zero.py
         usb_breakout.py
-        usb_c_plug.py
+        battery.py
         heatset_insert.py
         slide.py
 
     geometry/
 
         boss.py
-        fillet.py
-        shell.py
         ribs.py
         vents.py
         cutouts.py
+        seam_joint.py
+        split.py
+        edge_treatment.py
+        printability.py
+        merged_boss.py
+        parting.py
+        spot_search.py
 
     layouts/
 
         layout_recipe.py
+        slider.py
         composer.py
         resolvers/
 
@@ -186,6 +192,7 @@ cyberdeck/
 
         chassis.py
         screen_lid.py
+        slider_frame.py
 
     exports/
 
@@ -197,6 +204,8 @@ cyberdeck/
 
         constants.py
         cad_helpers.py
+        config_loader.py
+        slider_validation.py
         validation.py
 
     generated/
@@ -851,7 +860,7 @@ The architecture should support replacing any major module without modifying unr
 * SBC (Orange Pi → Raspberry Pi CM5 → Radxa)
 * Display (8.8" ultrawide → 7" 16:10 → 10.1")
 * Keyboard (40% → 60% → split)
-* Hinge (barrel → torque → friction) → Slide (rod + bushing → rail → telescoping)
+* Slide (rod + bushing → rail → telescoping)
 * Battery (internal Li-ion pack, implemented)
 * Alternate lid designs (single panel → dual display → accessory panel)
 

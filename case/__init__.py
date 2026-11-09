@@ -1,6 +1,7 @@
-"""Case halves: base and lid shell generators."""
+"""Case parts: the slider chassis and screen lid."""
 
-from case.base import Base
-from case.lid import Lid
+from case.chassis import Chassis
+from case.screen_lid import ScreenLid
+from case.slider_frame import SliderFrame
 
-__all__ = ["Base", "Lid"]
+__all__ = ["Chassis", "ScreenLid", "SliderFrame"]

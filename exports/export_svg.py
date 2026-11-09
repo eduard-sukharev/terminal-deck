@@ -37,11 +37,9 @@ class SvgExporter(Exporter):
         # segfaulted — not raised, *segfaulted*, killing the whole build with
         # no Python exception to catch — on a solid that STEP and STL export
         # (and the shape's own .clean()) both accepted without complaint. That
-        # first happened once the base deck's underside became a crease
-        # (sloped in front of the keyboard, flat behind it — see
-        # case.base.Base._deck_knee_y) unioned together with the keyboard and
-        # the rest of the base floor; narrowed down by bisecting which
-        # sub-union actually triggered it, not fixed by cleaning harder.
+        # first happened on a large multi-part union; narrowed down by
+        # bisecting which sub-union actually triggered it, not fixed by
+        # cleaning harder.
         #
         # Rather than chase a specific OCC HLR bug (this kernel has had many,
         # across many shapes, for years), run the conversion in a throwaway

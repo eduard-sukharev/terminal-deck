@@ -74,8 +74,8 @@ class Assembly:
         zs: list[float] = []
         for placement in self.placements:
             box = placement.component.size()
-            # placement.box already folds in both the Z rotation and any
-            # tilt_x, so a wedge-mounted part reports its true world extent.
+            # placement.box already folds in the Z rotation, so a rotated
+            # part reports its true world extent.
             x0, y0, x1, y1 = placement.box
             xs.extend([x0, x1])
             ys.extend([y0, y1])
@@ -107,8 +107,7 @@ class Assembly:
                         # World-frame volume centers (rotation + flip aware).
                         wx, wy, wz = pa.world_offset(ax, ay, az)
                         vx, vy, vz = pb.world_offset(bx, by, bz)
-                        # Flipped components hang below their origin; a tilt
-                        # swings depth into Z, widening both ranges.
+                        # Flipped components hang below their origin.
                         a_z0, a_z1 = volume_z_span(pa, abox, wz)
                         b_z0, b_z1 = volume_z_span(pb, bbox, vz)
                         if a_z1 <= b_z0 or b_z1 <= a_z0:
@@ -298,8 +297,6 @@ class Assembly:
                 solid = cad_helpers.rotate_z(solid, placement.rotation)
             if placement.flip_x:
                 solid = cad_helpers.rotate_x(solid, 180.0)
-            if placement.tilt_x:
-                solid = cad_helpers.rotate_x(solid, placement.tilt_x)
             solid = cad_helpers.translate(solid, placement.x, placement.y, placement.z)
             move = (transform or {}).get(id(placement.component))
             parts.append(move(solid) if move else solid)
@@ -362,8 +359,6 @@ class Assembly:
                 solid = cad_helpers.rotate_z(solid, placement.rotation)
             if placement.flip_x:
                 solid = cad_helpers.rotate_x(solid, 180.0)
-            if placement.tilt_x:
-                solid = cad_helpers.rotate_x(solid, placement.tilt_x)
             solid = cad_helpers.translate(solid, placement.x, placement.y, placement.z)
             move = (transform or {}).get(id(placement.component))
             if move:

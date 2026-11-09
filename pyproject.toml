@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cyberdeck"
 version = "0.1.0"
-description = "Parametric clamshell cyberdeck CAD generator for field debugging of 3D printers (build123d)"
+description = "Parametric slider cyberdeck CAD generator for field debugging of 3D printers (build123d)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

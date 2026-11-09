@@ -94,11 +94,10 @@ class EdgeAlignmentResolver:
         z = existing.z if existing is not None else 0.0
         rotation = existing.rotation if existing is not None else 0.0
         flip_x = existing.flip_x if existing is not None else False
-        tilt_x = existing.tilt_x if existing is not None else 0.0
 
         return ResolverResult(
             True,
-            {constraint.subject: Placement(subj, x, y, rotation, z, flip_x, tilt_x)},
+            {constraint.subject: Placement(subj, x, y, rotation, z, flip_x)},
             f"{constraint.subject} {constraint.subject_edge} → {constraint.target} "
             f"{constraint.target_edge} @ ({x:.1f}, {y:.1f})",
         )

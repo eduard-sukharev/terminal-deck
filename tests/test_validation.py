@@ -108,120 +108,8 @@ def test_lid_clearance_fail():
     assert not r.passed
 
 
-def _seam_config(**seams):
-    from utilities.config_loader import Feet, Split
-
-    class _Cfg:
-        wall_thickness = 2.0
-        feet = Feet()
-        split = {k: Split(**v) for k, v in seams.items()}
-
-        class display:
-            width = 200.0
-
-        class bezel:
-            inset = 5.0
-
-    return _Cfg
-
-
 STEPPED3 = {"sections": 3, "x": 40.0, "style": "stepped", "step": 4.0, "steps": 6}
 STRAIGHT0 = {"sections": 2, "x": 0.0, "style": "straight"}
-
-
-def test_staggered_seams_pass():
-    from utilities.validation import check_seams
-
-    cfg = _seam_config(tray=STEPPED3, deck=STRAIGHT0, lid_shell=STEPPED3, bezel=STRAIGHT0)
-    r = ValidationReport()
-    check_seams(cfg, 236.0, r)
-    assert r.passed, r.summary()
-
-
-def test_base_and_lid_seams_may_coincide():
-    from utilities.validation import check_seams
-
-    # Tray and Lid shell both at +-40: they are not screwed to each other.
-    cfg = _seam_config(tray=STEPPED3, lid_shell=STEPPED3)
-    r = ValidationReport()
-    check_seams(cfg, 236.0, r)
-    assert r.passed, r.summary()
-
-
-def test_tray_and_deck_seams_that_line_up_fail():
-    from utilities.validation import check_seams
-
-    cfg = _seam_config(
-        tray={"sections": 2, "x": 0.0, "style": "straight"}, deck=STRAIGHT0
-    )
-    r = ValidationReport()
-    check_seams(cfg, 236.0, r)
-    assert [c.name for c in r.failures] == ["seams-staggered"]
-
-
-def test_lid_shell_and_bezel_seams_that_line_up_fail():
-    from utilities.validation import check_seams
-
-    cfg = _seam_config(
-        lid_shell={"sections": 2, "x": 0.0, "style": "straight"}, bezel=STRAIGHT0
-    )
-    r = ValidationReport()
-    check_seams(cfg, 236.0, r)
-    assert not r.passed
-
-
-def test_tray_seam_near_plate_seam_fails():
-    from utilities.validation import check_seams
-
-    cfg = _seam_config(tray=STEPPED3)
-    # A plate Seam jogging along the centerline, vs one running down the Tray Seam.
-    ok, bad = ValidationReport(), ValidationReport()
-    check_seams(cfg, 236.0, ok, plate_seam=[(-40.0, 0.0, 0.0), (0.0, 40.0, 4.76)], case_depth=100.0)
-    check_seams(cfg, 236.0, bad, plate_seam=[(-40.0, 40.0, 44.0)], case_depth=100.0)
-    assert ok.passed, ok.summary()
-    assert [c.name for c in bad.failures] == ["seams-staggered"]
-
-
-def test_a_plate_seam_jog_that_wanders_across_a_tray_seam_fails():
-    from utilities.validation import check_seams
-
-    # The row-wise plate Seam jogs sideways between rows; the line must be
-    # checked, not just the X range, so a jog that touches the Tray Seam fails
-    # even though each segment is far away.
-    cfg = _seam_config(tray=STEPPED3)
-    r = ValidationReport()
-    check_seams(cfg, 236.0, r, plate_seam=[(-20.0, 0.0, 0.0), (0.0, 20.0, -50.0)], case_depth=100.0)
-    assert not r.passed
-
-
-def test_deck_and_plate_seams_may_coincide():
-    from utilities.validation import check_seams
-
-    cfg = _seam_config(deck=STRAIGHT0)
-    r = ValidationReport()
-    check_seams(cfg, 236.0, r, plate_seam=[(-40.0, 40.0, 1.0)], case_depth=100.0)
-    assert r.passed, r.summary()
-
-
-def test_tray_seam_through_foot_fails():
-    from utilities.validation import check_seams
-
-    # feet centered at +-(118 - 15) = +-103
-    r = ValidationReport()
-    check_seams(
-        _seam_config(tray={"sections": 2, "x": 100.0, "style": "straight"}), 236.0, r
-    )
-    assert not r.passed
-
-
-def test_bezel_seam_outside_opening_fails():
-    from utilities.validation import check_seams
-
-    r = ValidationReport()
-    check_seams(
-        _seam_config(bezel={"sections": 2, "x": 120.0, "style": "straight"}), 236.0, r
-    )
-    assert not r.passed
 
 
 # -- Seam clearance of structural features ------------------------------------
@@ -303,17 +191,6 @@ def test_a_lug_may_straddle_its_own_seam_but_not_another():
 
 
 # -- Deck screws and feet -------------------------------------------------------
-
-def test_screw_head_in_a_foot_recess_fails():
-    from utilities.validation import check_screw_heads_clear_of_feet
-
-    feet = [(100.0, 40.0, 7.5), (-100.0, 40.0, 7.5)]
-    ok, bad = ValidationReport(), ValidationReport()
-    check_screw_heads_clear_of_feet([(0.0, 0.0, 3.1), (88.0, 40.0, 3.1)], feet, ok)
-    check_screw_heads_clear_of_feet([(0.0, 0.0, 3.1), (96.0, 40.0, 3.1)], feet, bad)
-    assert ok.passed, ok.summary()
-    assert [c.name for c in bad.failures] == ["screw-heads-clear-of-feet"]
-
 
 def test_deck_screw_check_reports_the_stock_length():
     from utilities.validation import check_deck_screw

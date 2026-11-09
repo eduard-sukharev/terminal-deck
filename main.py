@@ -3,19 +3,20 @@
 Implements the build pipeline from ``docs/design_spec.md``:
 
     load configuration -> load components -> place layout -> validate
-    placement -> generate enclosure -> generate bosses -> generate hinge ->
-    generate cutouts -> generate ribs -> export STEP/STL/SVG -> run validation
+    placement -> slide budget -> slider validation -> build chassis/screen
+    lid/slide -> export STEP/STL/glTF
 
-The data layer (config, components, layout, validation, enclosure sizing,
-bosses, cutouts, routing) and the CAD generation pass (assembly solid, base
-shell, lid shell, hinge, STEP/STL/SVG export) are implemented. ``--steps``
-lets you run only the data layer (e.g. ``--steps data``).
+The data layer (config, components, layout, validation, slide budget) and the
+first-generation slider CAD pass (chassis, screen lid, guide hardware, closed
+and open assembly exports) are implemented. ``--steps`` lets you run only the
+data layer (e.g. ``--steps data``).
 """
 
 from __future__ import annotations
 
 import argparse
 import datetime
+import json
 import subprocess
 import sys
 from dataclasses import asdict
@@ -24,12 +25,10 @@ from pathlib import Path
 from components.battery import Battery
 from components.display_88 import Display88
 from components.hdmi_driver import HdmiDriver
-from components.hdmi_plug import MiniHdmiPlug
 from components.orange_pi_zero2w import OrangePiZero2W
 from components.rp2040_keyboard import Rp2040Keyboard
 from components.rp2040_zero import Rp2040Zero
 from components.usb_breakout import UsbBreakout
-from components.usb_c_plug import UsbCPlug
 from geometry.ribs import rib_height
 from layouts import LAYOUTS, make_layout
 from layouts.layout_constrained import ConstraintLayout
@@ -90,65 +89,30 @@ class BuildPipeline:
         # there are no mounting bosses to size — see components/rp2040_zero.py.
         controller = Rp2040Zero(cfg.keyboard.controller or {})
 
-        # The SBC is buried under the keyboard plate, so the plate has to
-        # stand tall enough for its switch bodies to clear the board — not
-        # just the bare floor. Derived from the SBC's own height and the deck
-        # slope rather than dialled in by hand, so re-measuring the board or
-        # changing the slope re-sizes the standoffs with it.
+        # The slider buries the RP2040 under the keyboard plate; the SBC sits
+        # in the rear band, not under the keyboard. The plate standoff is
+        # sized for the controller's switch-body clearance.
         keyboard = Rp2040Keyboard(keyboard_cfg)
-        if self.layout_name == "slider":
-            # The slider buries the RP2040 under the plate; the SBC sits in
-            # the rear band, not under the keyboard (issue #3). No slope.
-            keyboard.set_plate_raise(
-                keyboard.plate_raise_for_buried(
-                    part_height=rib_height(cfg.wall_thickness)
-                    + controller.size().height,
-                    part_depth=controller.size().depth,
-                    slope=0.0,
-                    gap=float((cfg.keyboard.controller or {}).get("z_clearance", 2.0)),
-                )
+        keyboard.set_plate_raise(
+            keyboard.plate_raise_for_buried(
+                part_height=rib_height(cfg.wall_thickness)
+                + controller.size().height,
+                gap=float((cfg.keyboard.controller or {}).get("z_clearance", 2.0)),
             )
-        else:
-            keyboard.set_plate_raise(
-                keyboard.plate_raise_for_buried(
-                    part_height=rib_height(cfg.wall_thickness) + sbc.size().height,
-                    part_depth=sbc.size().depth,
-                    slope=cfg.deck.slope,
-                    # Targets the sbc<->keyboard clearance the recipe checks
-                    # (1.5mm); the two numbers differ because the clearance
-                    # check is a true 3D separating-axis test (worst case over
-                    # every sub-volume pair, best axis per pair) while this is a
-                    # single along-Z estimate — 2.5 here reliably clears 1.5
-                    # there, empirically, not by a matching derivation. 3.3 (was
-                    # 2.5) pays for the SBC standing 10.3 mm further forward than
-                    # rear-flush: see the SBC placement in
-                    # config/layouts/clamshell.yaml.
-                    gap=3.3,
-                )
-            )
+        )
         driver = HdmiDriver(display_cfg)
-        mini_hdmi_cfg = cfg.hardware.get("mini_hdmi_plug", {})
         return {
             "display": Display88(display_cfg),
             "driver": driver,
             "keyboard": keyboard,
             # The controller is its own placed component, not a sub-part of
             # the keyboard: the switch bodies hang 7 mm below the plate, so it
-            # cannot fit under there — it sits on the case floor in the wedge
-            # the sloped deck opens up beneath the keyboard's raised rear.
+            # cannot fit under there — it sits on the case floor under the
+            # keyboard's raised rear.
             "controller": controller,
             "sbc": sbc,
-            # The cable plugged into the SBC is a solid obstruction in its
-            # own right; which port it occupies is config, not geometry.
-            "sbc_plug": UsbCPlug(cfg.hardware.get("usb_c_plug", {}), host=sbc),
-            # The mini-HDMI ribbon between the SBC and the driver board is a
-            # real cable, with a real connector shell at each end — modelled
-            # the same way as the USB-C plug above, one instance per host so
-            # each gets its own placement.
-            "hdmi_plug_sbc": MiniHdmiPlug(mini_hdmi_cfg, host=sbc, label="SBC"),
-            "hdmi_plug_driver": MiniHdmiPlug(
-                mini_hdmi_cfg, host=driver, label="Driver"
-            ),
+            # External accessory: the battery model is retained for the
+            # pack on the accessory rail, but it is not a chassis placement.
             "battery": Battery(cfg.hardware),
             "usb_breakout": UsbBreakout(cfg.hardware),
         }
@@ -184,6 +148,7 @@ class BuildPipeline:
         steps: str,
         targets: str,
         ignore_validation: bool,
+        metrics_path: str | None = None,
     ) -> None:
         """The slider's data stage: budget, checks and the placement envelope.
 
@@ -219,7 +184,8 @@ class BuildPipeline:
         if steps == "data":
             return
         self._run_slider_cad(
-            config, components, placements, budget, targets, ignore_validation
+            config, components, placements, budget, targets,
+            ignore_validation, metrics_path,
         )
 
     def _run_slider_cad(
@@ -230,6 +196,7 @@ class BuildPipeline:
         budget,
         targets: str,
         ignore_validation: bool,
+        metrics_path: str | None = None,
     ) -> None:
         """Build and export the first-generation slider case (issue #3)."""
         from assemblies.assembly import Assembly, select_placements
@@ -466,7 +433,12 @@ class BuildPipeline:
         }
 
         provenance = self._provenance()
+        metrics: dict[str, object] = {}
+        if metrics_path is not None:
+            from utilities.metrics import shape_metrics
         for name, solid in selected.items():
+            if metrics_path is not None:
+                metrics[name] = shape_metrics(solid)
             x, y, z = ch.bounding_box_mm(solid)
             print(
                 f"[pipeline] {name}: bbox {x:.1f} x {y:.1f} x {z:.1f} mm, "
@@ -478,7 +450,18 @@ class BuildPipeline:
                 path = exporter.output_path(f"cyberdeck_{name}")
                 obj = gltf_special.get(name, solid) if fmt == "gltf" else solid
                 exporter.export(obj, path)
+                if path.exists() and not apply_fs_metadata(provenance, path):
+                    print(f"[pipeline] warning: could not write fs metadata for {path}")
                 print(f"[pipeline] exported {name} -> {path}")
+        if metrics_path is not None:
+            metrics["_pipeline"] = {
+                "layout": self.layout_name,
+                "targets": sorted(selected),
+            }
+            Path(metrics_path).write_text(
+                json.dumps(metrics, indent=2, sort_keys=True)
+            )
+            print(f"[pipeline] wrote metrics -> {metrics_path}")
 
     def _provenance(self) -> dict:
         """Build provenance metadata describing this build.
@@ -495,95 +478,6 @@ class BuildPipeline:
         prov["built"] = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
         return prov
 
-    @staticmethod
-    def _lid_interior(placements, components):
-        """The placements that sit inside the Lid shell: panel, driver, plug."""
-        from assemblies.assembly import select_placements
-
-        return select_placements(
-            placements,
-            {components["display"], components["driver"], components["hdmi_plug_driver"]},
-        )
-
-    def _lid_closer(self, config, components, placements, assembly, base, size):
-        """A function taking a solid in the Lid's own frame (face-up) to the
-        closed device: turned over onto the Base, Bezel on the closed plane."""
-        from case.lid import Lid
-        from utilities import cad_helpers
-
-        display = next(p for p in placements if p.component is components["display"])
-        lid = Lid(
-            components["display"], config, hinge=base.hinge, world_z=display.z,
-            footprint=(size.width, size.depth), visor=base.visor_profile(),
-            assembly=assembly, interior_placements=self._lid_interior(placements, components),
-        )
-        shift = base.hinge_axis_z() + lid._outer_bounds()[3]
-        return lambda solid: cad_helpers.translate(cad_helpers.mirror_z(solid), 0.0, 0.0, shift)
-
-    def _fastening_validation(self, config, components, placements, assembly, base, size):
-        """Section, Seam and fastening checks (HARD), CAD-free.
-
-        Seam stagger and clearance, the Parting plane and Deck screws, the
-        keyboard plate's Seam screws.
-        """
-        import math
-
-        from utilities.validation import (
-            check_plate_seam_screws, check_seams,
-        )
-
-        report = ValidationReport()
-        plate_world = None
-        keyboard = components.get("keyboard")
-        kb_placement = next((p for p in placements if p.component is keyboard), None)
-        plate_local = None
-        if keyboard is not None and kb_placement is not None:
-            from keyboard.geometry.seam import plate_seam
-
-            plate_local = plate_seam(keyboard.plate_model())
-            tilt = math.cos(math.radians(kb_placement.tilt_x))
-            depth = keyboard.plate_model().metadata.height
-            plate_world = [
-                (kb_placement.y + y0 * tilt, kb_placement.y + y1 * tilt, kb_placement.x + x)
-                for y0, y1, x in plate_local.segments(depth)
-            ]
-        check_seams(config, size.width, report, plate_seam=plate_world, case_depth=size.depth)
-        base.fastening_report(report)
-        from case.lid import Lid
-
-        display = next(p for p in placements if p.component is components["display"])
-        lid = Lid(
-            components["display"], config, hinge=base.hinge, world_z=display.z,
-            footprint=(size.width, size.depth), visor=base.visor_profile(),
-            assembly=assembly, interior_placements=self._lid_interior(placements, components),
-        )
-        lid.fastening_report(report)
-        self._data_lid = lid
-        if base.hinge is not None:
-            from utilities.validation import check_torque_hinge
-
-            check_torque_hinge(
-                base.hinge, report,
-                case_width=size.width, case_depth=size.depth,
-                base_top=base.hinge_base_top(), parting=base.parting_height() - base.hinge_axis_z(),
-                lid_height=lid.height(), wall=config.wall_thickness,
-                minimum_feature=config.material.minimum_feature,
-                base_placements=[p for p in placements if p not in (lid.interior_placements or [])],
-                deck_columns=[base.column_rect(c) for c in base.columns()],
-                axis_world=(-size.depth / 2.0 - base.hinge.setback, base.hinge_axis_z()),
-                lid_placements=lid.interior_placements or [],
-                lid_axis=(-size.depth / 2.0 - base.hinge.setback, lid._outer_bounds()[3]),
-                deck_seams=[seam.x for seam in config.split["deck"].seams()] if "deck" in config.split else [],
-            )
-        if plate_local is not None:
-            depth = keyboard.plate_model().metadata.height
-            check_plate_seam_screws(
-                [(h.x, h.y) for h in keyboard.mounting_holes()],
-                plate_local.segments(depth), config.keyboard.pitch, report,
-                expected_total=8,
-            )
-        return report
-
     def run(
         self,
         steps: str = "all",
@@ -599,9 +493,11 @@ class BuildPipeline:
             ``"all"`` runs every stage including CAD generation and export;
             ``"data"`` stops before CAD generation.
         targets : str
-            Comma-separated build targets (default ``"all"``).  Buckets:
-            ``all``, ``assembly``, ``base``, ``lid``, ``hinge``, ``display``,
-            ``components``.  Per-component: ``comp:<role>``.
+            Comma-separated build targets (default ``"all"``): ``assembly``,
+            ``assembly_opened``, ``chassis`` (+``_left/_right``),
+            ``screen_lid`` (+``_left/_right``), ``slide``,
+            ``keyboard_plate``, ``display``, ``components``. Per-component:
+            ``comp:<role>``.
         ignore_validation : bool
             Normally a hard constraint violation aborts the build before any
             CAD is generated — the layout already knows the geometry is
@@ -688,580 +584,11 @@ class BuildPipeline:
 
         if self.layout_name == "slider":
             self._run_slider_data(
-                config, components, placements, steps, targets, ignore_validation
+                config, components, placements, steps, targets,
+                ignore_validation, metrics_path,
             )
             return
 
-        from assemblies.assembly import Assembly
-        from case.base import Base
-        from components.hinge import Hinge as HingePart
-
-        assembly = Assembly(placements, config)
-        size = assembly.enclosure_size()
-        print(
-            f"[pipeline] enclosure: {size.width:.1f} x {size.depth:.1f} x "
-            f"{size.height:.1f} mm"
-        )
-        from components.cable_guard import CableGuard
-
-        # The Cable guard faces the driver's HDMI plug, where the FPC leaves
-        # the Lid (ADR 0007).
-        plug = next(
-            (p for p in placements if p.component is components.get("hdmi_plug_driver")), None
-        )
-        guard = CableGuard(
-            config.cable_guard, wall_thickness=config.wall_thickness,
-            x=(plug.box[0] + plug.box[2]) / 2.0 if plug is not None else 0.0,
-            travel=config.hinge.travel,
-        )
-        hinge = HingePart(config.hinge, wall_thickness=config.wall_thickness, guard=guard)
-        base = Base(
-            assembly, config, keyboard=components.get("keyboard"), hinge=hinge,
-        )
-        fastening_report = self._fastening_validation(
-            config, components, placements, assembly, base, size
-        )
-        print("[pipeline] Section and fastening validation:")
-        print(fastening_report.summary())
-        if not fastening_report.passed and not ignore_validation:
-            raise SystemExit(
-                "[pipeline] aborted: Section/fastening validation failed "
-                "(pass --ignore-validation to build anyway)"
-            )
-
-        if steps == "data":
-            return
-
-        print(f"[pipeline] bosses: {len(assembly.bosses())}")
-        print(f"[pipeline] cutouts: {len(assembly.connector_cutouts())}")
-
-        if steps != "all":
-            return
-
-        # --- CAD stages ---------------------------------------------------
-        from case.lid import Lid
-        from exports import EXPORTERS
-        from utilities import cad_helpers
-        from utilities.colors import color_for
-        from utilities.targets import SECTION_NAMES, requested_sections, resolve_targets
-
-        cad_helpers.require_cad()
-
-        # Resolve build targets.
-        target_tokens = [t.strip() for t in targets.split(",") if t.strip()]
-        buckets, comp_roles = resolve_targets(target_tokens, set(components))
-
-        # Build requested solids.
-        parts: dict[str, object] = {}
-        # Per-bucket colored `ColoredAssembly` for glTF export only — a
-        # bucket without an entry here falls back to a single-color glTF
-        # wrapping its fused `parts[name]` solid (see the export loop below).
-        gltf_parts: dict[str, object] = {}
-        role_map = {id(c): role for role, c in components.items()}
-
-        if "assembly" in buckets:
-            # The Lid's parts are placed in its own frame (the closed Lid
-            # turned face-up); fold them onto the Base for the closed view.
-            close = self._lid_closer(config, components, placements, assembly, base, size)
-            lid_ids = {id(p.component): close for p in self._lid_interior(placements, components)}
-            parts["assembly"] = assembly.build_subset(placements, transform=lid_ids)
-            gltf_parts["assembly"] = assembly.build_colored(
-                placements=placements, role_map=role_map, transform=lid_ids
-            )
-
-        # Keyboard placement is needed for base and hinge.
-        needs_keyboard_placement = (
-            "base" in buckets or "base_bottom" in buckets or "base_top" in buckets
-            or "hinge" in buckets
-        )
-        keyboard_placement = None
-        if needs_keyboard_placement and "keyboard" in components:
-            keyboard_placement = next(
-                p for p in placements if p.component is components["keyboard"]
-            )
-
-        # Base bottom, top, and combined assembly.
-        base_obj = None
-        needs_lid = "lid" in buckets or "lid_shell" in buckets or "lid_bezel" in buckets
-        needs_base = (
-            "base" in buckets or "base_bottom" in buckets or "base_top" in buckets
-            or "hinge" in buckets
-        )
-        if needs_lid or needs_base:
-            base_obj = base
-        if base_obj is not None and needs_base:
-            # Bosses (component mounting bosses and deck-mount standoffs)
-            # are case-build-time geometry, never placed components, so the
-            # ordinary collision system never sees them — check them here,
-            # once the case geometry that generates them exists.
-            from utilities.validation import check_boss_collisions
-
-            boss_report = ValidationReport()
-            check_boss_collisions(base_obj.all_bosses(), placements, boss_report)
-            print(f"[pipeline] boss validation: {boss_report.summary()}")
-            if not boss_report.passed and not ignore_validation:
-                raise SystemExit(
-                    "[pipeline] aborted: a boss overlaps a component above "
-                    "(pass --ignore-validation to build anyway)"
-                )
-
-        # Base sub-assembly solid: everything mounted on the base floor
-        # (shared between "base" bucket and the combined "base" target). The
-        # SBC and RP2040 controller sit tucked under the keyboard plate; the
-        # battery sits beside the hub.
-        base_subset_solid = None
-        subset_placements: list = []
-        if "base" in buckets and keyboard_placement is not None:
-            from assemblies.assembly import select_placements
-
-            base_subset_roles = {components["keyboard"]}
-            for role in (
-                "sbc", "sbc_plug", "hdmi_plug_sbc", "controller", "battery",
-                "usb_breakout",
-            ):
-                if role in components:
-                    base_subset_roles.add(components[role])
-            subset_placements = select_placements(placements, base_subset_roles)
-            if subset_placements:
-                base_subset_solid = assembly.build_subset(subset_placements)
-
-        if "base_bottom" in buckets and base_obj is not None:
-            parts["base_bottom"] = base_obj.build_bottom()
-
-        if "base_top" in buckets and base_obj is not None:
-            parts["base_top"] = base_obj.build_top()
-
-        if "keyboard_plate" in buckets and "keyboard" in components:
-            parts["keyboard_plate"] = components["keyboard"].build_plate()
-
-        if "base" in buckets and base_obj is not None:
-            base_bottom_solid = base_obj.build_bottom()
-            base_top_solid = base_obj.build_top()
-            base_solid = base_bottom_solid
-            if base_subset_solid is not None:
-                base_solid = cad_helpers.union(base_solid, base_subset_solid)
-            # .clean() (OCC shape healing): the deck's underside is now a
-            # crease (sloped in front of the keyboard, flat behind it — see
-            # case.base.Base._deck_knee_y), and base_bottom's walls follow
-            # the same profile to seat against it. Unioning the two without
-            # cleaning up afterward left sliver/degenerate topology right at
-            # that seam that STEP/STL export tolerated but the SVG exporter's
-            # hidden-line removal did not — it segfaulted the whole process,
-            # silently, no Python exception to catch. Reproduced by bisecting
-            # against git history: the prior (unkneed, single-plane) deck
-            # never needed this.
-            base_solid = cad_helpers.clean(cad_helpers.union(base_solid, base_top_solid))
-            parts["base"] = base_solid
-
-            if subset_placements:
-                gltf_parts["base"] = assembly.build_colored(
-                    placements=subset_placements,
-                    role_map=role_map,
-                    extra_parts=[
-                        ("case", cad_helpers.clean(cad_helpers.union(base_bottom_solid, base_top_solid)))
-                    ],
-                )
-
-        # Display placement is needed for lid and hinge.
-        needs_display_placement = (
-            "lid" in buckets or "lid_shell" in buckets or "lid_bezel" in buckets
-            or "hinge" in buckets
-        )
-        if needs_display_placement:
-            display = next(p for p in placements if p.component is components["display"])
-
-        # Display sub-assembly solid (shared between "display" bucket and
-        # the combined "lid" target).
-        display_assembly_solid = None
-        if "display" in buckets or "lid" in buckets or "lid_shell" in buckets:
-            from assemblies.assembly import select_placements
-
-            display_placements = select_placements(
-                placements,
-                {
-                    components["display"], components["driver"],
-                    components["hdmi_plug_driver"],
-                }
-            )
-            if display_placements:
-                display_assembly_solid = assembly.build_subset(display_placements)
-                if "display" in buckets:
-                    parts["display"] = display_assembly_solid
-
-        # Lid base, bezel, and combined lid assembly.
-        if "lid_shell" in buckets or "lid_bezel" in buckets or "lid" in buckets:
-            lid = Lid(
-                display.component,
-                config,
-                hinge=hinge,
-                world_z=display.z,
-                footprint=(size.width, size.depth),
-                interior=display_assembly_solid,
-                visor=base_obj.visor_profile(),
-                assembly=assembly,
-                interior_placements=self._lid_interior(placements, components),
-            )
-            from utilities.validation import (
-                check_hinge_fits, check_visor_flush,
-            )
-
-            visor_report = ValidationReport()
-            visor_profile = lid.visor
-            check_visor_flush(
-                base_obj.wall_top_at, visor_profile.height_at,
-                -size.depth / 2.0, size.depth / 2.0, visor_report,
-            )
-            # Closed, the glass faces the keyboard: every keycap stays a shell
-            # clearance under the Lid's underside.
-            key_top = max(p.z_bounds()[1] for p in placements if p.component is components.get("keyboard"))
-            gap = base_obj.closed_plane_z() - key_top
-            visor_report.add(
-                "keys-clear-glass", gap >= config.clearance.shell - 1e-9,
-                f"keycaps {gap:.2f} mm under the closed Lid (>= {config.clearance.shell:g})",
-            )
-            visor_report.goals["closed thickness (mm)"] = (
-                base_obj.closed_plane_z() + lid.height()
-            )
-            check_hinge_fits(
-                hinge.part.barrel_diameter, base_obj.closed_plane_z(), lid.height(), visor_report
-            )
-            print("[pipeline] closed-device validation:")
-            print(visor_report.summary())
-            if not visor_report.passed and not ignore_validation:
-                raise SystemExit(
-                    "[pipeline] aborted: Visor does not close flush "
-                    "(pass --ignore-validation to build anyway)"
-                )
-
-        if "lid_shell" in buckets:
-            parts["lid_shell"] = lid.build_shell()
-
-        if "lid_bezel" in buckets:
-            parts["lid_bezel"] = lid.build_bezel()
-
-        if "lid" in buckets:
-            lid_shell_solid = lid.build_shell()
-            lid_bezel_solid = lid.build_bezel()
-            lid_solid = lid_shell_solid
-            if display_assembly_solid is not None:
-                lid_solid = cad_helpers.union(lid_solid, display_assembly_solid)
-            lid_solid = cad_helpers.union(lid_solid, lid_bezel_solid)
-            parts["lid"] = lid_solid
-
-            if display_placements:
-                gltf_parts["lid"] = assembly.build_colored(
-                    placements=display_placements,
-                    role_map=role_map,
-                    extra_parts=[("case", cad_helpers.union(lid_shell_solid, lid_bezel_solid))],
-                )
-
-        if "hinge" in buckets:
-            # The purchased Torque hinges, closed, on the Hinge axis; one
-            # color per hinge (they are steel, not printed).
-            hinge_z = base_obj.hinge_axis_z()
-            on_axis = lambda s: cad_helpers.translate(
-                s, 0.0, -size.depth / 2.0 - hinge.setback, hinge_z
-            )
-            bodies = {side: on_axis(hinge.build_part(side)) for side in ("left", "right")}
-            parts["hinge"] = cad_helpers.union(*bodies.values())
-            colored = cad_helpers.new_assembly()
-            for side, shape in bodies.items():
-                cad_helpers.assembly_add(
-                    colored, shape, f"Torque hinge ({side})", color_for("torque_hinge")
-                )
-            gltf_parts["hinge"] = colored
-
-        # ── Opened assembly: the Lid open to its travel stop ──
-        if "assembly_opened" in buckets:
-            from assemblies.assembly import select_placements
-
-            if base_obj is None:
-                base_obj = base
-            if "display" in components:
-                display_placement = next(
-                    p for p in placements
-                    if p.component is components["display"]
-                )
-            lid = Lid(
-                components["display"], config, hinge=hinge,
-                world_z=display_placement.z,
-                footprint=(size.width, size.depth),
-                visor=base_obj.visor_profile(),
-                assembly=assembly,
-                interior_placements=self._lid_interior(placements, components),
-            )
-
-            # Build base solid (closed position).
-            base_solid = base_obj.build_bottom()
-            if "keyboard" in components:
-                base_subset_roles = {components["keyboard"]}
-                for role in (
-                "sbc", "sbc_plug", "hdmi_plug_sbc", "controller", "battery",
-                "usb_breakout",
-            ):
-                    if role in components:
-                        base_subset_roles.add(components[role])
-                subset = select_placements(placements, base_subset_roles)
-                if subset:
-                    base_solid = cad_helpers.union(
-                        base_solid, assembly.build_subset(subset)
-                    )
-            base_solid = cad_helpers.union(base_solid, base_obj.build_top())
-
-            # Build lid solid (closed position).
-            lid_solid = lid.build_shell()
-            display_placements = select_placements(
-                placements,
-                {
-                    components["display"], components["driver"],
-                    components["hdmi_plug_driver"],
-                }
-            )
-            if display_placements:
-                lid_solid = cad_helpers.union(
-                    lid_solid, assembly.build_subset(display_placements)
-                )
-            lid_solid = cad_helpers.union(lid_solid, lid.build_bezel())
-
-            # Open the Lid to its travel stop about the Hinge axis; the
-            # hinges' Lid leaves turn with it.
-            axis_y = -size.depth / 2.0 - hinge.setback
-            axis_z = base_obj.hinge_axis_z()
-            # The Lid is built in its own frame (the closed Lid turned over,
-            # axis at its outer top): flip it back onto the Base first.
-            lid_closed = self._lid_closer(config, components, placements, assembly, base_obj, size)(lid_solid)
-            lid_open = cad_helpers.rotate_about(
-                lid_closed, (0.0, axis_y, axis_z), (1.0, axis_y, axis_z), hinge.travel
-            )
-            hinge_open = cad_helpers.translate(hinge.build(opened=hinge.travel), 0.0, axis_y, axis_z)
-            parts["assembly_opened"] = cad_helpers.union(base_solid, lid_open, hinge_open)
-
-        # --- Sections (ADR 0003) ---------------------------------------------
-        # Every wide printable part is split into two or three Sections along
-        # its Seams; the Sections, not the whole part, are what must fit the
-        # printer, so they are validated here and exported with the rest.
-        from geometry import edge_treatment
-        from geometry.printability import (
-            BED_DOWN, bed_face_area, check_bed_face, overhang_faces,
-        )
-        from geometry.split import check_build_volume, check_sections, split_sections
-
-        split_sources = {
-            "base_bottom": "tray",
-            "base_top": "deck",
-            "lid_shell": "lid_shell",
-            "lid_bezel": "bezel",
-            "keyboard_plate": "keyboard_plate",
-        }
-        printable: dict[str, object] = {}
-        section_depths = {
-            name: size.depth for name in split_sources if name != "keyboard_plate"
-        }
-        split_plans: dict[str, tuple[list, float]] = {}
-        for name, key in split_sources.items():
-            if name in section_depths and key in config.split:
-                split = config.split[key]
-                if split.section_names != SECTION_NAMES[name]:
-                    raise SystemExit(
-                        f"[pipeline] aborted: config.split.{key} has {split.sections} "
-                        f"Sections but target {name} names {SECTION_NAMES[name]}"
-                    )
-                split_plans[name] = (split.seams(), section_depths[name])
-        if "keyboard_plate" in parts:
-            # The plate Seam is derived from the key layout, not configured:
-            # it must run through the key-column gaps (ADR 0003).
-            from keyboard.geometry.seam import plate_seam, seam_conflicts
-
-            plate_model = components["keyboard"].plate_model()
-            plate_cfg = plate_seam(plate_model)
-            conflicts = seam_conflicts(plate_model, plate_cfg)
-            print(
-                "[pipeline] keyboard_plate Seam avoids switch cutouts: "
-                f"{'PASS' if not conflicts else 'FAIL'}"
-            )
-            for conflict in conflicts:
-                print(f"  [x ] {conflict}")
-            if conflicts and not ignore_validation:
-                raise SystemExit(
-                    "[pipeline] aborted: plate Seam cuts a switch cutout "
-                    "(pass --ignore-validation to build anyway)"
-                )
-            split_plans["keyboard_plate"] = ([plate_cfg], plate_model.metadata.height)
-        section_report = ValidationReport()
-        section_info: dict[str, dict] = {}
-        bed_areas: dict[str, float] = {}
-        for part_name, (seams, part_depth) in split_plans.items():
-            if part_name not in parts:
-                continue
-            sections = split_sections(parts[part_name], seams, part_depth)
-            names = SECTION_NAMES[part_name]
-            errors = check_sections(parts[part_name], sections)
-            section_info[part_name] = {
-                "sections": len(sections), "rejoin": not errors,
-                "names": [f"{part_name}_{n}" for n in names],
-            }
-            for section_name, section in zip(names, sections):
-                full = f"{part_name}_{section_name}"
-                # Edge treatment goes on each Section after the lossless rejoin
-                # check above: concave joints get a stress-relief chamfer, the
-                # bed face a small outer chamfer against elephant's foot (which
-                # trims the Seam faces too).
-                treated = ValidationReport()
-                relief = config.edges.chamfer_factor * config.wall_thickness
-                section = edge_treatment.relieve_concave_joints(section, BED_DOWN, relief, treated)
-                # The tab corners of a stepped Seam fit the filleted notches of
-                # the neighbour: round them a little larger so the two mate.
-                section = edge_treatment.round_seam_corners(
-                    section, BED_DOWN, seams, part_depth,
-                    relief + config.edges.seam_convex_extra, treated,
-                )
-                section = edge_treatment.bed_chamfer(
-                    section, BED_DOWN, config.edges.bed_chamfer, treated
-                )
-                for message in treated.warnings:
-                    section_report.warn(f"{full}: {message}")
-                check_bed_face(
-                    full, section, BED_DOWN, config.material.min_bed_face_area, section_report
-                )
-                bed_areas[full] = bed_face_area(section, BED_DOWN)
-                for face in overhang_faces(section, BED_DOWN)[:1]:
-                    section_report.warn(
-                        f"{full}: overhang {face.angle_from_vertical:.0f} deg from vertical "
-                        f"({face.area:.0f} mm^2 at {tuple(round(c) for c in face.center)}) needs support"
-                    )
-                parts[full] = section
-                printable[full] = section
-                colored_section = cad_helpers.new_assembly()
-                cad_helpers.assembly_add(
-                    colored_section, section, full, color_for(f"section_{section_name}")
-                )
-                gltf_parts[full] = colored_section
-            if errors:
-                print(f"[pipeline] {part_name} Sections: FAIL")
-                for error in errors:
-                    print(f"  [x ] {error}")
-                if not ignore_validation:
-                    raise SystemExit(
-                        f"[pipeline] aborted: {part_name} Sections are invalid "
-                        "(pass --ignore-validation to build anyway)"
-                    )
-        # A Section named on its own (e.g. ``lid_shell_left``) exports just that
-        # Section; the whole part and the other Sections were only built to
-        # check it.
-        only_sections = requested_sections(target_tokens)
-        if only_sections:
-            for part_name in split_sources:
-                names = [f"{part_name}_{n}" for n in SECTION_NAMES[part_name]]
-                if not only_sections & set(names + [part_name]):
-                    continue
-                if names[0] not in parts:
-                    continue  # unsplit part: the whole part is its only form
-                for name in [part_name] + names:
-                    if name not in only_sections:
-                        for table in (parts, printable, gltf_parts):
-                            table.pop(name, None)
-        fit_errors = check_build_volume(printable)
-        print(
-            f"[pipeline] build volume: {len(printable)} printable part(s): "
-            f"{'PASS' if not fit_errors else 'FAIL'}"
-        )
-        for error in fit_errors:
-            print(f"  [x ] {error}")
-        print("[pipeline] printability:")
-        print(section_report.summary())
-        if (fit_errors or not section_report.passed) and not ignore_validation:
-            raise SystemExit(
-                "[pipeline] aborted: a printable part exceeds the build volume "
-                "or has no bed face (pass --ignore-validation to build anyway)"
-            )
-
-        # Export all built parts.
-        provenance = self._provenance()
-        metrics: dict[str, object] = {}
-        if metrics_path is not None:
-            from utilities.metrics import shape_metrics
-        for name, solid in parts.items():
-            if metrics_path is not None:
-                metrics[name] = shape_metrics(solid)
-            for fmt, exporter_cls in EXPORTERS.items():
-                exporter = exporter_cls()
-                exporter.metadata = provenance
-                path = exporter.output_path(f"cyberdeck_{name}")
-                # glTF prefers the colored per-component/sub-assembly
-                # `ColoredAssembly` built above; buckets without one (e.g.
-                # hinge, a single part) fall back to the fused solid, which
-                # GltfExporter wraps in a single default color.
-                export_obj = gltf_parts.get(name, solid) if fmt == "gltf" else solid
-                exporter.export(export_obj, path)
-                # SvgExporter can skip writing the file on a subprocess crash
-                # (see exports/export_svg.py) rather than take the build
-                # down with it — its own warning already explains why, so
-                # this only needs to avoid claiming a nonexistent file was
-                # exported and attempting metadata on it.
-                if not path.exists():
-                    continue
-                if not apply_fs_metadata(provenance, path):
-                    print(f"[pipeline] warning: could not write fs metadata for {path}")
-                print(f"[pipeline] exported {name} -> {path}")
-
-        # Per-component debug STLs.
-        stl_cls = EXPORTERS.get("stl")
-        if stl_cls is not None:
-            stl_exporter = stl_cls()
-            stl_exporter.metadata = provenance
-            if "components" in buckets:
-                for comp_name, comp in components.items():
-                    try:
-                        comp_solid = comp.build()
-                    except NotImplementedError:
-                        continue
-                    path = stl_exporter.output_path(f"component_{comp_name}")
-                    stl_exporter.export(comp_solid, path)
-                    if metrics_path is not None:
-                        metrics[f"component_{comp_name}"] = shape_metrics(comp_solid)
-                    if not apply_fs_metadata(provenance, path):
-                        print(f"[pipeline] warning: could not write fs metadata for {path}")
-                    print(f"[pipeline] exported component {comp_name} -> {path}")
-            else:
-                for role in comp_roles:
-                    comp = components[role]
-                    try:
-                        comp_solid = comp.build()
-                    except NotImplementedError:
-                        continue
-                    path = stl_exporter.output_path(f"component_{role}")
-                    stl_exporter.export(comp_solid, path)
-                    if metrics_path is not None:
-                        metrics[f"component_{role}"] = shape_metrics(comp_solid)
-                    if not apply_fs_metadata(provenance, path):
-                        print(f"[pipeline] warning: could not write fs metadata for {path}")
-                    print(f"[pipeline] exported component {role} -> {path}")
-
-        if metrics_path is not None:
-            import json
-
-            # Pipeline-level results next to the per-target shape metrics: how
-            # each part was split, what it prints on, how many screws of each
-            # kind hold the case together, and the HARD/SOFT check outcomes.
-            lid_data = getattr(self, "_data_lid", None)
-            metrics["_pipeline"] = {
-                "sections": section_info,
-                "print_orientation": {n: list(BED_DOWN.normal) for n in printable},
-                "bed_face_mm2": bed_areas,
-                "screws": {
-                    "plate": len(components["keyboard"].mounting_holes()),
-                    "bezel": len(lid_data.screw_positions()) if lid_data else 0,
-                    "deck": len(base.columns()),
-                    "hinge": hinge.screw_count(),
-                    "deck_seam_lug": sum(len(v) for v in base.deck_lug_sites().values()),
-                },
-                "checks": {c.name + (f"#{i}" if sum(1 for d in fastening_report.checks if d.name == c.name) > 1 else ""): c.passed
-                           for i, c in enumerate(fastening_report.checks)},
-                "hard_failures": len(fastening_report.failures) + len(section_report.failures),
-                "soft_warnings": len(fastening_report.warnings) + len(section_report.warnings),
-            }
-            Path(metrics_path).write_text(json.dumps(metrics, indent=2, sort_keys=True))
-            print(f"[pipeline] wrote metrics -> {metrics_path}")
 
 
 def _git_rev() -> str | None:
@@ -1311,8 +638,8 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         "--targets",
         default="all",
         help="comma-separated build targets (default: all). "
-             "Buckets: all, assembly, base, base_bottom, base_top, "
-             "lid, lid_shell, lid_bezel, keyboard_plate, hinge, display, components. "
+             "Buckets: all, assembly, assembly_opened, chassis, screen_lid, "
+             "slide, keyboard_plate, display, components. "
              "Per-component: comp:<role> (e.g. comp:driver).",
     )
     parser.add_argument(

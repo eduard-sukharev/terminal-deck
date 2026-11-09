@@ -200,11 +200,6 @@ def run_slider_checks(
         f"chain bend radius {budget.chain_bend_radius:.1f} >= cable minimum "
         f"{budget.cable_min_bend_radius:.1f}",
     )
-    report.add(
-        "slide-no-slope",
-        all(getattr(p, "tilt_x", 0.0) == 0.0 for p in placements),
-        "the slider has no keyboard slope: no placement is tilted",
-    )
 
     if placements:
         half_width = max(max(abs(p.box[0]), abs(p.box[2])) for p in placements)

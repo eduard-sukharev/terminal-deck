@@ -4,17 +4,14 @@
 #   make data       # data layer only (config → components → layout → validation)
 #   make all        # full CAD + exports (STEP/STL/SVG/glTF)
 #   make display    # display sub-assembly only (LCD + HDMI driver, fast)
-#   make base       # combined base assembly (base_bottom + keyboard + base_top)
-#   make base_bottom # base bottom tray only
-#   make base_top   # base top deck with keyboard cutout only
-#   make lid        # combined lid assembly (lid_shell + display + lid_bezel)
-#   make lid_shell   # lid rear shell tray only
-#   make keyboard_plate  # bare switch plate, split into Halves
-#   make lid_bezel  # lid front plate with glass cutout only
-#   make hinge      # the two Torque hinges only
-#   make assembly   # full assembly union only
+#   make chassis    # chassis shell + keyboard/SBC/hub/controller
+#   make screen_lid # screen-lid shell + display + driver
+#   make slide      # guide rods + LM...LUU bearings
+#   make keyboard_plate  # bare switch plate, split into Sections
+#   make assembly   # closed assembly
+#   make assembly_opened  # open pose (lid slid by the travel)
 #   make components # per-component debug STLs only
-#   make build TARGETS=display,base  # selected targets
+#   make build TARGETS=assembly,chassis  # selected targets
 #   make test       # run pytest
 #   make check      # py_compile all modules
 #   make render     # SVG (keyboard plate) + PNG previews of generated STLs

@@ -39,7 +39,6 @@ _HARDWARE_SECTIONS: frozenset[str] = frozenset({
     "storage",
     "io",
     "usb_breakout",
-    "usb_c_plug",
     "heat_inserts",
     "battery",
     "driver_board",
@@ -56,8 +55,6 @@ class Wall:
 @dataclass(frozen=True)
 class Corners:
     radius: float
-    edge_radius: float
-    cutout_chamfer: float = 0.5  # lead-in bevel on connector cutout openings
 
 
 @dataclass(frozen=True)
@@ -65,21 +62,6 @@ class Clearance:
     shell: float
     insert: float
     screw: float
-
-
-@dataclass(frozen=True)
-class Deck:
-    """Base top deck geometry.
-
-    Attributes
-    ----------
-    slope : float
-        Typing slope in degrees. The deck plane tilts about X so the rear
-        (-Y, hinge side) rises while the front edge stays at the flat-case
-        deck level, wedging the base. ``0.0`` reproduces the flat deck.
-    """
-
-    slope: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -104,15 +86,6 @@ class Flex:
 @dataclass(frozen=True)
 class Bezel:
     inset: float
-    thickness: float
-    seam_screw_offset: float = 10.0  # X distance of the screws beside the centre Seam (mm)
-    corner_inset: float = 3.0        # corner screws' distance from the interior wall faces (mm)
-    boss_sleeve: float = 1.2         # wall of the insert boss around the insert bore (mm)
-
-
-@dataclass(frozen=True)
-class Glass:
-    recess_depth: float
 
 
 @dataclass(frozen=True)
@@ -128,33 +101,6 @@ class Keyboard:
     mounting: dict[str, Any] | None = None
     keycap: dict[str, Any] | None = None
     controller: dict[str, object] | None = None
-
-
-@dataclass(frozen=True)
-class Hinge:
-    """Purchased Torque hinges (ADR 0007). ``part`` describes the hinge in its
-    own frame; ``components.hinge.TorqueHinge`` parses it."""
-
-    x: float                      # X of the right hinge's centre (the left is mirrored)
-    part: dict[str, Any]          # barrel, leaf thickness, Leaves and their holes
-    travel: float = 180.0         # opening angle, held by the travel stop (deg)
-    swing_clearance: float = 0.5  # gap between a swinging part and a fixed one
-    fit: float = 0.2              # gap around a Leaf in its pocket
-    insert: str = "M4"            # heat-set insert per Leaf hole (fastener library)
-    torque: float = 0.0           # friction torque per hinge (N*m), for the record
-    stop: dict[str, Any] | None = None  # travel stop rib: width, face (mm)
-
-
-@dataclass(frozen=True)
-class CableGuard:
-    """The display cable's turn around the Hinge axis (ADR 0007)."""
-
-    fpc_width: float
-    fpc_thickness: float
-    min_bend_radius: float        # the core radius
-    turns: int = 1
-    fit: float = 0.5              # room around the coil and between the moving halves
-    entry_angle: float = 30.0     # angular width of each cable entry (deg)
 
 
 @dataclass(frozen=True)
@@ -335,34 +281,6 @@ class SeamPin:
 
 
 @dataclass(frozen=True)
-class Feet:
-    """Round rubber-foot recesses in the Tray floor.
-
-    Positions are inset from the case corners and independent of bosses.
-    """
-
-    diameter: float = 15.0
-    depth: float = 1.0
-    inset_x: float = 15.0
-    inset_y: float = 15.0
-
-
-@dataclass(frozen=True)
-class Well:
-    """Rim around the keyboard opening in the Deck.
-
-    The rim top sits ``switch_margin`` below the switch tops, so it protects
-    the keys without adding closed thickness. Rim width is the wall thickness.
-    """
-
-    switch_margin: float = 1.0
-
-    def __post_init__(self) -> None:
-        if self.switch_margin < 0:
-            raise ValueError("well.switch_margin must be >= 0 (rim may not reach the switch tops)")
-
-
-@dataclass(frozen=True)
 class SlideBearing:
     """The purchased LM...LUU linear bushing (one per guide rod).
 
@@ -496,23 +414,16 @@ class Config:
     wall: Wall
     corners: Corners
     clearance: Clearance
-    deck: Deck
     display: Display
     bezel: Bezel
-    glass: Glass
     keyboard: Keyboard
-    hinge: Hinge
-    cable_guard: CableGuard
     screws: Screws
     material: Material
     hardware: dict[str, Any] = field(default_factory=dict)
-    split: dict[str, Split] = field(default_factory=dict)
     parting: Parting = field(default_factory=Parting)
     merged_boss: MergedBoss = field(default_factory=MergedBoss)
     edges: Edges = field(default_factory=Edges)
     seam_pin: SeamPin = field(default_factory=SeamPin)
-    feet: Feet = field(default_factory=Feet)
-    well: Well = field(default_factory=Well)
     slide: Slide = field(default_factory=Slide)
     topics: tuple[str, ...] = field(default_factory=tuple)
 
@@ -546,15 +457,9 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
     wall = _as_dict(raw, "wall")
     corners = _as_dict(raw, "corners")
     clearance = _as_dict(raw, "clearance")
-    # Optional: a recipe/config predating the sloped deck has no `deck:`
-    # section and gets slope 0.0, i.e. the original flat geometry.
-    deck = raw.get("deck") if isinstance(raw.get("deck"), dict) else {}
     display = _as_dict(raw, "display")
     bezel = _as_dict(raw, "bezel")
-    glass = _as_dict(raw, "glass")
     keyboard = _as_dict(raw, "keyboard")
-    hinge = _as_dict(raw, "hinge")
-    cable_guard = _as_dict(raw, "cable_guard")
     screws = _as_dict(raw, "screws")
     material = _as_dict(raw, "material")
 
@@ -639,13 +544,11 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
         wall=Wall(**{k: float(v) for k, v in wall.items()}),
         corners=Corners(**{k: float(v) for k, v in corners.items()}),
         clearance=Clearance(**{k: float(v) for k, v in clearance.items()}),
-        deck=Deck(**{k: float(v) for k, v in deck.items()}),
         display=Display(
             **{k: float(v) for k, v in display.items()},
             flex=Flex(**{k: float(v) for k, v in flex.items()}) if isinstance(flex, dict) else None,
         ),
         bezel=Bezel(**{k: float(v) for k, v in bezel.items()}),
-        glass=Glass(**{k: float(v) for k, v in glass.items()}),
         keyboard=Keyboard(
             columns=int(keyboard.get("columns", 12)),
             rows=int(keyboard.get("rows", 4)),
@@ -659,13 +562,6 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
             keycap=keyboard.get("keycap"),
             controller=keyboard.get("controller"),
         ),
-        hinge=Hinge(**{
-            k: (dict(v) if k in ("part", "stop") else str(v) if k == "insert" else float(v))
-            for k, v in hinge.items()
-        }),
-        cable_guard=CableGuard(**{
-            k: (int(v) if k == "turns" else float(v)) for k, v in cable_guard.items()
-        }),
         screws=Screws(
             body=str(screws["body"]), standoff=str(screws["standoff"]),
             deck=str(screws.get("deck", "M3")),
@@ -677,20 +573,10 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
             min_bed_face_area=float(material.get("min_bed_face_area", 100.0)),
         ),
         hardware=hardware,
-        split={
-            part: Split(
-                sections=int(v.get("sections", 2)), x=float(v.get("x", 0.0)),
-                style=str(v.get("style", "straight")),
-                step=float(v.get("step", 0.0)), steps=int(v.get("steps", 1)),
-            )
-            for part, v in (raw.get("split") or {}).items()
-        },
         parting=Parting(**{k: float(v) for k, v in (raw.get("parting") or {}).items()}),
         merged_boss=MergedBoss(**{k: float(v) for k, v in (raw.get("merged_boss") or {}).items()}),
         edges=Edges(**{k: float(v) for k, v in (raw.get("edges") or {}).items()}),
         seam_pin=SeamPin(**{k: float(v) for k, v in (raw.get("seam_pin") or {}).items()}),
-        feet=Feet(**{k: float(v) for k, v in (raw.get("feet") or {}).items()}),
-        well=Well(**{k: float(v) for k, v in (raw.get("well") or {}).items()}),
         slide=slide,
         topics=topics,
     )

@@ -10,14 +10,12 @@ is retired). This is **not** a maker platform — no GPIO, sensors, LEDs, or
 decorative elements. Priorities: robustness, serviceability, printability,
 parametricity, reusability.
 
-> **Migration status.** `docs/form_factor.md`, `CONTEXT.md` and ADR-0009 define
-> the slider. The **data skeleton and the first-generation CAD shell are
-> implemented**: `--layout slider` (the default for `make` and the CLI) derives
-> the budget and builds/exports the chassis, screen lid, guide hardware and the
-> closed/open assembly, with stepped Seams at x=0. `--layout compact` still
-> reaches the retired clamshell until its code is removed. Still next: Seam
-> lugs, heat-set bosses, the drag-chain channel, and the clamshell removal.
-> Do not add new clamshell features.
+> **Status.** `docs/form_factor.md`, `CONTEXT.md` and ADR-0009 define the
+> slider. The data skeleton and the first-generation CAD shell are implemented:
+> `--layout slider` (the only layout) derives the budget and builds/exports the
+> chassis, screen lid, guide hardware and the closed/open assembly, with stepped
+> Seams at x=0. The retired clamshell code, config, recipe and tests have been
+> removed. Still next: Seam lugs, heat-set bosses, the drag-chain channel.
 
 ## Build volume
 
@@ -57,8 +55,8 @@ python main.py --config config/default.yaml --layout slider --steps data
 python main.py --steps all
 python main.py --steps all --targets display                 # display sub-assembly only (fast)
 python main.py --steps all --targets display,chassis         # selected targets
-python -m pytest tests/test_layouts.py            # single test file
-python -m pytest tests/test_layouts.py::test_name -v   # single test
+python -m pytest tests/test_slide.py             # single test file
+python -m pytest tests/test_slide.py::test_name -v   # single test
 ```
 
 `--steps data` runs config → components → layout → validation and prints the
@@ -198,9 +196,8 @@ is checked by `keyboard/validation.py`.
 layout. `utilities/config_loader.py` maps YAML to frozen dataclasses; adding
 a YAML key usually requires adding a field to the matching dataclass.
 
-The face is flat — `config.deck.slope`, `Placement.tilt_x`, the `DeckMount`
-constraint and `deck_level_at` are removed with the clamshell: the slider has
-no keyboard slope and no mechanism for one. `config.slide` holds the purchased
+The face is flat — there is no keyboard slope and no slope machinery in the
+code (the clamshell's `deck.slope`/`tilt_x`/`deck_level_at` are gone). `config.slide` holds the purchased
 linear guide (rod diameter/length, bearing model, clamp, travel margin, chain
 pitch/width/bend radius); the build checks the chosen combination against the
 140 mm face-height budget.
@@ -215,7 +212,7 @@ Gotchas:
   the travel. The RP2040 controller sits under the keyboard plate; the SBC and
   the USB hub sit in the Rear band behind the keyboard. Neither adds face
   height beyond the band.
-- The face is flat and the keyboard has no slope: do not add `tilt_x`, a
+- The face is flat and the keyboard has no slope: do not add a
   `deck.slope`-style angle or a tilting mount. The slide is pure +Y
   translation.
 - The lid's flat back slides over the keycaps: the Well sets that clearance.

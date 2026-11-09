@@ -65,25 +65,13 @@ class RelativePlacementResolver:
         # places the subject off by the rotation/flip that never got
         # applied.
         #
-        # tilt_x is deliberately stripped from the target before the
-        # transform, not just from the subject's own state below: an offset
-        # is measured from the target's origin along its *untilted* local
-        # axes ("positioned relative to X" does not imply "mounted on X",
-        # same reasoning as the subject's own tilt never being inherited,
-        # below) — battery is placed this way relative to the keyboard,
-        # which is genuinely tilted (deck_mount runs first), and swinging
-        # its large horizontal offset through that tilt silently moved it
-        # by over a millimetre with no rotation or flip involved at all.
-        #
         # from_top measures the gap from the target's highest occupied point
-        # rather than its origin, so a tilted or otherwise grown target
-        # pushes the subject up with it; swap in that datum before the
-        # transform (rather than adding offset_z separately afterward) so
-        # rotation/flip still apply consistently to reach it.
-        untilted = dataclasses.replace(target_placement, tilt_x=0.0)
+        # rather than its origin; swap in that datum before the transform
+        # (rather than adding offset_z separately afterward) so rotation/flip
+        # still apply consistently to reach it.
         datum_placement = (
-            dataclasses.replace(untilted, z=target_placement.z_bounds()[1])
-            if constraint.from_top else untilted
+            dataclasses.replace(target_placement, z=target_placement.z_bounds()[1])
+            if constraint.from_top else target_placement
         )
         x, y, z = datum_placement.world_offset(offset_x, offset_y, offset_z)
         existing = current.get(constraint.subject)
@@ -97,20 +85,9 @@ class RelativePlacementResolver:
             if constraint.flip is not None
             else (existing.flip_x if existing is not None else False)
         )
-        # Tilt is never inherited from the target: "positioned relative to X"
-        # does not imply "mounted on X". The display is placed relative to
-        # the keyboard but lives in the lid, so inheriting the keyboard's
-        # deck tilt would tip the whole screen. A part that really does ride
-        # a tilted surface says so with `tilt:` or its own `deck_mount`.
-        tilt_x = (
-            constraint.tilt
-            if constraint.tilt is not None
-            else (existing.tilt_x if existing is not None else 0.0)
-        )
-
         return ResolverResult(
             True,
-            {constraint.subject: Placement(subj, x, y, rotation, z, flip_x, tilt_x)},
+            {constraint.subject: Placement(subj, x, y, rotation, z, flip_x)},
             f"{constraint.subject} @ ({x:.1f}, {y:.1f}, {z:.1f}) "
             f"rel. to {constraint.target} via {source}",
         )

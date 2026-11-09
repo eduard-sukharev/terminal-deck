@@ -52,12 +52,6 @@ def test_slider_layout_has_no_collisions():
     assert report.passed, report.summary()
 
 
-def test_slider_layout_has_no_tilt():
-    """The slider has no keyboard slope, so no placement may be tilted."""
-    _, _, _, _, placements = _data()
-    assert all(p.tilt_x == 0.0 for p in placements)
-
-
 def test_keyboard_faces_the_user():
     """The keyboard's local +Y (spacebar side) must face the user at -Y."""
     _, _, components, _, placements = _data()

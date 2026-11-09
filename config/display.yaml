@@ -18,14 +18,7 @@ display:
                            # short edge, toward the driver slot (0.5-1.0)
 
 bezel:
-  inset: 3                  # glass recess inset from panel edge
-  thickness: 2              # bezel wall thickness over the glass edge
-  seam_screw_offset: 10     # X distance of the screws beside the Bezel's centre Seam
-  corner_inset: 3           # corner screws' distance from the interior wall faces
-  boss_sleeve: 1.2          # insert boss wall around the insert bore
-
-glass:
-  recess_depth: 1.5         # glass recess depth into lid
+  inset: 3                 # glass opening inset from the panel edge
 
 driver_board:
   width: 55                 # measured
@@ -42,7 +35,3 @@ driver_board:
                            # The board stays fully behind the panel outline.
                            # (TODO: confirm against the real ribbon length)
   offset_y: 5.0             # aligns the driver FPC slot center with the panel FPC center
-
-mounts:
-  holes: 4
-  hole_diameter: 2.2

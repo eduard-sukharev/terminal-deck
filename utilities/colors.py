@@ -26,11 +26,6 @@ COMPONENT_COLORS: dict[str, Color] = {
     "battery": (0.82, 0.20, 0.20, 1.0),      # red
     "usb_breakout": (0.58, 0.29, 0.78, 1.0), # purple
     "controller": (0.10, 0.62, 0.62, 1.0),   # teal
-    "sbc_plug": (0.95, 0.85, 0.20, 1.0),     # yellow
-    "hdmi_plug_sbc": (0.90, 0.35, 0.65, 1.0),     # pink
-    "hdmi_plug_driver": (0.45, 0.85, 0.90, 1.0),  # light cyan
-    "hinge": (0.55, 0.55, 0.58, 1.0),        # steel grey
-    "torque_hinge": (0.80, 0.80, 0.82, 1.0), # stainless: the purchased Torque hinges
     "section_left": (0.62, 0.78, 0.92, 1.0),    # printed Sections, one color each so
     "section_center": (0.95, 0.80, 0.55, 1.0),  # the Seams read in a review render
     "section_right": (0.70, 0.88, 0.66, 1.0),

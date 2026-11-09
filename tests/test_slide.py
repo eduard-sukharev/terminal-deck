@@ -58,6 +58,13 @@ def test_slider_layout_has_no_tilt():
     assert all(p.tilt_x == 0.0 for p in placements)
 
 
+def test_keyboard_faces_the_user():
+    """The keyboard's local +Y (spacebar side) must face the user at -Y."""
+    _, _, components, _, placements = _data()
+    keyboard = next(p for p in placements if p.component is components["keyboard"])
+    assert keyboard.rotation == 180.0
+
+
 def test_slider_layout_is_centred_on_the_chassis():
     """The chassis footprint is centred on the origin (coordinate contract)."""
     _, config, components, _, placements = _data()
@@ -170,8 +177,8 @@ def test_clamp_corridor_check_catches_a_wide_rear_band():
     """A rear-band part pushed into a side pod must fail the clamp check."""
     _, config, components, _, placements = _data()
     moved = [
-        dataclasses.replace(p, x=p.x + 20.0)
-        if p.component.name == "USB Hub"
+        dataclasses.replace(p, x=p.x + 30.0)
+        if p.component.name == "Orange Pi Zero 2W"
         else p
         for p in placements
     ]

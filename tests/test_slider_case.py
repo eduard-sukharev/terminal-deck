@@ -84,6 +84,25 @@ def test_sections_fit_the_build_volume(solids):
             assert z <= BUILD_VOLUME[2] + 1e-6
 
 
+def test_rod_covers_bearing_at_both_poses(data):
+    """The rod must stay over the bearing when the lid slides open."""
+    _, _, budget, frame = data
+    half_bearing = budget.bearing_length / 2.0
+    half_rod = budget.rod_usable / 2.0
+    bearing = (
+        frame.clamp_center_y - half_bearing,
+        frame.clamp_center_y + half_bearing,
+    )
+    closed = (frame.rod_y - half_rod, frame.rod_y + half_rod)
+    opened = (
+        frame.rod_y + budget.travel - half_rod,
+        frame.rod_y + budget.travel + half_rod,
+    )
+    for span in (closed, opened):
+        assert span[0] <= bearing[0] + 1e-6
+        assert span[1] >= bearing[1] - 1e-6
+
+
 def test_guide_hardware(data):
     config, _, budget, _ = data
     rod = build_guide_rod(config.slide.rod.diameter, budget.rod_usable)

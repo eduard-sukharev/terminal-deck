@@ -243,13 +243,40 @@ class BuildPipeline:
         ch.require_cad()
         frame = SliderFrame.from_data(config, budget, components, placements)
         chassis_shell = Chassis(config, frame).build()
+
+        # The hub's +Y port strip is the externally reachable I/O; bore its
+        # openings through the chassis rear wall. The east USB-A is blocked by
+        # the right side pod and is intentionally not exposed.
+        hub = components.get("usb_breakout")
+        hub_placement = next(
+            (p for p in placements if p.component is hub), None
+        ) if hub is not None else None
+        if hub_placement is not None:
+            port_tools = []
+            for connector in hub.connectors():
+                if connector.internal or connector.direction[1] <= 0:
+                    continue
+                wx, _, wz = hub_placement.world_offset(
+                    connector.x, connector.y, connector.z
+                )
+                tool = ch.box_centered(
+                    connector.width + 2.0 * frame.clearance,
+                    3.0 * frame.wall,
+                    connector.height + 2.0 * frame.clearance,
+                )
+                port_tools.append(
+                    ch.translate(tool, wx, frame.depth / 2.0, wz)
+                )
+            if port_tools:
+                chassis_shell = ch.clean(ch.cut(chassis_shell, *port_tools))
+
         lid_shell = ScreenLid(config, frame).build()
 
         rods = [
             ch.translate(
                 build_guide_rod(config.slide.rod.diameter, frame.rod_length),
                 side * frame.rod_x,
-                frame.lid_y_center,
+                frame.rod_y,
                 frame.rod_z,
             )
             for side in (-1, 1)
@@ -288,6 +315,15 @@ class BuildPipeline:
         assembly_solid = ch.make_compound(
             [chassis_with_parts, lid_with_parts, slide]
         )
+        travel = budget.travel
+        assembly_opened = ch.make_compound(
+            [
+                chassis_with_parts,
+                ch.translate(lid_with_parts, 0.0, travel, 0.0),
+                ch.translate(rods_compound, 0.0, travel, 0.0),
+                bearings_compound,
+            ]
+        )
 
         plate = components["keyboard"].build_plate()
         chassis_left, chassis_right = ch.split_x(chassis_shell)
@@ -296,6 +332,7 @@ class BuildPipeline:
 
         parts = {
             "assembly": assembly_solid,
+            "assembly_opened": assembly_opened,
             "chassis": chassis_with_parts,
             "chassis_left": chassis_left,
             "chassis_right": chassis_right,
@@ -387,8 +424,29 @@ class BuildPipeline:
                 ("linear_bearing", bearings_compound),
             ],
         )
+
+        def _move_y(solid):
+            return ch.translate(solid, 0.0, budget.travel, 0.0)
+
+        open_transform = {
+            id(components[role]): _move_y
+            for role in ("display", "driver")
+            if role in components
+        }
+        gltf_opened = assembly.build_colored(
+            placements=placements,
+            role_map=role_map,
+            transform=open_transform,
+            extra_parts=[
+                ("chassis", chassis_shell),
+                ("screen_lid", _move_y(lid_shell)),
+                ("guide_rod", _move_y(rods_compound)),
+                ("linear_bearing", bearings_compound),
+            ],
+        )
         gltf_special = {
             "assembly": gltf_assembly,
+            "assembly_opened": gltf_opened,
             "chassis": gltf_chassis,
             "screen_lid": gltf_lid,
         }

@@ -31,6 +31,7 @@ class SliderFrame:
     clamp_width: float
     usable_half: float
     rod_x: float
+    rod_y: float
     rod_z: float
     rod_length: float
     bearing_outer: float
@@ -66,6 +67,10 @@ class SliderFrame:
             + budget.travel
             + budget.bearing_length / 2.0
         )
+        rod_length = budget.rod_usable
+        # The rod's lower end sits at the lid's front edge, so at the open
+        # pose (lid +travel) it still covers the bearing's lower end.
+        rod_y = -budget.chassis_height / 2.0 + rod_length / 2.0
         return cls(
             width=budget.width,
             depth=budget.chassis_height,
@@ -84,8 +89,9 @@ class SliderFrame:
             clamp_width=clamp_width,
             usable_half=budget.usable_half,
             rod_x=rod_x,
+            rod_y=rod_y,
             rod_z=rod_z,
-            rod_length=budget.rod_usable,
+            rod_length=rod_length,
             bearing_outer=config.slide.bearing.outer_diameter,
             bearing_bore=config.slide.bearing.bore,
             bearing_length=config.slide.bearing.length,

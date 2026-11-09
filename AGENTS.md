@@ -73,6 +73,7 @@ segfault on a chamfer, so `cad_helpers` runs each attempt in a child process
 **Selective build targets** (`--targets`, comma-separated), implemented set:
 
 - `assembly` — chassis + screen lid + guide hardware + components
+- `assembly_opened` — the open pose: lid and rods slid by the travel, bearings/clamps fixed
 - `chassis` — chassis shell + keyboard, SBC, hub, controller
 - `chassis_left` / `chassis_right` — printable chassis Sections (x=0)
 - `screen_lid` — lid shell + display + driver

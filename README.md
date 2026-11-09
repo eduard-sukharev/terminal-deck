@@ -73,8 +73,9 @@ screen lid sliding on two guide rods over a chassis, and a 40% keyboard
 revealed by the slide. The **data skeleton and the first-generation CAD shell**
 are implemented: `python main.py --layout slider --steps data` derives and
 validates the 140/56/260 budget from the real components, and `make slider`
-builds and exports the chassis, screen lid, guide hardware and assembly as
-STEP/STL/glTF, split into two Sections that fit the 220 × 220 × 256 mm build
-volume. The clamshell remains the default and the working clamshell CAD path
-until the slider's Sections/seams/vents and the clamshell removal land. See
+builds and exports the chassis, screen lid, guide hardware and both the closed
+and open assembly (the lid and rods slid by the travel) as STEP/STL/glTF, split
+into two Sections that fit the 220 × 220 × 256 mm build volume. The clamshell
+remains the default and the working clamshell CAD path until the slider's
+Sections/seams/vents and the clamshell removal land. See
 `docs/form_factor.md`, `docs/adr/`, and `CONTEXT.md`.

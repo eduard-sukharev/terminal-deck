@@ -41,3 +41,20 @@ slide:
     nut: M4
     pocket_depth: 5.0
     pitch: 10.0
+
+  # Sectioning (ADR 0003): chassis and lid use stepped Seams at x=0; the thin
+  # keyboard plate keeps a straight Seam at the central key-column gap.
+  split:
+    chassis:        {sections: 2, x: 0.0, style: stepped, step: 4.0, steps: 6}
+    screen_lid:     {sections: 2, x: 0.0, style: stepped, step: 4.0, steps: 6}
+    keyboard_plate: {sections: 2, x: 0.0, style: straight}
+
+  # Rear-wall vent slots (the hub's +Y port strip occupies the centre; the
+  # slots sit in the free right-hand band).
+  vents:
+    slot_width: 0.8
+    gap: 3.2
+    height: 10.0
+    start_x: 45.0
+    end_x: 125.0
+    z_center: 11.0

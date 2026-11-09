@@ -50,7 +50,28 @@ class Chassis:
         body = ch.cut(body, well)
 
         body = ch.union(body, self._clamp(-1), self._clamp(1))
+        body = self._vents(body)
         return ch.clean(body)
+
+    def _vents(self, body):
+        """A row of vertical vent slots through the +Y rear wall."""
+        from utilities import cad_helpers as ch
+
+        vents = self.config.slide.vents
+        if vents.height <= 0 or vents.end_x < vents.start_x:
+            return body
+        pitch = vents.slot_width + vents.gap
+        x = vents.start_x
+        while x <= vents.end_x + 1e-6:
+            slot = ch.box_centered(
+                vents.slot_width, 3.0 * self.frame.wall, vents.height
+            )
+            slot = ch.translate(
+                slot, x, self.frame.depth / 2.0, vents.z_center
+            )
+            body = ch.cut(body, slot)
+            x += pitch
+        return body
 
     def _clamp(self, side: int):
         """A Bearing clamp standing on the Deck behind the keyboard."""

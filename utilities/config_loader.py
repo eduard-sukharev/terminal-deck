@@ -424,6 +424,24 @@ class SlideRail:
 
 
 @dataclass(frozen=True)
+class SlideVents:
+    """A row of vertical vent slots through the chassis rear wall."""
+
+    slot_width: float = 0.8
+    gap: float = 3.2
+    height: float = 10.0
+    start_x: float = 45.0
+    end_x: float = 125.0
+    z_center: float = 11.0
+
+    def __post_init__(self) -> None:
+        if self.slot_width <= 0 or self.gap < 0 or self.height <= 0:
+            raise ValueError("slide.vents slot width/height must be positive and gap >= 0")
+        if self.end_x < self.start_x:
+            raise ValueError("slide.vents end_x must be >= start_x")
+
+
+@dataclass(frozen=True)
 class Slide:
     """Travel, guide and face-height budget of the slider (ADR-0009).
 
@@ -448,6 +466,8 @@ class Slide:
     rod: SlideRod = field(default_factory=SlideRod)
     chain: SlideChain = field(default_factory=SlideChain)
     rail: SlideRail = field(default_factory=SlideRail)
+    vents: SlideVents = field(default_factory=SlideVents)
+    split: dict[str, Split] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.face_height_limit <= 0:
@@ -543,6 +563,17 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
     slide_rod = slide_raw.get("rod") or {}
     slide_chain = slide_raw.get("chain") or {}
     slide_rail = slide_raw.get("rail") or {}
+    slide_vents = slide_raw.get("vents") or {}
+    slide_split = {
+        name: Split(
+            sections=int(v.get("sections", 2)),
+            x=float(v.get("x", 0.0)),
+            style=str(v.get("style", "straight")),
+            step=float(v.get("step", 0.0)),
+            steps=int(v.get("steps", 1)),
+        )
+        for name, v in (slide_raw.get("split") or {}).items()
+    }
     slide = Slide(
         face_height_limit=float(slide_raw.get("face_height_limit", 140.0)),
         travel_clearance=float(slide_raw.get("travel_clearance", 5.0)),
@@ -578,6 +609,15 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
             pocket_depth=float(slide_rail.get("pocket_depth", 5.0)),
             pitch=float(slide_rail.get("pitch", 10.0)),
         ),
+        vents=SlideVents(
+            slot_width=float(slide_vents.get("slot_width", 0.8)),
+            gap=float(slide_vents.get("gap", 3.2)),
+            height=float(slide_vents.get("height", 10.0)),
+            start_x=float(slide_vents.get("start_x", 45.0)),
+            end_x=float(slide_vents.get("end_x", 125.0)),
+            z_center=float(slide_vents.get("z_center", 11.0)),
+        ),
+        split=slide_split,
     )
     wall_thickness = float(wall.get("thickness", 2.0))
     if min(slide.clamp_wall, slide.lid_back, slide.lid_front) < wall_thickness:

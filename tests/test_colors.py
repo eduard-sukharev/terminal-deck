@@ -5,7 +5,7 @@ from utilities.colors import COMPONENT_COLORS, DEFAULT_COLOR, color_for
 
 
 def _roles() -> list[str]:
-    pipeline = BuildPipeline()
+    pipeline = BuildPipeline(layout_name="compact")
     pipeline.load_config()
     return list(pipeline.load_components())
 

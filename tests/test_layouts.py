@@ -8,7 +8,7 @@ from main import BuildPipeline
 
 
 def _components():
-    p = BuildPipeline("config/default.yaml")
+    p = BuildPipeline("config/default.yaml", layout_name="compact")
     p.load_config()
     return p.load_components()
 
@@ -20,7 +20,7 @@ def _placement(placements, name):
 def _layout(comps=None, cfg=None):
     """The one layout: the compact clamshell recipe."""
     if comps is None:
-        p = BuildPipeline("config/default.yaml")
+        p = BuildPipeline("config/default.yaml", layout_name="compact")
         cfg = p.load_config()
         comps = p.load_components()
     return make_layout("compact", comps, config=cfg)
@@ -33,7 +33,7 @@ def test_unknown_layout_rejected():
 
 
 def test_compact_placements():
-    p = BuildPipeline("config/default.yaml")
+    p = BuildPipeline("config/default.yaml", layout_name="compact")
     cfg = p.load_config()
     placements = _layout(p.load_components(), cfg).placements()
     # keyboard, sbc, sbc_plug, hdmi_plug_sbc, controller, battery, hub,
@@ -119,7 +119,7 @@ def test_bosses_rotation_and_flip():
 def _base():
     from assemblies.assembly import Assembly
     from case.base import Base
-    p = BuildPipeline("config/default.yaml")
+    p = BuildPipeline("config/default.yaml", layout_name="compact")
     cfg = p.load_config()
     comps = p.load_components()
     placements = p.place_layout(comps).placements()
@@ -191,7 +191,7 @@ def test_flat_deck_reproduces_untilted_geometry():
     from dataclasses import replace
     from assemblies.assembly import Assembly
     from case.base import Base
-    p = BuildPipeline("config/default.yaml")
+    p = BuildPipeline("config/default.yaml", layout_name="compact")
     loaded = p.load_config()
     cfg = replace(loaded, deck=replace(loaded.deck, slope=0.0))
     comps = p.load_components()
@@ -236,7 +236,7 @@ def test_switch_band_is_reported_as_occupied():
     Reporting only the plate (as this once did) hid a 7 mm band, letting a
     board be placed straight through the switch pins with every check green.
     """
-    p = BuildPipeline("config/default.yaml")
+    p = BuildPipeline("config/default.yaml", layout_name="compact")
     p.load_config()
     kb = p.load_components()["keyboard"]
     lowest = min(z for _, _, z, _ in kb.occupied_volumes())
@@ -246,7 +246,7 @@ def test_switch_band_is_reported_as_occupied():
 
 def test_switch_band_is_narrower_than_the_plate():
     """The plate's switch-free edge margin must stay genuinely free."""
-    p = BuildPipeline("config/default.yaml")
+    p = BuildPipeline("config/default.yaml", layout_name="compact")
     p.load_config()
     kb = p.load_components()["keyboard"]
     gx0, gy0, gx1, gy1 = kb.switch_grid_extent()
@@ -277,7 +277,7 @@ def test_plug_is_centred_on_its_port_not_offset_from_it():
     ``Placement.box`` assumes that; a body modelled as extending *from* the
     origin gets collision-checked half a plug-length from where it is drawn.
     """
-    p = BuildPipeline("config/default.yaml")
+    p = BuildPipeline("config/default.yaml", layout_name="compact")
     p.load_config()
     comps = p.load_components()
     plug, _sbc = comps["sbc_plug"], comps["sbc"]
@@ -293,7 +293,7 @@ def test_plug_is_centred_on_its_port_not_offset_from_it():
 def test_plug_port_index_selects_the_other_usb_c():
     """port_index is the assembly-time choice of which port carries the cable."""
     from components.usb_c_plug import UsbCPlug
-    p = BuildPipeline("config/default.yaml")
+    p = BuildPipeline("config/default.yaml", layout_name="compact")
     p.load_config()
     sbc = p.load_components()["sbc"]
     a = UsbCPlug({"port_index": 0}, host=sbc).reference_origin()
@@ -303,7 +303,7 @@ def test_plug_port_index_selects_the_other_usb_c():
 
 def test_plug_rejects_out_of_range_port():
     from components.usb_c_plug import UsbCPlug
-    p = BuildPipeline("config/default.yaml")
+    p = BuildPipeline("config/default.yaml", layout_name="compact")
     p.load_config()
     sbc = p.load_components()["sbc"]
     with pytest.raises(ValueError, match="out of range"):
@@ -535,7 +535,7 @@ def test_deck_lug_and_hinge_pads_clear_the_seam_check():
 def test_bezel_has_six_screws_per_section():
     from case.lid import Lid
 
-    p = BuildPipeline("config/default.yaml")
+    p = BuildPipeline("config/default.yaml", layout_name="compact")
     cfg = p.load_config()
     lid = Lid(p.load_components()["display"], cfg, footprint=(235.7, 120.4))
     screws = lid.screw_positions()

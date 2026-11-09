@@ -57,26 +57,42 @@ def test_screen_lid_bbox_matches_the_budget(data, solids):
     assert ch.volume_mm3(lid) > 0
 
 
-def test_chassis_sections_rejoin(solids):
+def test_chassis_sections_rejoin(data, solids):
+    config, _, _, _ = data
     chassis, _ = solids
-    left, right = ch.split_x(chassis)
+    left, right = ch.split_sections(chassis, config.slide.split.get("chassis"))
     assert ch.volume_mm3(left) + ch.volume_mm3(right) == pytest.approx(
         ch.volume_mm3(chassis), rel=1e-3
     )
 
 
-def test_screen_lid_sections_rejoin(solids):
+def test_screen_lid_sections_rejoin(data, solids):
+    config, _, _, _ = data
     _, lid = solids
-    left, right = ch.split_x(lid)
+    left, right = ch.split_sections(lid, config.slide.split.get("screen_lid"))
     assert ch.volume_mm3(left) + ch.volume_mm3(right) == pytest.approx(
         ch.volume_mm3(lid), rel=1e-3
     )
 
 
-def test_sections_fit_the_build_volume(solids):
+def test_sections_have_a_stepped_seam(data, solids):
+    config, _, _, _ = data
     chassis, lid = solids
-    for part in (chassis, lid):
-        left, right = ch.split_x(part)
+    step = config.slide.split["chassis"].step
+    for part, name in ((chassis, "chassis"), (lid, "screen_lid")):
+        left, right = ch.split_sections(part, config.slide.split.get(name))
+        left_box = ch.bounding_box(left)
+        right_box = ch.bounding_box(right)
+        # A straight Seam stops at x=0; a stepped one crosses it by step/2.
+        assert left_box.xmax > step / 2.0 - 1e-6
+        assert right_box.xmin < -step / 2.0 + 1e-6
+
+
+def test_sections_fit_the_build_volume(data, solids):
+    config, _, _, _ = data
+    chassis, lid = solids
+    for part, name in ((chassis, "chassis"), (lid, "screen_lid")):
+        left, right = ch.split_sections(part, config.slide.split.get(name))
         for section in (left, right):
             x, y, z = ch.bounding_box_mm(section)
             assert x <= BUILD_VOLUME[0] + 1e-6

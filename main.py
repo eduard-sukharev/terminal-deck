@@ -44,7 +44,7 @@ class BuildPipeline:
     def __init__(
         self,
         config_path: str | Path = "config/default.yaml",
-        layout_name: str = "compact",
+        layout_name: str = "slider",
         topics: tuple[str, ...] = ("display", "keyboard", "hardware", "slide"),
         recipe_path: str | Path | None = None,
     ) -> None:
@@ -326,9 +326,14 @@ class BuildPipeline:
         )
 
         plate = components["keyboard"].build_plate()
-        chassis_left, chassis_right = ch.split_x(chassis_shell)
-        lid_left, lid_right = ch.split_x(lid_shell)
-        plate_left, plate_right = ch.split_x(plate)
+        split = config.slide.split
+        chassis_left, chassis_right = ch.split_sections(
+            chassis_shell, split.get("chassis")
+        )
+        lid_left, lid_right = ch.split_sections(lid_shell, split.get("screen_lid"))
+        plate_left, plate_right = ch.split_sections(
+            plate, split.get("keyboard_plate")
+        )
 
         parts = {
             "assembly": assembly_solid,
@@ -354,7 +359,16 @@ class BuildPipeline:
         selected: dict[str, object] = {}
         for token in tokens:
             if token == "components":
+                # Only the components the slider actually places. The battery
+                # is an external accessory and the cable plugs are not modelled
+                # in this generation; they stay reachable via comp:<role>.
+                placed_roles = {
+                    "display", "driver", "keyboard", "sbc",
+                    "usb_breakout", "controller",
+                }
                 for role, component in components.items():
+                    if role not in placed_roles:
+                        continue
                     try:
                         selected[f"component_{role}"] = component.build()
                     except NotImplementedError:
@@ -1278,7 +1292,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--layout",
-        default="compact",
+        default="slider",
         choices=list(LAYOUTS),
         help="layout definition to place components",
     )

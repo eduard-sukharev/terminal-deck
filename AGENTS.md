@@ -12,12 +12,12 @@ parametricity, reusability.
 
 > **Migration status.** `docs/form_factor.md`, `CONTEXT.md` and ADR-0009 define
 > the slider. The **data skeleton and the first-generation CAD shell are
-> implemented**: `--layout slider --steps data` derives the budget, and
-> `make slider` (`--steps all`) builds and exports the chassis, screen lid,
-> guide hardware and assembly, split into two Sections at x=0. Stepped
-> Seams/lugs, vents/connector cutouts and the clamshell removal are the next
-> change; until then the clamshell remains the default and the working
-> clamshell CAD path. Do not add new clamshell features.
+> implemented**: `--layout slider` (the default for `make` and the CLI) derives
+> the budget and builds/exports the chassis, screen lid, guide hardware and the
+> closed/open assembly, with stepped Seams at x=0. `--layout compact` still
+> reaches the retired clamshell until its code is removed. Still next: Seam
+> lugs, heat-set bosses, the drag-chain channel, and the clamshell removal.
+> Do not add new clamshell features.
 
 ## Build volume
 

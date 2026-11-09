@@ -37,7 +37,7 @@ CONDA    ?= conda
 PYTHON   ?= $(CONDA) run --no-capture-output -n $(ENV_NAME) python
 MAIN     ?= main.py
 CONFIG   ?= config/default.yaml
-LAYOUT   ?= compact
+LAYOUT   ?= slider
 GENERATED ?= generated
 PLATE_LAYOUT ?= keyboard/layouts/jd40.json
 RENDER_ELEV ?= 45
@@ -45,7 +45,7 @@ RENDER_AZIM ?= -90
 TARGETS  ?= all
 IGNORE_VALIDATION ?=
 
-.PHONY: env env-remove render render_svg render_stl verify data data-slider slider all build test check clean display base base_bottom base_top lid lid_shell lid_bezel keyboard_plate hinge assembly assembly_opened components
+.PHONY: env env-remove render render_svg render_stl verify data data-slider slider all build test check clean display chassis screen_lid slide keyboard_plate assembly assembly_opened components
 
 ifneq ($(strip $(IGNORE_VALIDATION)),)
 IGNORE_VALIDATION_FLAG := --ignore-validation
@@ -72,12 +72,11 @@ data build test check render_svg render_stl: env
 data:
 	$(PYTHON) $(MAIN) --config $(CONFIG) --layout $(LAYOUT) --steps data $(IGNORE_VALIDATION_FLAG)
 
-# Slider data stage: derives and validates the 140/56/260 budget (issue #3).
-# `data` still defaults to the clamshell until the slider CAD path lands.
+# Explicit slider data stage (same as the default).
 data-slider:
 	$(PYTHON) $(MAIN) --config $(CONFIG) --layout slider --steps data $(IGNORE_VALIDATION_FLAG)
 
-# Slider CAD + exports (issue #3, first-generation shell).
+# Slider CAD + exports (first-generation shell).
 slider:
 	$(PYTHON) $(MAIN) --config $(CONFIG) --layout slider --steps all --targets $(TARGETS) $(IGNORE_VALIDATION_FLAG)
 
@@ -90,30 +89,17 @@ all: build
 display: TARGETS = display
 display: build
 
-base: TARGETS = base
-base: build
+chassis: TARGETS = chassis
+chassis: build
 
-base_bottom: TARGETS = base_bottom
-base_bottom: build
+screen_lid: TARGETS = screen_lid
+screen_lid: build
 
-base_top: TARGETS = base_top
-base_top: build
-
-lid: TARGETS = lid
-lid: build
-
-lid_shell: TARGETS = lid_shell
-lid_shell: build
-
-lid_bezel: TARGETS = lid_bezel
-lid_bezel: build
+slide: TARGETS = slide
+slide: build
 
 keyboard_plate: TARGETS = keyboard_plate
 keyboard_plate: build
-
-hinge: TARGETS = hinge
-hinge: build
-
 
 assembly: TARGETS = assembly
 assembly: build

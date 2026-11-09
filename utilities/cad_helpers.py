@@ -444,6 +444,48 @@ def split_x(shape: Any, at: float = 0.0) -> tuple[Any, Any]:
     return intersect(shape, left), intersect(shape, right)
 
 
+def split_x_stepped(
+    shape: Any, at: float = 0.0, step: float = 4.0, steps: int = 6
+) -> tuple[Any, Any]:
+    """Split ``shape`` at a stepped Seam (``__--__--__``) along X.
+
+    The Seam jogs by ``step`` every ``steps``-th of the part's Y extent, so
+    the two Sections share the same stepped line and still butt together.
+    """
+    if steps < 2 or step <= 0.0:
+        return split_x(shape, at)
+    box = bounding_box(shape)
+    y0, y1 = box.ymin, box.ymax
+    segment = (y1 - y0) / steps
+    seam: list[tuple[float, float]] = []
+    for index in range(steps):
+        x = at + (step / 2.0 if index % 2 == 0 else -step / 2.0)
+        seam.append((x, y0 + index * segment))
+        seam.append((x, y0 + (index + 1) * segment))
+    reach = 2.0 * (box.xlen + box.ylen + box.zlen) + 20.0
+    height = box.zlen + 2.0 * reach
+    z_mid = (box.zmin + box.zmax) / 2.0
+    right_poly = seam + [(at + reach, y1), (at + reach, y0)]
+    left_poly = seam + [(at - reach, y1), (at - reach, y0)]
+    right = extrude_polygon(right_poly, height, z=z_mid)
+    left = extrude_polygon(left_poly, height, z=z_mid)
+    return intersect(shape, left), intersect(shape, right)
+
+
+def split_sections(shape: Any, spec: Any = None, at: float = 0.0) -> tuple[Any, Any]:
+    """Split ``shape`` according to a config ``Split`` (straight or stepped)."""
+    if spec is not None:
+        at = float(getattr(spec, "x", at))
+        if str(getattr(spec, "style", "straight")) == "stepped":
+            return split_x_stepped(
+                shape,
+                at=at,
+                step=float(getattr(spec, "step", 4.0)),
+                steps=int(getattr(spec, "steps", 6)),
+            )
+    return split_x(shape, at=at)
+
+
 def bounding_box(shape: Any) -> BBox:
     """Return the bounding box of ``shape`` with min/max/length accessors.
 

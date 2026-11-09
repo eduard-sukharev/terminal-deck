@@ -27,7 +27,7 @@ Derived from the real components, not copied from the reference:
   edge must pass the keyboard's *upper* edge when open.
 - **Thickness ≈ 56 mm — GOAL** (the clamshell closed at 57). Chassis (keyboard,
   SBC, bearing clamps) plus screen lid (panel, driver, guide rods).
-- **Width ≈ 260 mm — derived**: keyboard 230.15 / panel 231 plus two side
+- **Width ≈ 266 mm — derived**: keyboard 230.15 / panel 231 plus two side
   pods (guide rod, C-channel, bearing clamp, accessary-rail pockets). It is
   not the reference's 335 mm, which is padded with decorative rails and an
   antenna.

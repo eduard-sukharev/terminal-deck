@@ -45,7 +45,7 @@ class BuildPipeline:
         self,
         config_path: str | Path = "config/default.yaml",
         layout_name: str = "compact",
-        topics: tuple[str, ...] = ("display", "keyboard", "hardware"),
+        topics: tuple[str, ...] = ("display", "keyboard", "hardware", "slide"),
         recipe_path: str | Path | None = None,
     ) -> None:
         self.config_path = Path(config_path)
@@ -96,23 +96,36 @@ class BuildPipeline:
         # slope rather than dialled in by hand, so re-measuring the board or
         # changing the slope re-sizes the standoffs with it.
         keyboard = Rp2040Keyboard(keyboard_cfg)
-        keyboard.set_plate_raise(
-            keyboard.plate_raise_for_buried(
-                part_height=rib_height(cfg.wall_thickness) + sbc.size().height,
-                part_depth=sbc.size().depth,
-                slope=cfg.deck.slope,
-                # Targets the sbc<->keyboard clearance the recipe checks
-                # (1.5mm); the two numbers differ because the clearance
-                # check is a true 3D separating-axis test (worst case over
-                # every sub-volume pair, best axis per pair) while this is a
-                # single along-Z estimate — 2.5 here reliably clears 1.5
-                # there, empirically, not by a matching derivation. 3.3 (was
-                # 2.5) pays for the SBC standing 10.3 mm further forward than
-                # rear-flush: see the SBC placement in
-                # config/layouts/clamshell.yaml.
-                gap=3.3,
+        if self.layout_name == "slider":
+            # The slider buries the RP2040 under the plate; the SBC sits in
+            # the rear band, not under the keyboard (issue #3). No slope.
+            keyboard.set_plate_raise(
+                keyboard.plate_raise_for_buried(
+                    part_height=rib_height(cfg.wall_thickness)
+                    + controller.size().height,
+                    part_depth=controller.size().depth,
+                    slope=0.0,
+                    gap=float((cfg.keyboard.controller or {}).get("z_clearance", 2.0)),
+                )
             )
-        )
+        else:
+            keyboard.set_plate_raise(
+                keyboard.plate_raise_for_buried(
+                    part_height=rib_height(cfg.wall_thickness) + sbc.size().height,
+                    part_depth=sbc.size().depth,
+                    slope=cfg.deck.slope,
+                    # Targets the sbc<->keyboard clearance the recipe checks
+                    # (1.5mm); the two numbers differ because the clearance
+                    # check is a true 3D separating-axis test (worst case over
+                    # every sub-volume pair, best axis per pair) while this is a
+                    # single along-Z estimate — 2.5 here reliably clears 1.5
+                    # there, empirically, not by a matching derivation. 3.3 (was
+                    # 2.5) pays for the SBC standing 10.3 mm further forward than
+                    # rear-flush: see the SBC placement in
+                    # config/layouts/clamshell.yaml.
+                    gap=3.3,
+                )
+            )
         driver = HdmiDriver(display_cfg)
         mini_hdmi_cfg = cfg.hardware.get("mini_hdmi_plug", {})
         return {
@@ -162,6 +175,46 @@ class BuildPipeline:
             lid_interior_height=max_height,
         )
         return report.summary()
+
+    def _run_slider_data(
+        self, config, components, placements, steps: str, ignore_validation: bool
+    ) -> None:
+        """The slider's data stage: budget, checks and the placement envelope.
+
+        The slider's CAD path is a later change; the data stage is what proves
+        the 140/56/260 budget against the real components (issue #3).
+        """
+        from assemblies.assembly import Assembly
+        from components.slide import compute_slide_budget
+        from utilities.slider_validation import run_slider_checks
+
+        assembly = Assembly(placements, config)
+        size = assembly.enclosure_size()
+        print(
+            f"[pipeline] placement envelope: {size.width:.1f} x "
+            f"{size.depth:.1f} x {size.height:.1f} mm "
+            "(component extent incl. walls; the device envelope is the slide "
+            "budget below)"
+        )
+
+        budget = compute_slide_budget(config, components)
+        print("[pipeline] slide budget:")
+        print(budget.summary())
+
+        report = run_slider_checks(budget, config, placements)
+        print("[pipeline] slider validation:")
+        print(report.summary())
+        if not report.passed and not ignore_validation:
+            raise SystemExit(
+                "[pipeline] aborted: slider validation failed "
+                "(pass --ignore-validation to inspect a rejected layout)"
+            )
+
+        if steps != "data":
+            raise NotImplementedError(
+                "the slider CAD stage is not implemented yet; run with "
+                "--steps data to stop at the data layer"
+            )
 
     def _provenance(self) -> dict:
         """Build provenance metadata describing this build.
@@ -368,6 +421,10 @@ class BuildPipeline:
             )
             for error in comp_errors:
                 print(f"  [x ] {error}")
+
+        if self.layout_name == "slider":
+            self._run_slider_data(config, components, placements, steps, ignore_validation)
+            return
 
         from assemblies.assembly import Assembly
         from case.base import Base
@@ -960,7 +1017,7 @@ def _git_rev() -> str | None:
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="cyberdeck",
-        description="Parametric clamshell cyberdeck CAD generator.",
+        description="Parametric slider cyberdeck CAD generator (the slider CAD path is in progress; the data stage is complete).",
     )
     parser.add_argument(
         "--config",

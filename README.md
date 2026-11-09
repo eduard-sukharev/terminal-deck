@@ -70,8 +70,10 @@ pip install -r requirements.txt`.
 
 The target form is a **slider** (ADR-0009): a 140 mm closed face height, a
 screen lid sliding on two guide rods over a chassis, and a 40% keyboard
-revealed by the slide. Every wide part is exported as two Sections that fit the
-220 × 220 × 256 mm build volume. The Python case code still builds the retired
-clamshell until the slider skeleton lands; the spec in `docs/form_factor.md`
-and `CONTEXT.md` is already the target. See `docs/form_factor.md`,
-`docs/adr/`, and `CONTEXT.md`.
+revealed by the slide. The **data skeleton is implemented** —
+`python main.py --layout slider --steps data` derives and validates the
+140/56/260 budget from the real components. The CAD path is the next step;
+until it lands, the clamshell case code remains the working `--steps all`
+path. Every wide part will be split into two Sections that fit the
+220 × 220 × 256 mm build volume. See `docs/form_factor.md`, `docs/adr/`, and
+`CONTEXT.md`.

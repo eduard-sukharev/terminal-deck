@@ -7,8 +7,8 @@ component, or calculated geometry — configuration is the source of truth.
 Load order
 ----------
 :func:`load_config` merges ``default.yaml`` with the requested topic files
-(``display``, ``keyboard``, ``hardware``). Topic files override defaults for
-their own section.
+(``display``, ``keyboard``, ``hardware``, ``slide``). Topic files override
+defaults for their own section.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ _TOPIC_FILES: dict[str, str] = {
     "display": "display.yaml",
     "keyboard": "keyboard.yaml",
     "hardware": "hardware.yaml",
+    "slide": "slide.yaml",
 }
 
 #: Top-level config sections that make up the ``hardware`` topic. Topic files
@@ -362,6 +363,113 @@ class Well:
 
 
 @dataclass(frozen=True)
+class SlideBearing:
+    """The purchased LM...LUU linear bushing (one per guide rod).
+
+    ``per_rod`` is part of the face-height budget: a second bearing per rod
+    puts the guide span beyond the 140 mm limit.
+    """
+
+    model: str = "LM6LUU"
+    bore: float = 6.0
+    outer_diameter: float = 12.0
+    length: float = 35.0
+    per_rod: int = 1
+
+    def __post_init__(self) -> None:
+        if min(self.bore, self.outer_diameter, self.length) <= 0:
+            raise ValueError("slide.bearing dimensions must be positive")
+        if self.per_rod < 1:
+            raise ValueError("slide.bearing.per_rod must be >= 1")
+
+
+@dataclass(frozen=True)
+class SlideRod:
+    """A steel guide rod living in the screen lid's side wall."""
+
+    diameter: float = 6.0
+    end_support: float = 3.0  # lid material beyond the rod's usable span
+
+    def __post_init__(self) -> None:
+        if self.diameter <= 0 or self.end_support < 0:
+            raise ValueError("slide.rod needs diameter > 0 and end_support >= 0")
+
+
+@dataclass(frozen=True)
+class SlideChain:
+    """Drag chain behind the screen, running along the slide axis."""
+
+    pitch: float = 10.0
+    width: float = 12.0
+    link_height: float = 6.0
+    bend_radius: float = 30.0  # must meet the cable's minimum bend radius
+
+    def __post_init__(self) -> None:
+        if min(self.pitch, self.width, self.link_height, self.bend_radius) <= 0:
+            raise ValueError("slide.chain dimensions must be positive")
+
+
+@dataclass(frozen=True)
+class SlideRail:
+    """Picatinny-compatible accessory interface: pockets only, no printed rail."""
+
+    interface: str = "picatinny"
+    nut: str = "M4"
+    pocket_depth: float = 5.0
+    pitch: float = 10.0
+
+    def __post_init__(self) -> None:
+        if self.pocket_depth <= 0 or self.pitch <= 0:
+            raise ValueError("slide.rail pocket depth/pitch must be positive")
+
+
+@dataclass(frozen=True)
+class Slide:
+    """Travel, guide and face-height budget of the slider (ADR-0009).
+
+    The closed face height is HARD and is derived, not guessed:
+    ``travel + one bearing + end support + lid bezel``. ``travel`` is the
+    keyboard's front margin plus its depth plus clearance, because the lid's
+    lower edge has to pass the keyboard's *upper* edge when open.
+    """
+
+    face_height_limit: float = 140.0
+    travel_clearance: float = 5.0
+    well_front_margin: float = 10.0
+    clamp_wall: float = 2.0
+    top_bezel: float = 2.5
+    lid_clearance: float = 1.0
+    lid_back: float = 2.0
+    lid_front: float = 2.0
+    driver_gap: float = 0.5
+    component_gap: float = 1.5
+    side_gap: float = 2.5
+    bearing: SlideBearing = field(default_factory=SlideBearing)
+    rod: SlideRod = field(default_factory=SlideRod)
+    chain: SlideChain = field(default_factory=SlideChain)
+    rail: SlideRail = field(default_factory=SlideRail)
+
+    def __post_init__(self) -> None:
+        if self.face_height_limit <= 0:
+            raise ValueError("slide.face_height_limit must be positive")
+        if self.travel_clearance < 0 or self.well_front_margin < 0:
+            raise ValueError("slide travel/front margins must be >= 0")
+        if self.clamp_wall <= 0 or self.top_bezel < 0:
+            raise ValueError("slide.clamp_wall must be positive and top_bezel >= 0")
+        if self.lid_clearance < 0 or self.lid_back <= 0 or self.lid_front <= 0:
+            raise ValueError("slide lid walls must be positive and clearance >= 0")
+        if min(self.driver_gap, self.component_gap, self.side_gap) < 0:
+            raise ValueError("slide gaps must be >= 0")
+        if self.rod.diameter > self.bearing.bore + 0.05:
+            raise ValueError(
+                "slide.rod.diameter must fit the bearing bore "
+                f"({self.rod.diameter} > {self.bearing.bore})"
+            )
+        if self.bearing.outer_diameter <= self.bearing.bore:
+            raise ValueError("slide.bearing outer diameter must exceed its bore")
+
+
+@dataclass(frozen=True)
 class Config:
     """Fully-resolved build configuration."""
 
@@ -385,6 +493,7 @@ class Config:
     seam_pin: SeamPin = field(default_factory=SeamPin)
     feet: Feet = field(default_factory=Feet)
     well: Well = field(default_factory=Well)
+    slide: Slide = field(default_factory=Slide)
     topics: tuple[str, ...] = field(default_factory=tuple)
 
     @property
@@ -428,6 +537,54 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
     cable_guard = _as_dict(raw, "cable_guard")
     screws = _as_dict(raw, "screws")
     material = _as_dict(raw, "material")
+
+    slide_raw = raw.get("slide") if isinstance(raw.get("slide"), dict) else {}
+    slide_bearing = slide_raw.get("bearing") or {}
+    slide_rod = slide_raw.get("rod") or {}
+    slide_chain = slide_raw.get("chain") or {}
+    slide_rail = slide_raw.get("rail") or {}
+    slide = Slide(
+        face_height_limit=float(slide_raw.get("face_height_limit", 140.0)),
+        travel_clearance=float(slide_raw.get("travel_clearance", 5.0)),
+        well_front_margin=float(slide_raw.get("well_front_margin", 10.0)),
+        clamp_wall=float(slide_raw.get("clamp_wall", 2.0)),
+        top_bezel=float(slide_raw.get("top_bezel", 2.5)),
+        lid_clearance=float(slide_raw.get("lid_clearance", 1.0)),
+        lid_back=float(slide_raw.get("lid_back", 2.0)),
+        lid_front=float(slide_raw.get("lid_front", 2.0)),
+        driver_gap=float(slide_raw.get("driver_gap", 0.5)),
+        component_gap=float(slide_raw.get("component_gap", 1.5)),
+        side_gap=float(slide_raw.get("side_gap", 2.5)),
+        bearing=SlideBearing(
+            model=str(slide_bearing.get("model", "LM6LUU")),
+            bore=float(slide_bearing.get("bore", 6.0)),
+            outer_diameter=float(slide_bearing.get("outer_diameter", 12.0)),
+            length=float(slide_bearing.get("length", 35.0)),
+            per_rod=int(slide_bearing.get("per_rod", 1)),
+        ),
+        rod=SlideRod(
+            diameter=float(slide_rod.get("diameter", 6.0)),
+            end_support=float(slide_rod.get("end_support", 3.0)),
+        ),
+        chain=SlideChain(
+            pitch=float(slide_chain.get("pitch", 10.0)),
+            width=float(slide_chain.get("width", 12.0)),
+            link_height=float(slide_chain.get("link_height", 6.0)),
+            bend_radius=float(slide_chain.get("bend_radius", 30.0)),
+        ),
+        rail=SlideRail(
+            interface=str(slide_rail.get("interface", "picatinny")),
+            nut=str(slide_rail.get("nut", "M4")),
+            pocket_depth=float(slide_rail.get("pocket_depth", 5.0)),
+            pitch=float(slide_rail.get("pitch", 10.0)),
+        ),
+    )
+    wall_thickness = float(wall.get("thickness", 2.0))
+    if min(slide.clamp_wall, slide.lid_back, slide.lid_front) < wall_thickness:
+        raise ValueError(
+            "slide walls (clamp_wall, lid_back, lid_front) must be at least "
+            f"wall.thickness ({wall_thickness} mm)"
+        )
 
     # Hardware sections are top-level keys in the topic files (``sbc:``,
     # ``driver_board:``, ...). Collect them into ``config.hardware``.
@@ -494,6 +651,7 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
         seam_pin=SeamPin(**{k: float(v) for k, v in (raw.get("seam_pin") or {}).items()}),
         feet=Feet(**{k: float(v) for k, v in (raw.get("feet") or {}).items()}),
         well=Well(**{k: float(v) for k, v in (raw.get("well") or {}).items()}),
+        slide=slide,
         topics=topics,
     )
     return config
@@ -501,7 +659,7 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
 
 def load_config(
     default_path: Path | str | None = None,
-    topics: tuple[str, ...] = ("display", "keyboard", "hardware"),
+    topics: tuple[str, ...] = ("display", "keyboard", "hardware", "slide"),
 ) -> Config:
     """Load and merge configuration from disk.
 

@@ -26,7 +26,7 @@ interface is functional (accessories) and is not part of the printed shell.
 |---|---|---|
 | Face height (closed) | **140 mm, HARD** | slide travel + bearing + lid bezel |
 | Thickness | ≈ 56 mm, GOAL | keyboard/SBC chassis + screen lid |
-| Width | ≈ 260 mm, derived | keyboard 230.15 / panel 231 + two side pods |
+| Width | ≈ 266 mm, derived | keyboard 230.15 / panel 231 + two side pods |
 
 The face is the plane carrying the keyboard and the screen. **Face height** is
 the extent along the slide; **thickness** is the extent normal to the face.

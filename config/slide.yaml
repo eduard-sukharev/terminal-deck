@@ -1,0 +1,43 @@
+# Slide subsystem: purchased linear guide, travel and the face-height budget.
+# All dimensions in millimeters. The device is a slider (ADR-0009): the screen
+# lid runs on two guide rods inside its side walls; one LM...LUU bearing per
+# rod is clamped in a Bearing clamp standing on the chassis deck behind the
+# keyboard. The face height is the binding constraint, so every value here is
+# checked against `face_height_limit` by the data layer.
+
+slide:
+  face_height_limit: 140.0   # HARD closed face height (the product target)
+  travel_clearance: 5.0      # gap between the lid's open edge and the keyboard's upper edge
+  well_front_margin: 10.0    # chassis outer front face -> keyboard plate front edge
+                             # (TODO: derive from the Tray wall + Well once the case exists)
+  clamp_wall: 2.0            # wall around the linear bearing in its clamp
+  top_bezel: 2.5             # lid face above the display module
+  lid_clearance: 1.0         # gap between the keycaps and the lid's flat back
+  lid_back: 2.0              # flat back panel wall
+  lid_front: 2.0             # inverted-tray front wall (bezel)
+  driver_gap: 0.5            # PCB backside stand-off from the panel
+  component_gap: 1.5         # minimum air gap between a buried part and the keyboard
+  side_gap: 2.5              # minimum gap between the SBC and the hub
+
+  bearing:                   # LM...LUU long linear bushing (one per rod)
+    model: LM6LUU
+    bore: 6.0
+    outer_diameter: 12.0
+    length: 35.0
+    per_rod: 1               # a second bearing per rod breaks the 140 mm budget
+
+  rod:
+    diameter: 6.0
+    end_support: 3.0         # lid material beyond the rod's usable span
+
+  chain:                     # drag chain behind the screen, along the slide
+    pitch: 10.0
+    width: 12.0
+    link_height: 6.0
+    bend_radius: 30.0        # HDMI minimum bend radius (routing.cable_routing)
+
+  rail:                      # picatinny interface: pockets only, no rails printed
+    interface: picatinny
+    nut: M4
+    pocket_depth: 5.0
+    pitch: 10.0

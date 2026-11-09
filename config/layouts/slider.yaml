@@ -1,0 +1,118 @@
+# Slider layout (ADR-0009). Declared as constraints; the recipe itself places
+# the set in the chassis-centred frame (the keyboard is at the chassis front
+# plus the Well margin), so no post-pass shift is needed.
+#
+# The keyboard is the datum. The chassis front is `well_front_margin` before
+# its front edge; the rear band holds the SBC and the USB hub between the two
+# Bearing clamps; the display + driver sit in the lid above the rear band.
+# The face is flat — no constraint tilts the keyboard.
+#
+# Wall vocabulary: the resolver's "front" is +Y and "rear" is -Y. The screen
+# end of the slider is +Y, so the hub's port strip faces the +Y wall.
+
+constraints:
+  # ── Enclosure hint. Width = display + two side pods (clamp + outer wall +
+  #    shell clearance); depth = chassis height (front margin + keyboard +
+  #    clamp run + wall). The hint only pins the wall-relative resolvers.
+  - kind: target_envelope
+    width: "{display.width} + 2 * ({config.slide.bearing.outer_diameter} + 2 * {config.slide.clamp_wall} + {config.wall_thickness} + {config.clearance.shell})"
+    depth: "{config.slide.well_front_margin} + {keyboard.depth} + {config.slide.travel_clearance} + {config.slide.bearing.per_rod} * {config.slide.bearing.length} + ({config.slide.bearing.per_rod} - 1) * {config.slide.clamp_wall} + {config.slide.clamp_wall} + {config.wall_thickness}"
+
+  # ── Keyboard: the datum, chassis-centred on Y. ────────────────────────
+  - kind: fixed_position
+    subject: keyboard
+    x: 0.0
+    y: "-( {config.slide.well_front_margin} + {keyboard.depth} + {config.slide.travel_clearance} + {config.slide.bearing.per_rod} * {config.slide.bearing.length} + ({config.slide.bearing.per_rod} - 1) * {config.slide.clamp_wall} + {config.slide.clamp_wall} + {config.wall_thickness} ) / 2 + {config.slide.well_front_margin} + {keyboard.depth} / 2"
+    z: 0.0
+    rotation: 0.0
+
+  # ── RP2040 controller: under the keyboard plate, in the chassis thickness.
+  - kind: relative_placement
+    subject: controller
+    target: keyboard
+    offset_x: "-({keyboard.width} / 4)"
+    offset_y: 0.0
+    rotation: 0.0
+  - kind: fixed_position
+    subject: controller
+    z: "{config.wall_thickness}"
+
+  # ── USB hub: rear band, port strip to the +Y (screen-end) wall. ────────
+  #    The east USB-A is not exposed: the right side pod (guide rod + Bearing
+  #    clamp) occupies that wall, so the hub sits between the clamps.
+  - kind: relative_placement
+    subject: usb_breakout
+    target: keyboard
+    offset_x: 0.0
+    offset_y: "{keyboard.depth} / 2 + ({config.slide.travel_clearance} + {config.slide.bearing.per_rod} * {config.slide.bearing.length} + ({config.slide.bearing.per_rod} - 1) * {config.slide.clamp_wall} + {config.slide.clamp_wall}) / 2"
+    rotation: 0.0
+  - kind: fixed_position
+    subject: usb_breakout
+    z: "{config.wall_thickness}"
+
+  # ── SBC: in the rear band beside the hub, left of it; the pair is centred
+  #    between the clamps so neither reaches a side pod. ──────────────────
+  - kind: relative_placement
+    subject: sbc
+    target: usb_breakout
+    offset_x: "-({usb_breakout.width} / 2 + {config.slide.side_gap} + {sbc.width} / 2)"
+    offset_y: 0.0
+    rotation: 0.0
+  - kind: fixed_position
+    subject: sbc
+    z: "{config.wall_thickness}"
+  - kind: centered_group
+    subjects: ["sbc", "usb_breakout"]
+    axes: ["x"]
+    relative_to: keyboard
+
+  # ── Display: in the lid, its top edge one top bezel below the lid's top.
+  #    offset_y assumes the guide span is the binding lid length (true for the
+  #    8.8" panel + JD40); offset_z clears the keycaps (the lid's flat back),
+  #    that back wall, and the flipped driver behind the panel.
+  - kind: relative_placement
+    subject: display
+    target: keyboard
+    from_top: true
+    offset_y: "{keyboard.depth} / 2 + {config.slide.travel_clearance} + {config.slide.bearing.per_rod} * {config.slide.bearing.length} + ({config.slide.bearing.per_rod} - 1) * {config.slide.clamp_wall} + 2 * {config.slide.rod.end_support} - {display.depth} / 2"
+    offset_z: "{config.slide.lid_clearance} + {config.slide.lid_back} + {config.slide.driver_gap} + {driver.height}"
+
+  # ── Driver board flat against the panel back (flipped), rotated 180° so
+  #    its FPC slot faces the panel ribbon; the offset comes from the
+  #    component's own reference_origin(). ────────────────────────────────
+  - kind: relative_placement
+    subject: driver
+    target: display
+    use_reference_origin: true
+    offset_z: "-{config.slide.driver_gap}"
+    rotation: 180.0
+    flip: true
+
+  # ── Checks. ────────────────────────────────────────────────────────────
+  - kind: port_access
+    subject: usb_breakout
+    connector_type: USB-A
+    wall: front
+
+  - kind: clearance
+    subject: controller
+    target: keyboard
+    gap: "{config.slide.component_gap}"
+  - kind: clearance
+    subject: sbc
+    target: keyboard
+    gap: "{config.slide.component_gap}"
+  - kind: clearance
+    subject: usb_breakout
+    target: keyboard
+    gap: "{config.slide.component_gap}"
+  - kind: clearance
+    subject: sbc
+    target: usb_breakout
+    gap: "{config.slide.side_gap}"
+    axis: x
+  - kind: clearance
+    subject: display
+    target: keyboard
+    gap: "{config.slide.lid_clearance}"
+    axis: z

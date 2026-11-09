@@ -11,9 +11,11 @@ decorative elements. Priorities: robustness, serviceability, printability,
 parametricity, reusability.
 
 > **Migration status.** `docs/form_factor.md`, `CONTEXT.md` and ADR-0009 define
-> the slider. The Python case code still builds the retired clamshell until the
-> slider skeleton lands (next step); the target names below are what that
-> skeleton implements. Do not add new clamshell features.
+> the slider. The **data skeleton is implemented**: `--layout slider --steps
+> data` resolves the slider layout, the slide budget (140/56/260) and the
+> slider validations. The CAD path (`--steps all`) and the clamshell removal
+> are the next change; until then the clamshell stays the working CAD path.
+> Do not add new clamshell features.
 
 ## Build volume
 

@@ -45,7 +45,7 @@ RENDER_AZIM ?= -90
 TARGETS  ?= all
 IGNORE_VALIDATION ?=
 
-.PHONY: env env-remove render render_svg render_stl verify data all build test check clean display base base_bottom base_top lid lid_shell lid_bezel keyboard_plate hinge assembly assembly_opened components
+.PHONY: env env-remove render render_svg render_stl verify data data-slider all build test check clean display base base_bottom base_top lid lid_shell lid_bezel keyboard_plate hinge assembly assembly_opened components
 
 ifneq ($(strip $(IGNORE_VALIDATION)),)
 IGNORE_VALIDATION_FLAG := --ignore-validation
@@ -71,6 +71,11 @@ data build test check render_svg render_stl: env
 
 data:
 	$(PYTHON) $(MAIN) --config $(CONFIG) --layout $(LAYOUT) --steps data $(IGNORE_VALIDATION_FLAG)
+
+# Slider data stage: derives and validates the 140/56/260 budget (issue #3).
+# `data` still defaults to the clamshell until the slider CAD path lands.
+data-slider:
+	$(PYTHON) $(MAIN) --config $(CONFIG) --layout slider --steps data $(IGNORE_VALIDATION_FLAG)
 
 build:
 	$(PYTHON) $(MAIN) --config $(CONFIG) --layout $(LAYOUT) --steps all --targets $(TARGETS) $(IGNORE_VALIDATION_FLAG)

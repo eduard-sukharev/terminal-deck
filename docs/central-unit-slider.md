@@ -44,7 +44,7 @@ the envelope from the components:
 
 | Dimension | Reference | Project |
 |---|---|---|
-| Width | 334.8 | ≈ 260 (keyboard/panel + side pods) |
+| Width | 334.8 | ≈ 266 (keyboard/panel + side pods) |
 | Thickness | 80.6 | ≈ 56 (GOAL) |
 | Face height (closed) | 226.4 | **140 (HARD)** |
 

@@ -11,11 +11,13 @@ decorative elements. Priorities: robustness, serviceability, printability,
 parametricity, reusability.
 
 > **Migration status.** `docs/form_factor.md`, `CONTEXT.md` and ADR-0009 define
-> the slider. The **data skeleton is implemented**: `--layout slider --steps
-> data` resolves the slider layout, the slide budget (140/56/260) and the
-> slider validations. The CAD path (`--steps all`) and the clamshell removal
-> are the next change; until then the clamshell stays the working CAD path.
-> Do not add new clamshell features.
+> the slider. The **data skeleton and the first-generation CAD shell are
+> implemented**: `--layout slider --steps data` derives the budget, and
+> `make slider` (`--steps all`) builds and exports the chassis, screen lid,
+> guide hardware and assembly, split into two Sections at x=0. Stepped
+> Seams/lugs, vents/connector cutouts and the clamshell removal are the next
+> change; until then the clamshell remains the default and the working
+> clamshell CAD path. Do not add new clamshell features.
 
 ## Build volume
 
@@ -43,6 +45,8 @@ boss design, build-volume checks).
 
 ```bash
 make data                    # data layer only (config → components → layout → validation)
+make data-slider             # slider data stage (budget + slider checks)
+make slider                  # slider CAD + exports (first-generation shell)
 make all                     # full CAD + exports (STEP/STL/SVG/glTF to generated/)
 make test                    # pytest
 make check                   # py_compile all modules (run after `make data`)
@@ -66,35 +70,24 @@ chassis and screen lid.
 segfault on a chamfer, so `cad_helpers` runs each attempt in a child process
 (`utilities/_cad_worker.py`); a failing edge is skipped with a SOFT warning.
 
-**Selective build targets** (`--targets`, comma-separated), target set:
+**Selective build targets** (`--targets`, comma-separated), implemented set:
 
-- `assembly` — full union of all placements
-- `chassis` — combined chassis: chassis_tray + keyboard + chassis_deck
-- `chassis_tray` — floor, walls, ribs, vents, connector cutouts, Parting plane
-- `chassis_deck` — top surface: keyboard Well, Bearing clamps, Rear band
-- `screen_lid` — combined screen lid: bezel + display + back panel
-- `screen_lid_bezel` — inverted-tray front with the glass opening
-- `screen_lid_back` — flat back panel with the guide-rod C-channels
-- `keyboard_plate` — the switch plate
-- `slide` — guide rods, linear bearings, Bearing clamps, drag-chain anchors
-- `display` — LCD panel + HDMI driver combined (the sub-assembly, fast)
+- `assembly` — chassis + screen lid + guide hardware + components
+- `chassis` — chassis shell + keyboard, SBC, hub, controller
+- `chassis_left` / `chassis_right` — printable chassis Sections (x=0)
+- `screen_lid` — lid shell + display + driver
+- `screen_lid_left` / `screen_lid_right` — printable lid Sections
+- `slide` — two guide rods + two LM…LUU bearings
+- `keyboard_plate` — the switch plate; `keyboard_plate_left/right` — its Sections
+- `display` — LCD panel + HDMI driver combined
 - `components` — all per-component debug STLs
-- `comp:<role>` — a single component's raw STL (e.g. `comp:driver`, `comp:display`)
+- `comp:<role>` — a single component's raw STL (e.g. `comp:driver`)
 - `all` — every target above (default)
 
-Every wide part is split into **two** Sections along X and exported as Sections
-alongside the whole part (ADR 0003, superseding 0001): `<part>_left` /
-`<part>_right` for `chassis_tray`, `chassis_deck`, `screen_lid_bezel`,
-`screen_lid_back`, `keyboard_plate`. Seams come from the per-part `split:`
-section of `config/default.yaml` (`sections`, `x`, `style`, `step`, `steps`) and
-the run fails if a Section is disconnected, doesn't rejoin, exceeds the build
-volume or has no flat bed face. Naming a Section on its own (e.g.
-`--targets chassis_tray_left`) exports only that Section; naming the part or a
-bucket containing it exports all of them.
-Makefile convenience targets: `make display`, `make chassis`, `make chassis_tray`,
-`make chassis_deck`, `make screen_lid`, `make screen_lid_bezel`,
-`make screen_lid_back`, `make slide`, `make assembly`, `make components`,
-`make build TARGETS=...`.
+Every wide part is exported whole for reference and split into **two**
+Sections at x=0 for printing (ADR 0003): the Sections must fit
+220 × 220 × 256 mm or the build fails. Stepped Seams, Seam lugs and the
+tray/deck and bezel/back sub-parts are the next refinement.
 
 ## Architecture
 
@@ -110,17 +103,17 @@ intuition. Wire-up lives in `main.py` (`BuildPipeline`, `run()`).
   `routing/cable_routing.py`, and the `keyboard/` package (KLE → layout →
   switch/stabilizer libraries → plate geometry model + its own validation).
 - **CAD generation (required build123d):** `Assembly.build()` unions component
-  solids at their placements; `case.chassis.Chassis.build_tray()` and
-  `build_deck()` produce the Tray (floor, walls, bosses, ribs, vents, cutouts,
-  Parting plane) and the Deck (keyboard Well, Rear band, Bearing clamps);
-  `case.chassis_fastening.py` holds their CAD-free fastening data (Parting
-  plane, Deck columns, Seam bands/lugs, bearing-clamp seats);
-  `case.screen_lid.ScreenLid.build_bezel()` and `build_back()` produce the
-  inverted-tray front (glass opening, panel and driver in the tray) and the flat
-  back panel (guide-rod C-channels); `components/slide.py` describes the two
-  LM…LUU guide rods, their bearings and the drag chain from `config/slide.yaml`
-  (rod length, bearing size, clamp, travel, channel); `geometry/*` hold the
-  primitives.
+  solids at their placements; `case.slider_frame.SliderFrame` derives the
+  world-frame dimensions from the layout + budget; `case.chassis.Chassis.build()`
+  produces the Tray/Deck shell with the keyboard Well and the two Bearing
+  clamps (with the bearing bores), and `sections()` splits it at x=0;
+  `case.screen_lid.ScreenLid.build()` produces the inverted-tray front with the
+  glass opening, the flat back panel and the guide-rod C-channels, and
+  `sections()` splits it; `components/slide.py` also builds the purchased
+  `build_guide_rod()` / `build_linear_bearing()` solids (its data model and the
+  budget stay CAD-free); `geometry/*` hold the primitives. Stepped Seams/lugs,
+  vents, connector cutouts and the tray/deck · bezel/back sub-parts are the
+  next refinement.
 - `utilities/cad_helpers.py` is the **only** CAD adapter (build123d); it imports
   lazily so the data layer stays importable without a CAD library. Geometry
   modules must go through it, not `import build123d` directly.

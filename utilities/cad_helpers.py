@@ -427,6 +427,23 @@ def make_compound(shapes: list[Any]) -> Any:
     return b3d.Compound(solids) if solids else empty_solid()
 
 
+def split_x(shape: Any, at: float = 0.0) -> tuple[Any, Any]:
+    """Split ``shape`` into the parts with x <= at and x >= at.
+
+    The two halves are exact intersections with half-space slabs, so their
+    volumes add back to the original (a butt joint with no material lost).
+    Used to turn a part into its printable Sections.
+    """
+    box = bounding_box(shape)
+    reach = 2.0 * (box.xlen + box.ylen + box.zlen) + 20.0
+    y_mid = (box.ymin + box.ymax) / 2.0
+    z_mid = (box.zmin + box.zmax) / 2.0
+    size = box_centered(reach, 2.0 * reach, 2.0 * reach)
+    left = translate(size, at - reach / 2.0, y_mid, z_mid)
+    right = translate(size, at + reach / 2.0, y_mid, z_mid)
+    return intersect(shape, left), intersect(shape, right)
+
+
 def bounding_box(shape: Any) -> BBox:
     """Return the bounding box of ``shape`` with min/max/length accessors.
 

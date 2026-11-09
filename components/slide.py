@@ -181,4 +181,27 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
     )
 
 
-__all__ = ["SlideBudget", "compute_slide_budget"]
+def build_guide_rod(diameter: float, length: float):
+    """A steel guide rod as a cylinder along Y, centered on the origin."""
+    from utilities import cad_helpers as ch
+
+    ch.require_cad()
+    return ch.rotate_x(ch.cylinder_centered(diameter, length), 90.0)
+
+
+def build_linear_bearing(outer_diameter: float, bore: float, length: float):
+    """An LM...LUU bushing as a hollow cylinder along Y, centered on the origin."""
+    from utilities import cad_helpers as ch
+
+    ch.require_cad()
+    outer = build_guide_rod(outer_diameter, length)
+    hole = ch.rotate_x(ch.cylinder_centered(bore, length + 2.0), 90.0)
+    return ch.cut(outer, hole)
+
+
+__all__ = [
+    "SlideBudget",
+    "build_guide_rod",
+    "build_linear_bearing",
+    "compute_slide_budget",
+]

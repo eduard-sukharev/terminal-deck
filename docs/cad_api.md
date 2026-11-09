@@ -31,10 +31,10 @@ load configuration -> load components -> place layout -> validate placement
 
 | Method | Consumes | Produces |
 |--------|----------|----------|
-| `Chassis.build_tray()` | placements, config | chassis floor + walls/bosses/ribs/vents/cutouts |
-| `Chassis.build_deck()` | placements, config | Deck: keyboard Well, Bearing clamps, Rear band |
-| `ScreenLid.build_bezel()` | display, config | inverted-tray front + glass opening |
-| `ScreenLid.build_back()` | display, config | flat back panel + guide-rod C-channels |
+| `Chassis.build()` | config, frame | chassis shell: Tray + Deck, keyboard Well, Bearing clamps |
+| `Chassis.sections()` | — | left/right printable Sections |
+| `ScreenLid.build()` | config, frame | inverted-tray front, glass opening, flat back, guide channels |
+| `ScreenLid.sections()` | — | left/right printable Sections |
 
 ### Components (`components/`)
 

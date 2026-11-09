@@ -35,6 +35,10 @@ COMPONENT_COLORS: dict[str, Color] = {
     "section_center": (0.95, 0.80, 0.55, 1.0),  # the Seams read in a review render
     "section_right": (0.70, 0.88, 0.66, 1.0),
     "case": (0.72, 0.73, 0.76, 0.55),        # translucent shell grey
+    "chassis": (0.55, 0.65, 0.78, 0.55),     # slider chassis (translucent)
+    "screen_lid": (0.78, 0.72, 0.55, 0.60),  # slider lid (translucent)
+    "guide_rod": (0.85, 0.86, 0.88, 1.0),    # steel guide rods
+    "linear_bearing": (0.45, 0.47, 0.50, 1.0),  # LM...LUU bushings
 }
 
 DEFAULT_COLOR: Color = (0.6, 0.6, 0.6, 1.0)

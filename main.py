@@ -177,12 +177,18 @@ class BuildPipeline:
         return report.summary()
 
     def _run_slider_data(
-        self, config, components, placements, steps: str, ignore_validation: bool
+        self,
+        config,
+        components,
+        placements,
+        steps: str,
+        targets: str,
+        ignore_validation: bool,
     ) -> None:
         """The slider's data stage: budget, checks and the placement envelope.
 
-        The slider's CAD path is a later change; the data stage is what proves
-        the 140/56/260 budget against the real components (issue #3).
+        With ``steps="all"`` it continues into the first-generation CAD shell
+        and its exports (issue #3).
         """
         from assemblies.assembly import Assembly
         from components.slide import compute_slide_budget
@@ -210,11 +216,197 @@ class BuildPipeline:
                 "(pass --ignore-validation to inspect a rejected layout)"
             )
 
-        if steps != "data":
-            raise NotImplementedError(
-                "the slider CAD stage is not implemented yet; run with "
-                "--steps data to stop at the data layer"
+        if steps == "data":
+            return
+        self._run_slider_cad(
+            config, components, placements, budget, targets, ignore_validation
+        )
+
+    def _run_slider_cad(
+        self,
+        config,
+        components,
+        placements,
+        budget,
+        targets: str,
+        ignore_validation: bool,
+    ) -> None:
+        """Build and export the first-generation slider case (issue #3)."""
+        from assemblies.assembly import Assembly, select_placements
+        from case.chassis import Chassis
+        from case.screen_lid import ScreenLid
+        from case.slider_frame import SliderFrame
+        from components.slide import build_guide_rod, build_linear_bearing
+        from exports import EXPORTERS
+        from utilities import cad_helpers as ch
+
+        ch.require_cad()
+        frame = SliderFrame.from_data(config, budget, components, placements)
+        chassis_shell = Chassis(config, frame).build()
+        lid_shell = ScreenLid(config, frame).build()
+
+        rods = [
+            ch.translate(
+                build_guide_rod(config.slide.rod.diameter, frame.rod_length),
+                side * frame.rod_x,
+                frame.lid_y_center,
+                frame.rod_z,
             )
+            for side in (-1, 1)
+        ]
+        bearings = [
+            ch.translate(
+                build_linear_bearing(
+                    frame.bearing_outer, frame.bearing_bore, frame.bearing_length
+                ),
+                side * frame.rod_x,
+                frame.clamp_center_y,
+                frame.rod_z,
+            )
+            for side in (-1, 1)
+        ]
+        rods_compound = ch.make_compound(rods)
+        bearings_compound = ch.make_compound(bearings)
+        slide = ch.make_compound(rods + bearings)
+
+        assembly = Assembly(placements, config)
+        role_map = {id(component): role for role, component in components.items()}
+        chassis_roles = ("keyboard", "sbc", "usb_breakout", "controller")
+        lid_roles = ("display", "driver")
+        chassis_parts = select_placements(
+            placements, {components[r] for r in chassis_roles if r in components}
+        )
+        lid_parts = select_placements(
+            placements, {components[r] for r in lid_roles if r in components}
+        )
+        chassis_with_parts = ch.make_compound(
+            [chassis_shell] + [assembly.build_subset([p]) for p in chassis_parts]
+        )
+        lid_with_parts = ch.make_compound(
+            [lid_shell] + [assembly.build_subset([p]) for p in lid_parts]
+        )
+        assembly_solid = ch.make_compound(
+            [chassis_with_parts, lid_with_parts, slide]
+        )
+
+        plate = components["keyboard"].build_plate()
+        chassis_left, chassis_right = ch.split_x(chassis_shell)
+        lid_left, lid_right = ch.split_x(lid_shell)
+        plate_left, plate_right = ch.split_x(plate)
+
+        parts = {
+            "assembly": assembly_solid,
+            "chassis": chassis_with_parts,
+            "chassis_left": chassis_left,
+            "chassis_right": chassis_right,
+            "screen_lid": lid_with_parts,
+            "screen_lid_left": lid_left,
+            "screen_lid_right": lid_right,
+            "slide": slide,
+            "keyboard_plate": plate,
+            "keyboard_plate_left": plate_left,
+            "keyboard_plate_right": plate_right,
+            "display": ch.make_compound(
+                [assembly.build_subset([p]) for p in lid_parts]
+            ),
+        }
+
+        tokens = [token.strip() for token in targets.split(",") if token.strip()]
+        if "all" in tokens:
+            tokens = list(parts) + ["components"]
+        selected: dict[str, object] = {}
+        for token in tokens:
+            if token == "components":
+                for role, component in components.items():
+                    try:
+                        selected[f"component_{role}"] = component.build()
+                    except NotImplementedError:
+                        continue
+            elif token.startswith("comp:"):
+                role = token.split(":", 1)[1]
+                if role not in components:
+                    raise ValueError(f"unknown component role {role!r}")
+                selected[f"component_{role}"] = components[role].build()
+            elif token in parts:
+                selected[token] = parts[token]
+            else:
+                raise ValueError(
+                    f"unknown slider target {token!r}; expected one of "
+                    f"{sorted(parts)} or 'components'"
+                )
+
+        # Sections must fit the printer; the whole part is exported for
+        # reference but is not printable across X.
+        printable = (
+            "chassis_left",
+            "chassis_right",
+            "screen_lid_left",
+            "screen_lid_right",
+            "keyboard_plate_left",
+            "keyboard_plate_right",
+        )
+        volume = (220.0, 220.0, 256.0)
+        failures = []
+        for name in printable:
+            if name not in selected:
+                continue
+            x, y, z = ch.bounding_box_mm(selected[name])
+            ok = x <= volume[0] + 1e-6 and y <= volume[1] + 1e-6 and z <= volume[2] + 1e-6
+            print(
+                f"[pipeline] {name}: {x:.1f} x {y:.1f} x {z:.1f} mm "
+                f"{'fits' if ok else 'EXCEEDS'} the build volume"
+            )
+            if not ok:
+                failures.append(name)
+        if failures and not ignore_validation:
+            raise SystemExit(
+                f"[pipeline] aborted: Sections exceed the build volume: {failures}"
+            )
+
+        gltf_assembly = assembly.build_colored(
+            placements=placements,
+            role_map=role_map,
+            extra_parts=[
+                ("chassis", chassis_shell),
+                ("screen_lid", lid_shell),
+                ("guide_rod", rods_compound),
+                ("linear_bearing", bearings_compound),
+            ],
+        )
+        gltf_chassis = assembly.build_colored(
+            placements=chassis_parts,
+            role_map=role_map,
+            extra_parts=[("chassis", chassis_shell)],
+        )
+        gltf_lid = assembly.build_colored(
+            placements=lid_parts,
+            role_map=role_map,
+            extra_parts=[
+                ("screen_lid", lid_shell),
+                ("guide_rod", rods_compound),
+                ("linear_bearing", bearings_compound),
+            ],
+        )
+        gltf_special = {
+            "assembly": gltf_assembly,
+            "chassis": gltf_chassis,
+            "screen_lid": gltf_lid,
+        }
+
+        provenance = self._provenance()
+        for name, solid in selected.items():
+            x, y, z = ch.bounding_box_mm(solid)
+            print(
+                f"[pipeline] {name}: bbox {x:.1f} x {y:.1f} x {z:.1f} mm, "
+                f"volume {ch.volume_mm3(solid):.0f} mm^3"
+            )
+            for fmt in ("step", "stl", "gltf"):
+                exporter = EXPORTERS[fmt]()
+                exporter.metadata = provenance
+                path = exporter.output_path(f"cyberdeck_{name}")
+                obj = gltf_special.get(name, solid) if fmt == "gltf" else solid
+                exporter.export(obj, path)
+                print(f"[pipeline] exported {name} -> {path}")
 
     def _provenance(self) -> dict:
         """Build provenance metadata describing this build.
@@ -423,7 +615,9 @@ class BuildPipeline:
                 print(f"  [x ] {error}")
 
         if self.layout_name == "slider":
-            self._run_slider_data(config, components, placements, steps, ignore_validation)
+            self._run_slider_data(
+                config, components, placements, steps, targets, ignore_validation
+            )
             return
 
         from assemblies.assembly import Assembly

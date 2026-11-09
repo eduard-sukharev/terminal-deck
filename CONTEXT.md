@@ -111,3 +111,12 @@ part of its sleeve, so its bore may sit closer to the wall than a free boss's.
 size: SBC, USB hub, battery cells, display panel, display driver, controller,
 keyboard. Distinct from case parts (Tray, Deck, Lid shell, Bezel, hinge),
 which are generated around them.
+
+## Central-unit slider (experimental stream)
+
+A second, separate form-factor experiment: a Vaio-UX-style **slider** whose
+screen lid slides over the chassis to reveal a 40% keyboard, built in
+SolidCraft on its own branch (ADR 0008) and not part of the clamshell
+pipeline. Its terms (Chassis, Screen lid, Closed Z, Slide travel, Overlap
+model A) are local to that stream and glossed in
+`docs/central-unit-slider.md`; they do not replace the clamshell terms above.

@@ -144,9 +144,8 @@ config/layouts/slider.yaml      the recipe (the only one)
   → layouts/constraints.py      constraint types (EdgeAlignment, CenteredOn,
                                  FixedPosition, CenteredGroup, Clearance,
                                  ZStack, SharePlane, RegionConstraint,
-                                 CablePath, FootprintMatch, DeckMount,
-                                 RelativePlacement, TargetEnvelope) — pure
-                                 data, no logic
+                                 CablePath, FootprintMatch, RelativePlacement,
+                                 TargetEnvelope) — pure data, no logic
   → layouts/composer.py         LayoutComposer resolves each constraint in
                                  recipe order via a registered resolver,
                                  accumulates placements, and produces a
@@ -203,11 +202,12 @@ is checked by `keyboard/validation.py`.
 layout. `utilities/config_loader.py` maps YAML to frozen dataclasses; adding
 a YAML key usually requires adding a field to the matching dataclass.
 
-The face is flat — `config.deck.slope` and the clamshell's sloped-deck
-machinery are gone. `config.slide` holds the purchased linear guide (rod
-diameter/length, bearing model, clamp, travel margin, chain pitch/width/bend
-radius); the build checks the chosen combination against the 140 mm face-height
-budget.
+The face is flat — `config.deck.slope`, `Placement.tilt_x`, the `DeckMount`
+constraint and `deck_level_at` are removed with the clamshell: the slider has
+no keyboard slope and no mechanism for one. `config.slide` holds the purchased
+linear guide (rod diameter/length, bearing model, clamp, travel margin, chain
+pitch/width/bend radius); the build checks the chosen combination against the
+140 mm face-height budget.
 
 Gotchas:
 
@@ -216,8 +216,12 @@ Gotchas:
   offset + depth + open clearance (≈ 93), not the keyboard depth (77.75). One
   bearing per rod; a second one breaks the budget.
 - The keyboard is the tallest content along the face: its Well position sets
-  the travel. The SBC and controller sit **under** the raised keyboard plate,
-  in the chassis thickness; they must not add face height.
+  the travel. The RP2040 controller sits under the keyboard plate; the SBC and
+  the USB hub sit in the Rear band behind the keyboard. Neither adds face
+  height beyond the band.
+- The face is flat and the keyboard has no slope: do not add `tilt_x`, a
+  `deck.slope`-style angle or a tilting mount. The slide is pure +Y
+  translation.
 - The lid's flat back slides over the keycaps: the Well sets that clearance.
   A keycap standing above the Deck is a collision over the whole travel.
 - The guide rods live in the lid's side walls (C-channel); the Bearing clamps

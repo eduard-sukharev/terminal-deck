@@ -81,7 +81,9 @@ part, not part of the enclosure build.
 ## Chassis
 
 The chassis is the half that stays on the table. It slides under the lid, so
-its top (Deck) is a flat keyboard surface, not a lid.
+its top (Deck) is a flat keyboard surface, not a lid. **The face is flat: the
+keyboard has no slope, and neither the config nor the build has a mechanism
+to tilt it.**
 
 * **Tray + Deck** at a horizontal Parting plane (ADR-0003): Tray = floor,
   walls, ribs, vents, connector cutouts; Deck = the top surface with the
@@ -95,18 +97,18 @@ its top (Deck) is a flat keyboard surface, not a lid.
   Deck into the lid's side channel. They are the load-bearing interface
   between the halves.
 * **Rear band** — the strip of Deck behind the keyboard, between and around
-  the Bearing Clamps, carries the USB hub (the externally reachable I/O) and
-  the cable-chain anchor. It is not used for the battery.
+  the Bearing Clamps, carries the **SBC** and the **USB hub** (the externally
+  reachable I/O) plus the cable-chain anchor. It is not used for the battery.
 * **Battery** — external, on the accessory rail (as the reference). An
   internal pack, ideally a small one that keeps the SBC alive while external
   packs are swapped, is a later option only if the envelope allows.
 * **Accessory rails** — picatinny interface, **not modelled**: the side walls
   get square-nut pockets printed in (nuts inserted during a print pause), so
   user-supplied rail sections bolt on. No rail bars in the shell.
-* **Well contents** — the SBC and the keyboard controller sit under the
-  raised keyboard plate, in the chassis thickness; they do not add face
-  height. The board's connectors are internal (the hub is the external
-  surface).
+* **Well contents** — the keyboard plate and the **RP2040 controller** sit in
+  the Well; the controller is under the plate, in the chassis thickness. The
+  SBC is in the Rear band, not here. The hub is the only externally reachable
+  I/O surface.
 
 ## Screen lid
 

@@ -24,7 +24,8 @@ _Avoid:_ "Lid" alone (ambiguous with the retired clamshell Lid), "cover",
 "screen".
 
 **Face** — The plane carrying the keyboard and the screen. The device is
-modelled face-up.
+modelled face-up. The face is flat: the keyboard has no slope, and the build
+has no mechanism to tilt it.
 
 **Face height** — The device's extent along the slide (the closed device's
 long side, 140 mm target). One of the two in-plane dimensions; the other is

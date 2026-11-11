@@ -25,8 +25,12 @@ interface is functional (accessories) and is not part of the printed shell.
 | Dimension | Target | Driver |
 |---|---|---|
 | Face height (closed) | **140 mm, HARD** | travel + bearing + rod clamps + lid bezel |
-| Thickness | ≈ 50 mm, GOAL | keyboard/SBC chassis + screen lid |
-| Width | ≈ 292 mm, derived | keyboard 230.15 / panel 231 + two side pods + joint corner posts |
+| Thickness | **57.75 mm, derived** | keyboard/SBC chassis + lid (head + guard + panel + driver) |
+| Width | **238.92 mm, derived** | panel 231 + a drafted side wall each side (nothing else) |
+
+The thickness and width were revised by ADR-0013: the guide rods moved under the
+display, which removed the side pods (292.39 → 238.92) and added the moving
+head and its FPC guard to the lid (50.15 → 57.75). Face height did not move.
 
 The face is the plane carrying the keyboard and the screen. **Face height** is
 the extent along the slide; **thickness** is the extent normal to the face.
@@ -150,15 +154,24 @@ to tilt it.**
   front stays clean: all eight fasteners are on the side hidden against the
   chassis when closed, and removing the Back exposes the display and the
   guide hardware.
-* **Lid thickness** is the display (6.5) + driver (4.6) stack plus walls, not
-  the Rod clamp; it is ≈ 16.85 mm, leaving the device ≈ 50 mm thick.
+* **Lid thickness** is the display (6.5) + driver (4.6) stack plus the moving
+  head's crown (9.0), the component gap (1.5), the sag allowance (0.5) and the
+  FPC guard (1.6): 24.45 mm, leaving the device 57.75 mm thick. It is not set
+  by the Rod clamp (ADR-0013).
 * **Guide rods** run in the open cavity along the back panel's inner face,
-  beside the display. Two Rod clamps hold each rod to the panel; the panel's
-  long through-slot between them is the Bearing clamp's track. The cavity runs
-  to the side walls, so the rods and clamps sit beside the panel, not in a
-  solid side pod.
-* **Display** centred; the driver stays directly behind the panel (the FPC
-  runs straight; do not move it).
+  **under the display**, at `x = ±93.86`. Two Rod clamps hold each rod to the
+  panel; the panel's long through-slot between them is the Bearing clamp's
+  track. The stance is derived from the lid's band post, the Deck seat and the
+  head staying under the panel.
+* **FPC guard** — a printed 1.6 mm grille plate tape-bonded to the display's
+  back where the moving head sweeps the panel's ribbon: a 0.6 mm channel for the
+  flat ribbon over a 1.0 mm grille floor, open at both ends. The head clears its
+  underside by the component gap plus the sag allowance, so a deflecting clamp
+  can only ever reach the plate.
+* **Display** centred. The driver follows the panel: it sits 0.4 mm under the
+  display's back (`slide.driver_gap`), inside the 12.6 mm cavity. The ribbon
+  runs flat in the guard channel and drops to the driver's FPC connector at the
+  guard's west end; do not move the driver off the panel's back.
 * **Glass retention** — the panel is held by the tray's front lip and a
   clamp/retainer, not by a ring of exposed screws.
 * **Drag chain** — one channel along the slide, behind the panel, on one side.
@@ -179,11 +192,10 @@ to tilt it.**
   band bosses (four corners, two per long side, one per short side). Both
   halves carry a 10 × 0.8 mm scallop at each station, straddling the seam.
   Nothing stands proud of the keyboard Deck under the hands.
-* The lid's four corner stations sit outboard of the Rod clamps, so the band's
-  posts widen the case by `slide.joint.corner_post` (8.75 mm) per side.
-  `rod_x` and `usable_half` are measured from the shell's inner face and do
-  not move: the guide hardware, slots, Deck seats and pockets keep their
-  positions.
+* The lid's four corner stations sit on posts **inboard of the cavity wall**,
+  following the Rod clamp's outer edge (`post_inner = rod_x + rod_clamp.width/2
+  + corner_clearance`); nothing widens the case for them any more
+  (ADR-0013 retired `slide.joint.corner_post`).
 * Seams are staggered between parts screwed to each other and never cross a
   structural feature (rib, boss, standoff, clamp, guide channel, rail pocket,
   vent, connector cutout).

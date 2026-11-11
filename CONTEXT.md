@@ -71,9 +71,24 @@ keyboard's depth alone.
 _Avoid:_ "stroke", "throw".
 
 **Guide rod** — One of the two steel rods the screen lid rides on. It runs in
-the Screen lid's open cavity along the back panel's inner face, in a through-slot,
-held at both ends by two printed Rod clamps.
+the Screen lid's open cavity along the back panel's inner face, **under the
+display**, held at both ends by two printed Rod clamps.
 _Avoid:_ "rail" (an Accessory rail is a different part), "shaft".
+
+**Guide stance** — The pair of X positions the Guide rods occupy
+(`rod_x = ±93.86`). Derived from the tightest of three bounds — the lid's band
+corner post, the Deck seat against the chassis band's corner boss, and the
+moving clamp head staying under the display — less `slide.rod.side_margin`.
+_Avoid:_ "rail spacing", "track width".
+
+**FPC guard** — The printed 1.6 mm grille plate tape-bonded to the Display's
+back, where the moving Bearing clamp sweeps the panel's ribbon. Its
+**guard channel** is the 0.6 mm recess on its display-facing side that captures
+the flat ribbon; the ribbon is taped flat, so there is no folded-loop allowance.
+The moving head clears the plate's underside by the component gap plus the sag
+allowance, so it can only ever reach the plate, never the ribbon. It is a
+separate printed target (`fpc_guard`).
+_Avoid:_ "cable cover", "shield" (the Drag chain is a different part).
 
 **Linear bearing** — A purchased LM…LUU ball bushing riding on a Guide rod.
 One per rod; its length is part of the Face-height budget.
@@ -94,11 +109,14 @@ _Avoid:_ "housing", "bearing block".
 
 **Rod clamp** — A printed clamp at one end of a Guide rod, screwed into the
 lid back panel across the rod. Two per rod; the screws sit outboard of the
-back-panel slot.
+back-panel slot. With the stance under the display (ADR-0013) the clamp sits
+under the panel, clear of it in Y, and outboard of it in X only by ~11 mm.
 
 **Clamp slot** — The long through-slot in the Screen lid's back panel between
-the two Rod clamps. The Bearing clamp's neck slides along it. The slot ends at
-the Rod clamps; the bearing stops short of each clamp at the extreme poses.
+the two Rod clamps. The Bearing clamp's neck slides along it, **under the
+display**; the slot ends at the Rod clamps, and the bearing stops short of each
+clamp at the extreme poses. The FPC guard covers the ribbon where the head
+sweeps this slot.
 _Avoid:_ "C-channel" (the retired first-generation side-wall channel).
 
 **Drag chain** — The articulated cable carrier that lets the display/driver

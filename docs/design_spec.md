@@ -553,9 +553,12 @@ Only the X side walls are drafted. The front and rear end walls stay vertical:
 the guide span and the rod end clamps are pinned to the 140 mm face-height
 budget, and drafting them would eat that clearance.
 
-The slide budget adds `draft_allowance` to the side pod, so the guide hardware
-keeps its shell clearance as the lid cavity narrows toward the face; the
-hardware positions themselves do not move.
+The slide budget adds `draft_allowance` to the side pod, so the display keeps
+its shell clearance as the lid cavity narrows toward the face. The guide
+hardware is inboard, under the display (ADR-0013), so it no longer sets the
+width; the draft inset is measured over the display's height
+(`min(display back + height, lid top − front panel) − band`), not over the
+hardware envelope.
 
 ---
 

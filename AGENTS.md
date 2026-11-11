@@ -11,14 +11,16 @@ decorative elements. Priorities: robustness, serviceability, printability,
 parametricity, reusability.
 
 > **Status.** `docs/form_factor.md`, `CONTEXT.md` and ADR-0009/0010/0011/0012
-> define the slider. The data skeleton and the first-generation CAD shell are
-> implemented: `--layout slider` (the only layout) derives the budget and
-> builds/exports the chassis (Tray + Deck, split at the band joint), screen lid
-> (Bezel + Back plate, split at the band joint), guide rods, the printed Rod
-> clamps and Bearing clamps, and the closed/open assembly, with stepped Seams
-> at x=0. The retired clamshell code, config, recipe and tests have been
-> removed. Still next: Seam lugs, the drag-chain channel and the redesigned
-> vents (they must stay out of both joint bands).
+> plus ADR-0013 (rods under the display) define the slider. The data skeleton
+> and the CAD shell are implemented: `--layout slider` (the only layout) derives
+> the budget and builds/exports the chassis (Tray + Deck, split at the band
+> joint), screen lid (Bezel + Back plate, split at the band joint), the printed
+> FPC guard, guide rods, the printed Rod clamps and Bearing clamps, and the
+> closed/open assembly, with stepped Seams at x=0. The retired clamshell code,
+> config, recipe and tests have been removed. Still next: Seam lugs, the
+> drag-chain channel, the aux buttons above/below the display (their space and
+> depth are reserved) and the redesigned vents (they must stay out of both joint
+> bands).
 
 ## Build volume
 
@@ -85,6 +87,7 @@ segfault on a chamfer, so `cad_helpers` runs each attempt in a child process
 - `slide` — guide rods + Rod clamps + LM…LUU bearings + Bearing clamps
 - `rod_clamp` — one printable Rod clamp
 - `bearing_clamp` — one printable Bearing clamp
+- `fpc_guard` — the printable FPC grille plate (bonded to the display's back)
 - `keyboard_plate` — the switch plate; `keyboard_plate_left/right` — its Sections
 - `display` — LCD panel + HDMI driver combined
 - `components` — all per-component debug STLs
@@ -119,7 +122,9 @@ intuition. Wire-up lives in `main.py` (`BuildPipeline`, `run()`).
   bearing-clamp seats (merged seat blocks with foot pockets), the insert bosses
   and the upper scallops; `build()` returns their compound; `tray_sections()` /
   `deck_sections()` split a half (the `chassis` spec at x=0).
-- `case.screen_lid.ScreenLid.build_bezel()` produces the
+- `case.screen_lid.ScreenLid.build_fpc_guard()` produces the printed FPC
+  grille plate (planform, channel and grille from `SliderFrame`; a separate
+  target, placed on the display's back); `build_bezel()` produces the
   inverted-tray front with the glass opening and the prismatic band joint;
   `build_back()` the flat plate with the clamp slots, the Rod-clamp inserts and
   the band's countersunk screws; `sections()` / `bezel_sections()` /
@@ -240,14 +245,31 @@ Gotchas:
   two halves share the closed face (≈ 139.3). Do not shrink the lid to the
   keyboard-driven chassis depth: the lid would no longer clear the bearing at
   the open pose. The added rear band is empty behind the bearing-clamp seat.
-- **The band joint grows the case sideways, never inward.** The lid's eight
-  fastening stations include four corners that land where the Rod clamps sit;
-  only 3 mm (front) / 5.5 mm (rear) of free Y is left there, so no insert fits
-  and `slide.joint.corner_post` widens the side pod instead (each part stays
-  under the 220 mm bed). `usable_half` and `rod_x` are measured from the shell's
-  inner face and must not move, or the rod, slot, Deck seats and pockets drift.
-  The band is prismatic and solid — vents stay out of it; the lid is
-  ≈ 16.85 mm thick, set by the display + driver stack, not by the Rod clamp.
+- **The guide stance is under the display and is derived, not chosen.** The
+  rods sit at `rod_x = ±93.86` (ADR-0013): `min(post, seat, head) −
+  rod.side_margin`, where the bounds are the lid's band corner post, the Deck
+  seat against the chassis band's corner boss, and the head staying under the
+  panel. The seat bound is the tightest. Change a clamp wall, a seat wall or a
+  station inset and `rod_x` follows — do not pin it. The slot, the Deck seats,
+  the pockets, the Rod clamps and the lid band post all read `rod_x`.
+- **The width is the content plus the drafted side wall, nothing else.** A
+  238.92 mm case has ~4 mm beside the keyboard, so neither the lid band post
+  nor a chassis band station can live there: the post is inboard of the cavity
+  wall (`rod_x + rod_clamp.width/2 + corner_clearance`) and `slide.joint.corner_post`
+  is retired. The draft inset is measured over the display's height, not the
+  hardware envelope — the panel is what the width has to clear.
+- **The lid's thickness is the Z stack under the panel.** `head crown 9.0 +
+  component gap 1.5 + sag 0.5 + FPC guard 1.6 = 12.6` cavity, so lid 24.45 and
+  device 57.75. The display is placed at `panel_inner + budget.display_cavity`
+  by the layout; the frame raises if the placement disagrees. The guard is a
+  separate printed target (`fpc_guard`), tape-bonded to the display's back; its
+  underside is what the head must clear.
+- **The band is prismatic and solid** — vents stay out of it. With the stance
+  under the display the band joint keeps its ten stations, but the corner and
+  long-wall stations sit `side_inset` (4.5) from the vertical walls (boss capped
+  at 7.80) and the two short-side stations sit in the free band **behind the
+  keyboard**: at this width a Tray column at mid-side would run through the
+  keyboard plate.
 - **The chassis splits at the Parting plane, band-only (ADR-0012).** The 6 mm
   band is split 3 mm each side of `parting_z`: the Tray is drafted from its
   base up to `band_z0` and prismatic from there to the plane, the Deck is

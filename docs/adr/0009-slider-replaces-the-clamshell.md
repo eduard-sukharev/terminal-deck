@@ -26,25 +26,29 @@ Derived from the real components, not copied from the reference:
   depth (77.75); it is the keyboard's front offset plus its depth plus
   clearance (≈93), because the lid's lower edge must pass the keyboard's
   *upper* edge when open.
-- **Thickness ≈ 56 mm — GOAL** (the clamshell closed at 57). Chassis (keyboard,
-  SBC, bearing clamps) plus screen lid (panel, driver, guide rods).
-- **Width ≈ 283 mm — derived**: keyboard 230.15 / panel 231 plus two side
-  pods (guide rod, clamp slot, Rod clamp, bearing clamp, accessary-rail
-  pockets). It is not the reference's 335 mm, which is padded with decorative
-  rails and an antenna.
+- **Thickness 57.75 mm — derived** (revised by ADR-0013: the moving head now
+  passes under the panel, so the lid carries the head, the FPC guard and the
+  display). Chassis (keyboard, SBC, bearing clamps) plus screen lid (panel,
+  driver, guide rods). The clamshell closed at 57.
+- **Width 238.92 mm — derived** (revised by ADR-0013): the display (231) plus a
+  thin drafted side wall each side (2.0 wall + 0.35 shell + 1.61 draft). The
+  guide hardware moved under the display, so no side pod is needed. It is not
+  the reference's 335 mm, which is padded with decorative rails and an antenna.
 - **Battery external** on an accessory rail, as the reference does; an
   internal pack (ideally a small one that keeps the system alive while
   external packs are swapped) is added later only if the envelope allows.
-- **Accessory rails: picatinny interface, not modelled.** The side walls get
-  square-nut pockets printed in (nuts inserted during a print pause); the rail
-  bars themselves are user-supplied accessories.
+- **Accessory rails: picatinny interface, not modelled** — and **lost** with
+  ADR-0013: a 238.92 mm case has no side wall for a 5 mm nut pocket. Its
+  relocation is tracked separately; the rail bars were always user-supplied.
 
 ## Mechanism
 
 > Revised by ADR-0010: the rods are clamped to the lid's back panel with two
 > printed Rod clamps each, and the Bearing clamps straddle the panel through a
 > through-slot. The side-wall C-channel below is the superseded first
-> generation.
+> generation. Revised again by ADR-0013: the rods sit **under the display**, not
+> beside it, and a printed FPC guard covers the ribbon where the head sweeps
+> it.
 
 - Two steel guide rods, one per side, run **inside the screen lid's thickness,
   at the sides of the panel**, in a C-channel in the lid's side walls.

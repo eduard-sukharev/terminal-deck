@@ -45,29 +45,34 @@ band:
 - Corner stations sit at `x = ±(width/2 - (insert/2 + boss_margin))`,
   `y = ±(lid_height/2 - station_inset)`.
 
-The corners are the reason the case grows. Inside the lid, the four Rod clamps
-occupy the corners of the Back plate; the free Y beyond each clamp is only
-3.0 mm (front) and 5.5 mm (rear). No Ø4.4 insert with a usable margin fits
-there, and moving the clamps would break the rod span ADR-0010 fixed. So the
-lid grows **outboard instead**: `slide.joint.corner_post` widens the side pod by
-6 mm per side, which turns each corner into a 9.45 mm × 18 mm post between the
-Rod clamp's edge and the side wall, with `corner_clearance` (0.5 mm) to the
-clamp. `usable_half` — and therefore `rod_x` — is measured from the shell's
-inner face and does not change, so the guide hardware, the slot, the Deck seats
-and the pockets all keep their positions. Width grows 285.89 → **297.89 mm**;
-the chassis shares the closed face and grows with it. Each Section is still
-148.9 mm, inside the 220 mm bed.
+The corners are why the case grew. Inside the lid, the four Rod clamps occupy
+the corners of the Back plate; the free Y beyond each clamp is only 3.0 mm
+(front) and 5.5 mm (rear). No Ø4.4 insert with a usable margin fits there, and
+moving the clamps would break the rod span ADR-0010 fixed. So the lid grew
+**outboard instead**: `slide.joint.corner_post` widened the side pod by
+8.75 mm per side, which turned each corner into a post between the Rod clamp's
+edge and the side wall, with `corner_clearance` (0.5 mm) to the clamp.
+
+**Revised by ADR-0013.** The rods moved under the display, so the corner post
+now sits **inboard of the cavity wall** and follows the clamp instead of
+widening the case: `post_inner = rod_x + rod_clamp.width/2 + corner_clearance`
+(105.36), `post_outer = width/2 − wall` (117.46), post width **12.10 mm** —
+enough for the Ø4.4 insert plus the 1.5 mm boss margin. `slide.joint.corner_post`
+is retired; the eight stations keep their derivation from the lid plan, and the
+width is 238.92 mm. The station-clearance check now measures the post inboard of
+the clamp.
 
 ## Consequences
 
-- The lid is **16.85 mm** thick (was 18.30). The earlier assumption that the
+- The lid was **16.85 mm** thick (now 24.45 with ADR-0013, which puts the
+  moving head and the FPC guard under the panel). The earlier assumption that the
   lid's thickness was set by the Rod clamp was wrong: it is set by the
   display (6.5) + driver (4.6) stack. Three changes buy the 1.45 mm:
   the spurious second `clearance.shell` on the front panel (−0.35),
   `slide.driver_gap` 0.5 → 0.4 (−0.10), and a new `bezel.recess` pocket in the
   front panel's inner face (−1.00), which lets the display frame sink 1 mm into
   the panel while a 1.0 mm lip (≥ `material.minimum_feature`) still retains it.
-  Device thickness 51.60 → **50.15 mm**.
+  Device thickness 51.60 → **50.15 mm**, now **57.75 mm** after ADR-0013.
 - The joint is a **plain butt** at `panel_inner_z`: eight screws locate it and
   the perimeter walls carry the load. There is no lap or tongue to print, and
   no undercut on either part. Both parts are flat-sliceable; `sections()` still

@@ -23,8 +23,9 @@ The chassis now splits at the Parting plane like the lid's band joint:
   lower half of the silhouette tapers — the Deck and the closed face stay
   straight. The front and rear (Y) walls are vertical, exactly as before.
 - Because the band and the whole Deck are prismatic, the **band width is the
-  full closed-face width** (`292.392`), not a contracted width at the plane;
-  the base is the drafted width at `band_z0` (`289.163`).
+  full closed-face width** (`238.917` after ADR-0013; it was `292.392`), not a
+  contracted width at the plane; the base is the drafted width at `band_z0`
+  (`235.688`).
 - The joint is a **plain butt**: ten M3 screws driven from below, through a
   countersunk hole in the Tray's floor and a column standing on it, into a
   heat-set insert in a boss in the Deck's band. The perimeter band carries the
@@ -40,9 +41,17 @@ case mirrors them.
 
 | station | centre (mm) | boss at the plane | Tray column at the floor |
 |---|---|---|---|
-| corner | ±139.696, ±63.125 | Ø10.0 | Ø8.57 frustum |
-| long side | ±48.732, ±65.125 | Ø7.80 | Ø7.80 |
-| short side | ±139.696, 0 | Ø10.0 | Ø8.57 frustum |
+| corner | ±112.96, ±65.125 | Ø7.80 | Ø6.42 frustum |
+| long side | ±39.82, ±65.125 | Ø7.80 | Ø7.80 |
+| short side | ±112.96, 43.875 | Ø10.0 | Ø8.57 frustum |
+
+**Revised by ADR-0013.** The case is now only 4.39 mm wider than the keyboard,
+so no station fits beside the keys: the corner and long-wall stations sit
+`side_inset` (4.5) from the vertical walls — which caps the corners at Ø7.80
+too — and the two short-side stations moved from mid-side to the middle of the
+free band **behind the keyboard** (`y = (keyboard rear edge + depth/2)/2`).
+Sizes, screw, scallops and `parting_z` are unchanged; only those two stations no
+longer mirror about the Y centreplane.
 
 - `station_inset` (6.5 mm) places a station from a **drafted X wall**: the
   draft pulls the floor skin inward, so the column's countersink needs the
@@ -78,7 +87,8 @@ plane and 1.5 mm of boss remains above it.
 The material left between features is what sizes the joint:
 
 - insert hole to the outer skin at the long sides: 4.5 − 2.2 = 2.3 mm;
-- countersink to the outer skin at the floor: 4.5 − 3.1 = **1.40 mm**;
+- countersink to the outer skin at the floor: 4.5 − 3.1 = **1.40 mm** (the
+  front corner, on the 45° chamfer, is the tightest at **0.71 mm**);
 - scallop floor to insert hole: 4.5 − 0.8 − 2.2 = **1.50 mm** (≥ `boss_margin`);
 - boss to the nearest placed component (the keyboard plate): **1.60 mm**.
 
@@ -96,9 +106,9 @@ every station (min 1.5 mm of material) and does not touch the pocket rim.
 
 - The chassis is now `chassis_tray` + `chassis_deck` (each with `_left` /
   `_right` Sections at the stepped Seam), and `chassis` is the assembled
-  compound. Both halves print flat: Tray and Deck are each **148.2 × 139.25 ×
-  16.15 mm** as a Section, well inside 220 × 220 × 256 mm. The Tray is
-  **110 581 mm³**, the Deck **74 025 mm³**.
+  compound. Both halves print flat: after ADR-0013 Tray and Deck are each
+  **121.5 × 139.25 × 16.15 mm** as a Section (45 486 / 27 690 mm³ on the left),
+  well inside 220 × 220 × 256 mm.
 - The Deck is removable, so the keyboard Well, the two bearing-clamp seats,
   the SBC pocket and the underside of the band are all reachable. The bearing
   clamps or the SBC can come out without disturbing the Tray screws.

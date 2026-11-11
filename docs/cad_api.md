@@ -63,6 +63,10 @@ reference origin.
   Fillets are restricted to hidden inside joints (never an outside face).
 * Heat inserts come from `utilities/fasteners.py`, never recreated.
 * Slide math lives in `components/slide.py`, never in the enclosure.
+* The FPC guard is built by `ScreenLid.build_fpc_guard()` (a separate printed
+  part, positioned on the display's back in the assembly) and exported as the
+  `fpc_guard` target; its planform, channel and grille come from
+  `SliderFrame` (ADR-0013).
 * Cable routing lives in `routing/cable_routing.py`.
 * The keyboard plate is independent of the enclosure
   (`components/keyboard_plate.py`).

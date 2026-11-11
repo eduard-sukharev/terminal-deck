@@ -25,8 +25,11 @@ The project adopts that arrangement. It is a better fit for the constraints:
   retains the lid against lift-off. No separate retainer is needed.
 - The clamp's foot seats in a pocket in the Chassis Deck, so the load path goes
   from the rod, through the bearing and clamp, straight into the deck.
-- The lid's cavity opens to the side walls (no solid side pod). The rods and
-  clamps sit beside the display, as in the reference.
+- The lid's cavity opens to the side walls (no solid side pod). **Revised by
+  ADR-0013:** the rods and clamps sit **under the display**, not beside it —
+  the reference's side-by-side arrangement cost 33.7 mm of dead bezel per side.
+  The mechanism, the slot and the clamp decisions below stand; only the stance
+  moved (`rod_x` 125.25 → 93.86).
 
 ## Consequences
 
@@ -60,9 +63,12 @@ The project adopts that arrangement. It is a better fit for the constraints:
   replaced the earlier flanged body, so the guide hardware now needs only the
   slot width (16.5 mm) of display clearance, and the clamp no longer overhangs
   the back-panel slot. With that margin, the 8.75 mm corner posts and the
-  draft allowance, the derived width is now **292.4 mm** (side pod 30.7 mm),
-  not the ≈ 283 quoted below.
-- Width grows from ≈ 267 to ≈ 283 mm: the side pod now clears the 22 mm Rod
+  draft allowance, the derived width was **292.4 mm** (side pod 30.7 mm), not
+  the ≈ 283 quoted below. **Superseded by ADR-0013**: the stance moved under
+  the display and the width is **238.92 mm** with no side pod and no corner
+  post.
+- Width grows from ≈ 267 to ≈ 283 mm (then to 292.4; ADR-0013 takes it to
+  238.92): the side pod now clears the 22 mm Rod
   clamp and a 1.5 mm gap to the display. Thickness grows by 2 mm because the
   back panel is 4 mm thick, needed for the slot and the Rod-clamp inserts
   (51.6 mm). The chassis grows to the closed face (≈ 139 mm) so its rear wall

@@ -30,10 +30,22 @@ class SliderLayout(RecipeLayout):
         config: Any = None,
         recipe_path: str | Path | None = None,
     ) -> None:
+        # The recipe's envelope is the budget's, not a restatement of the
+        # mechanism formulas: the chassis depth is whatever the closed face
+        # requires (the lid is the larger half), so the recipe asks the
+        # budget for it instead of duplicating the derivation in YAML.
+        from components.slide import compute_slide_budget
+
+        budget = (
+            compute_slide_budget(config, components)
+            if config is not None and components
+            else None
+        )
         super().__init__(
             components or {},
             config=config,
             recipe_path=recipe_path or SLIDER_RECIPE,
+            budget=budget,
         )
 
 

@@ -93,8 +93,9 @@ expressions over references are also supported (e.g.
 `"{display.width} + 2 * {config.clearance.shell} + 2 * {config.wall_thickness}"`).
 
 The built-in recipe is `config/layouts/clamshell.yaml` — the compact
-clamshell: battery in the hollow under the raised keyboard plate, SBC and USB
-hub in the rear I/O strip, no palm rest.
+clamshell: battery in the hollow under the raised keyboard plate, SBC in the
+rear I/O strip, no palm rest. The USB hub is an external accessory, not a
+chassis placement.
 
 ## CLI usage
 

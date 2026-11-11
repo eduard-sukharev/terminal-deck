@@ -1,9 +1,11 @@
 # Slide subsystem: purchased linear guide, travel and the face-height budget.
 # All dimensions in millimeters. The device is a slider (ADR-0009): the screen
-# lid runs on two guide rods inside its side walls; one LM...LUU bearing per
-# rod is clamped in a Bearing clamp standing on the chassis deck behind the
-# keyboard. The face height is the binding constraint, so every value here is
-# checked against `face_height_limit` by the data layer.
+# lid's back panel carries two steel guide rods, each held at both ends by two
+# printed Rod clamps; between the clamps a through-slot in the back panel lets
+# the Bearing clamps — printed clamps that straddle the panel and are seated in
+# the chassis deck — slide as the lid moves. The face height is the binding
+# constraint, so every value here is checked against `face_height_limit` by
+# the data layer.
 
 slide:
   face_height_limit: 140.0   # HARD closed face height (the product target)
@@ -13,22 +15,63 @@ slide:
   clamp_wall: 2.0            # wall around the linear bearing in its clamp
   top_bezel: 2.5             # lid face above the display module
   lid_clearance: 1.0         # gap between the keycaps and the lid's flat back
-  lid_back: 2.0              # flat back panel wall
+  lid_back: 4.0              # flat back panel wall (carries the rod clamps)
   lid_front: 2.0             # inverted-tray front wall (bezel)
-  driver_gap: 0.5            # PCB backside stand-off from the panel
-  component_gap: 1.5         # minimum air gap between a buried part and the keyboard
-  side_gap: 2.5              # minimum gap between the SBC and the hub
+  driver_gap: 0.4            # PCB backside stand-off from the panel
+  component_gap: 1.5         # minimum air gap between a buried part and the keyboard,
+                             # and between the display and the side guide hardware
+  rear_wall_margin: 6.0      # SBC -> chassis rear wall inner face
+                             # rod_raise is derived: rod diameter/2 - lid_back/2, so
+                             # the rod's lowest point always sits at the panel's
+                             # mid-thickness (see components/slide.py).
+  slot_clearance: 0.25       # each side between the bearing-clamp neck and the slot
 
-  bearing:                   # LM...LUU long linear bushing (one per rod)
-    model: LM6LUU
+  joint:                     # Bezel <-> Back band joint (ADR-0011)
+    band: 6.0                # prismatic fastening band at the Bezel's bottom
+    boss: 8.0                # square pad per station, standing into the cavity
+    boss_margin: 1.5         # material between an insert hole and a free face
+    corner_post: 8.75        # extra side-pod width each side, so the lid has
+                             # solid corner posts outboard of the Rod clamps
+    corner_clearance: 0.5    # corner post <-> Rod clamp
+    corner_length: 20.0      # corner post along the side wall
+    station_inset: 5.0       # station centre from the lid's outer edge
+    screw: M3                # countersunk from the Back's outer face
+
+  bearing:                   # LM...LUU linear bushing (one per rod)
+    model: LM6UU
     bore: 6.0
     outer_diameter: 12.0
-    length: 35.0
+    length: 19.0             # short body: leaves room for the rod end clamps
     per_rod: 1               # a second bearing per rod breaks the 140 mm budget
 
   rod:
     diameter: 6.0
     end_support: 3.0         # lid material beyond the rod's usable span
+
+  rod_clamp:                 # printed end clamps: 2 per rod, on the lid back panel
+    length: 9.0              # grip length along the rod at each end
+    height: 7.5              # block height above the back panel's inner face: a saddle
+                             # over the rod's top half, still inside the bezel cavity
+    width: 22.0              # across the rod; the screws sit outside the slot
+    clearance: 0.5           # axial gap between the bearing's extreme and the clamp
+    screw: M2
+    screw_span: 17.0         # centre distance of the two screws across the rod
+    set_screw: M2            # locks the rod axially in the clamp
+
+  bearing_clamp:             # printed clamp: holds the bearing, straddles the panel
+    length: 14.0             # grip length along the bearing (the bearing is 19)
+    foot_length: 30.0        # longer than the bearing, so both screws sit
+                             # outboard of it: the tips cannot reach the bore
+    foot_thickness: 4.0
+    seat_wall: 2.6           # material around the chassis seat pocket
+    seat_floor: 2.0
+    seat_fit: 0.4            # clearance each side of the foot in the pocket
+    screw: M2.5
+    screw_span_y: 24.0       # wider than the bearing (19); tips clear the bore
+    corner_chamfer: 5.0      # 45 deg vertical corner relief on the foot and
+                             # the matching chassis pocket
+    top_chamfer: 0.5         # foot's exposed top perimeter and the matching
+                             # pocket mouth
 
   chain:                     # drag chain behind the screen, along the slide
     pitch: 10.0
@@ -49,12 +92,6 @@ slide:
     screen_lid:     {sections: 2, x: 0.0, style: stepped, step: 4.0, steps: 6}
     keyboard_plate: {sections: 2, x: 0.0, style: straight}
 
-  # Rear-wall vent slots (the hub's +Y port strip occupies the centre; the
-  # slots sit in the free right-hand band).
-  vents:
-    slot_width: 0.8
-    gap: 3.2
-    height: 10.0
-    start_x: 45.0
-    end_x: 125.0
-    z_center: 11.0
+  # Vent slots: deferred (ADR-0011). The rear wall's joint band has to stay
+  # solid and the old row would pierce it; the pattern is redesigned together
+  # with the band. The generic generator stays in geometry/vents.py.

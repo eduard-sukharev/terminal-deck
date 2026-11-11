@@ -1,8 +1,25 @@
-"""Slider chassis: Tray + Deck with the keyboard Well and Bearing clamps.
+"""Slider chassis: a Tray and a Deck joined at the Parting plane (ADR-0012).
 
-First-generation shell (issue #3). It is a valid closed solid that fits the
-derived budget and exports STEP/STL/glTF; Sections, Seams, vents and connector
-cutouts are the next iteration (see docs/form_factor.md).
+The chassis splits at the Parting plane (ADR 0003). The ``band`` is split
+evenly around the plane: the Tray is drafted from its base up to ``band_z0``
+and prismatic from there to the plane; the Deck is prismatic all the way to
+the closed face. Only the lower half of the silhouette tapers, so the base
+width and the closed face follow from that.
+
+* The **Tray** is the lower bowl: tapered outer walls up to the joint band,
+  then a prismatic band to the Parting plane, a wall-thick floor, and a
+  frustum column at each of the ten fastener stations. An M3 screw is driven
+  from below through a countersink in the floor, up the column, and across the
+  plane into a heat-set insert in the Deck.
+* The **Deck** is purely prismatic from the Parting plane to the closed face:
+  the keyboard Well, the two bearing-clamp seats and their pockets, and one
+  insert boss per station standing out of the band's cavity.
+
+Both halves carry a shallow scallop at every station, straddling the seam.
+
+The bearing clamps are separate printed parts. Each has a foot that drops
+through a pocket in the Deck; the Deck carries a small raised/merged seat with
+a pocket floor, so the clamp is located and bolted from inside the chassis.
 """
 
 from __future__ import annotations
@@ -13,90 +30,353 @@ from case.slider_frame import SliderFrame
 
 
 class Chassis:
-    """The lower half of the slider: a tray, a Deck with the Well and clamps."""
+    """The lower half of the slider: a Tray, a Deck with the Well and seats."""
 
     def __init__(self, config: Any, frame: SliderFrame) -> None:
         self.config = config
         self.frame = frame
 
+    # -- parts -----------------------------------------------------------
     def build(self):
-        """Return the chassis shell (tray + deck + two Bearing clamps)."""
+        """Return the assembled chassis as a two-part compound (Tray + Deck)."""
+        from utilities import cad_helpers as ch
+
+        ch.require_cad()
+        return ch.make_compound([self.build_tray(), self.build_deck()])
+
+    def build_tray(self):
+        """The lower bowl: drafted walls, floor, station columns, screws."""
+        from utilities import cad_helpers as ch
+        from utilities.fasteners import screw as screw_spec
+
+        ch.require_cad()
+        f = self.frame
+        joint = f.chassis_joint
+        wall = f.wall
+        chamfer = self.config.corners.chamfer
+        z_band = f.chassis_band_z0
+        z1 = f.parting_z
+        base_w = f.chassis_base_width
+        band_w = f.chassis_band_width
+
+        # Tapered skin from the base up to the band, then prismatic to the
+        # Parting plane where it meets the Deck at the same width.
+        outer = ch.tapered_box(
+            base_w, f.depth, band_w, f.depth, 0.0, z_band, chamfer=chamfer
+        )
+        outer = ch.union(
+            outer,
+            ch.tapered_box(
+                band_w, f.depth, band_w, f.depth, z_band, z1, chamfer=chamfer
+            ),
+        )
+        # The cavity is the outer skin offset by one wall. It starts one wall
+        # above the table (the floor), follows the draft up to the band and is
+        # prismatic with it to the plane.
+        bottom_inset = ch.draft_inset(f.draft_angle, wall)
+        cavity = ch.tapered_box(
+            base_w + 2.0 * bottom_inset - 2.0 * wall,
+            f.depth - 2.0 * wall,
+            band_w - 2.0 * wall,
+            f.depth - 2.0 * wall,
+            wall,
+            z_band,
+        )
+        cavity = ch.union(
+            cavity,
+            ch.tapered_box(
+                band_w - 2.0 * wall,
+                f.depth - 2.0 * wall,
+                band_w - 2.0 * wall,
+                f.depth - 2.0 * wall,
+                z_band,
+                z1,
+            ),
+        )
+        body = ch.cut(outer, cavity)
+
+        # A column at every station, from the floor up to the plane. The
+        # frustum tapers from what the floor skin allows to the insert boss
+        # diameter at the plane.
+        body = ch.union(body, *[self._column(station) for station in joint.stations])
+
+        # The screw: clearance through the column, countersunk from below.
+        spec = screw_spec(joint.screw.size)
+        csk = joint.countersink
+        holes = []
+        for station in joint.stations:
+            through = ch.translate(
+                ch.cylinder_centered(spec.clearance, z1 + 2.0),
+                station.x,
+                station.y,
+                z1 / 2.0,
+            )
+            cone = ch.translate(
+                ch.frustum_centered(csk.diameter, spec.clearance, csk.depth),
+                station.x,
+                station.y,
+                csk.depth / 2.0,
+            )
+            holes.extend((through, cone))
+        body = ch.cut(body, *holes)
+
+        # Scallops: the lower half of every station's relief, cut into the
+        # prismatic band.
+        scallops = [
+            self._scallop(
+                station,
+                z0=z_band,
+                distance=station.surface,
+                shift=0.0,
+            )
+            for station in joint.stations
+        ]
+        return ch.clean(ch.cut(body, *scallops))
+
+    def build_deck(self):
+        """The upper shell: a prismatic body with the Well, seats and bosses."""
         from utilities import cad_helpers as ch
 
         ch.require_cad()
         f = self.frame
+        joint = f.chassis_joint
         wall = f.wall
+        chamfer = self.config.corners.chamfer
+        z0, top = f.parting_z, f.chassis_top
+        band_w = f.chassis_band_width
+        cavity_top = top - wall
 
-        outer = ch.box_centered(f.width, f.depth, f.chassis_top)
-        outer = ch.translate(outer, 0.0, 0.0, f.chassis_top / 2.0)
-        outer = ch.fillet_vertical_edges(outer, self.config.corners.radius)
+        # The whole Deck is prismatic at the closed-face width: no flare above
+        # the band, so the upper silhouette stays straight to the face.
+        outer = ch.tapered_box(
+            band_w, f.depth, band_w, f.depth, z0, top, chamfer=chamfer
+        )
+        # Open cavity: straight through the whole Deck, with a wall-thick top
+        # plate.
+        cavity = ch.tapered_box(
+            band_w - 2.0 * wall,
+            f.depth - 2.0 * wall,
+            band_w - 2.0 * wall,
+            f.depth - 2.0 * wall,
+            z0,
+            cavity_top,
+        )
+        body = ch.cut(outer, cavity)
 
-        tray = ch.shell_open_face(outer, wall, ch.FaceRef.TOP)
+        # One insert boss per station, standing out of the band's cavity. The
+        # boss is taller than the Deck's half-band: the M3 heat-set insert is
+        # 4 mm deep and still needs a boss margin of material above it.
+        boss_height = joint.boss_height
+        bosses = [
+            ch.translate(
+                ch.cylinder_centered(station.boss, boss_height),
+                station.x,
+                station.y,
+                z0 + boss_height / 2.0,
+            )
+            for station in joint.stations
+        ]
+        body = ch.union(body, *bosses)
 
-        deck = ch.box_centered(f.width, f.depth, wall)
-        deck = ch.translate(deck, 0.0, 0.0, f.chassis_top - wall / 2.0)
-        body = ch.union(tray, deck)
-
-        # The keyboard Well: a through-opening in the deck over the placed
-        # keyboard, one shell clearance larger than the plate.
+        # The keyboard Well: a through-opening in the top plate over the
+        # placed keyboard, one shell clearance larger than the plate.
         well = ch.box_centered(
             f.keyboard_w + 2.0 * f.clearance,
             f.keyboard_d + 2.0 * f.clearance,
             3.0 * wall,
         )
-        well = ch.translate(
-            well, f.keyboard_x, f.keyboard_y, f.chassis_top
-        )
+        well = ch.translate(well, f.keyboard_x, f.keyboard_y, top)
         body = ch.cut(body, well)
 
-        body = ch.union(body, self._clamp(-1), self._clamp(1))
-        body = self._vents(body)
-        return ch.clean(body)
+        body = ch.union(body, self._seat(-1), self._seat(1))
+        body = ch.cut(body, self._seat_pocket(-1), self._seat_pocket(1))
+        body = self._pocket_mouth_chamfer(body)
+        body = ch.cut(body, self._seat_hole(-1), self._seat_hole(1))
 
-    def _vents(self, body):
-        """A row of vertical vent slots through the +Y rear wall."""
-        from utilities import cad_helpers as ch
-
-        vents = self.config.slide.vents
-        if vents.height <= 0 or vents.end_x < vents.start_x:
-            return body
-        pitch = vents.slot_width + vents.gap
-        x = vents.start_x
-        while x <= vents.end_x + 1e-6:
-            slot = ch.box_centered(
-                vents.slot_width, 3.0 * self.frame.wall, vents.height
+        # Heat-set insert holes, drilled up from the band's underside.
+        hole_depth = joint.insert_depth + 0.2
+        holes = [
+            ch.translate(
+                ch.cylinder_centered(joint.insert_hole, hole_depth + 1.0),
+                station.x,
+                station.y,
+                z0 + hole_depth / 2.0 - 0.5,
             )
-            slot = ch.translate(
-                slot, x, self.frame.depth / 2.0, vents.z_center
-            )
-            body = ch.cut(body, slot)
-            x += pitch
-        return body
+            for station in joint.stations
+        ]
+        body = ch.cut(body, *holes)
 
-    def _clamp(self, side: int):
-        """A Bearing clamp standing on the Deck behind the keyboard."""
+        # Scallops: the upper half of every station's relief. Inside the band
+        # the wall is prismatic, so no shear.
+        scallops = [
+            self._scallop(
+                station, z0=z0, distance=station.surface, shift=0.0
+            )
+            for station in joint.stations
+        ]
+        return ch.clean(ch.cut(body, *scallops))
+
+    # -- joint features --------------------------------------------------
+    def _column(self, station: Any):
+        """One Tray column: frustum from the floor skin to the plane boss."""
         from utilities import cad_helpers as ch
 
         f = self.frame
-        block = ch.box_centered(
-            f.clamp_width, f.clamp_len, f.clamp_top - f.chassis_top
-        )
+        height = f.parting_z
+        column = ch.frustum_centered(station.base_boss, station.boss, height)
+        return ch.translate(column, station.x, station.y, height / 2.0)
+
+    def _scallop(
+        self,
+        station: Any,
+        *,
+        z0: float,
+        distance: float,
+        shift: float,
+    ):
+        """A shallow relief at one station, its floor following the wall.
+
+        ``distance`` is the station-to-outer-face distance at ``z0`` and
+        ``shift`` how far that face recedes outward over the scallop height
+        (zero where the wall is prismatic). The cutter is a sheared prism: the
+        top outline is the bottom one shifted outward, so the cut stays a
+        constant ``scallop_depth`` deep.
+        """
+        from utilities import cad_helpers as ch
+
+        f = self.frame
+        joint = f.chassis_joint
+        width = joint.scallop_width
+        depth = joint.scallop_depth
+        height = joint.scallop_height
+        nx, ny = station.normal
+        # Tangent along the wall (the normal rotated +90 degrees).
+        tx, ty = -ny, nx
+
+        inner = distance - depth
+        outer = distance + shift + 2.0 * f.wall + 2.0
+
+        def point(r: float, s: float) -> tuple[float, float]:
+            return (
+                station.x + nx * r + tx * s,
+                station.y + ny * r + ty * s,
+            )
+
+        half = width / 2.0
+        bottom = [
+            point(inner, -half),
+            point(outer, -half),
+            point(outer, half),
+            point(inner, half),
+        ]
+        top = [
+            point(inner + shift, -half),
+            point(outer + shift, -half),
+            point(outer + shift, half),
+            point(inner + shift, half),
+        ]
+        return ch.loft_between(bottom, top, height, z=z0)
+
+    # -- Deck features ---------------------------------------------------
+    def _seat(self, side: int):
+        """A bearing-clamp seat block merged into the Deck and side wall."""
+        from utilities import cad_helpers as ch
+
+        f = self.frame
+        block = ch.box_centered(f.seat_width, f.seat_length, f.seat_height)
         block = ch.translate(
             block,
             side * f.rod_x,
             f.clamp_center_y,
-            (f.chassis_top + f.clamp_top) / 2.0,
+            f.chassis_top - f.seat_height / 2.0,
         )
-        bore = ch.cylinder_centered(f.bearing_outer + 0.2, f.clamp_len + 4.0)
-        bore = ch.rotate_x(bore, 90.0)
-        bore = ch.translate(bore, side * f.rod_x, f.clamp_center_y, f.rod_z)
-        return ch.cut(block, bore)
+        return block
 
+    def _seat_pocket(self, side: int):
+        """The pocket that receives the Bearing clamp foot."""
+        from utilities import cad_helpers as ch
+
+        f = self.frame
+        pocket = ch.box_centered(
+            f.pocket_width, f.pocket_length, f.pocket_depth + 1.0
+        )
+        corner = self.config.slide.bearing_clamp.corner_chamfer
+        if corner > 0.0:
+            # Match the clamp foot's vertical corner relief (the foot is
+            # longer than the pocket's straight sides are wide, so a plain
+            # box would clash at the corners).
+            pocket = ch.chamfer_vertical_edges(pocket, corner)
+        pocket = ch.translate(
+            pocket,
+            side * f.rod_x,
+            f.clamp_center_y,
+            f.chassis_top - f.pocket_depth / 2.0 + 0.5,
+        )
+        return pocket
+
+    def _pocket_mouth_chamfer(self, body):
+        """Break the top rim of each bearing-clamp pocket.
+
+        The pocket is cut into the Deck, so its mouth is the only set of
+        convex edges on the Deck top plane inside the pocket footprint; the
+        seat's outer top edges are further out and stay sharp.
+        """
+        from utilities import cad_helpers as ch
+
+        f = self.frame
+        amount = self.config.slide.bearing_clamp.top_chamfer
+        if amount <= 0.0:
+            return body
+        rim = [
+            edge
+            for edge in ch.convex_edges(body)
+            if abs(edge.midpoint[2] - f.chassis_top) < 1e-6
+            and abs(edge.midpoint[1] - f.clamp_center_y)
+            <= f.pocket_length / 2.0 + 1e-6
+            and min(
+                abs(edge.midpoint[0] - side * f.rod_x) for side in (-1, 1)
+            )
+            <= f.pocket_width / 2.0 + 1e-6
+        ]
+        return ch.chamfer_edges(body, rim, amount)
+
+    def _seat_hole(self, side: int):
+        """Two through-holes in the seat floor for the Bearing clamp screws."""
+        from utilities import cad_helpers as ch
+        from utilities.fasteners import screw as screw_spec
+
+        f = self.frame
+        spec = screw_spec(self.config.slide.bearing_clamp.screw)
+        floor = self.config.slide.bearing_clamp.seat_floor
+        span = self.config.slide.bearing_clamp.screw_span_y
+        holes = []
+        for screw_side in (-1, 1):
+            hole = ch.cylinder_centered(spec.clearance, floor + 2.0)
+            hole = ch.translate(
+                hole,
+                side * f.rod_x,
+                f.clamp_center_y + screw_side * span / 2.0,
+                f.chassis_top - f.pocket_depth - floor / 2.0,
+            )
+            holes.append(hole)
+        return ch.make_compound(holes)
+
+    # -- printing --------------------------------------------------------
     def sections(self) -> tuple[Any, Any]:
-        """Split the chassis into its left and right printable Sections."""
+        """Split the assembled chassis into its left and right Sections."""
         from utilities import cad_helpers as ch
 
         return ch.split_x(self.build())
+
+    def tray_sections(self) -> tuple[Any, Any]:
+        from utilities import cad_helpers as ch
+
+        return ch.split_x(self.build_tray())
+
+    def deck_sections(self) -> tuple[Any, Any]:
+        from utilities import cad_helpers as ch
+
+        return ch.split_x(self.build_deck())
 
 
 __all__ = ["Chassis"]

@@ -4,7 +4,7 @@
 #   make data       # data layer only (config → components → layout → validation)
 #   make all        # full CAD + exports (STEP/STL/SVG/glTF)
 #   make display    # display sub-assembly only (LCD + HDMI driver, fast)
-#   make chassis    # chassis shell + keyboard/SBC/hub/controller
+#   make chassis    # chassis shell + keyboard/SBC/controller (hub is external)
 #   make screen_lid # screen-lid shell + display + driver
 #   make slide      # guide rods + LM...LUU bearings
 #   make keyboard_plate  # bare switch plate, split into Sections

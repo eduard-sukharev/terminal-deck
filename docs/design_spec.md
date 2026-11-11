@@ -493,7 +493,7 @@ Bosses
 
 Walls
 
-Fillets
+Chamfers
 
 Cutouts
 ```
@@ -532,14 +532,67 @@ Everything derives from this.
 
 ---
 
-# Fillets
+# Draft
 
-No hardcoded radii.
+The X side walls are drafted by `config.draft.angle` (5–10° from vertical).
+The Tray widens from its base up to its prismatic half-band; the Deck is
+prismatic all the way to the closed face. The Screen lid widens from its face
+panel down to the Back plate. The two halves are therefore widest where they
+meet on the closed face.
+
+The chassis' 6 mm joint band is **prismatic on both halves** (ADR-0012), split
+3 mm each side of the Parting plane: the Tray's draft stops at `band_z0`, and
+the Deck carrying the keyboard Well is straight through to the face.
+
+The Screen lid's Back plate and its Band joint are **prismatic** (ADR-0011):
+the lid is at full width from `panel_outer_z` up to `band_z1`, and only the
+Bezel above the band tapers to the display face. That keeps the Bezel/Back
+joint in straight walls.
+
+Only the X side walls are drafted. The front and rear end walls stay vertical:
+the guide span and the rod end clamps are pinned to the 140 mm face-height
+budget, and drafting them would eat that clearance.
+
+The slide budget adds `draft_allowance` to the side pod, so the guide hardware
+keeps its shell clearance as the lid cavity narrows toward the face; the
+hardware positions themselves do not move.
+
+---
+
+# Edge Treatment
+
+The case is **chamfer-first**. The look is chopped, brutal, heavy-duty
+hi-tech: cut bevels, not soft rounds.
+
+Outside faces — every edge visible on the assembled device, and every exposed
+convex or bed-facing edge. When an outside edge is broken it is a 45 degree
+chamfer, never a fillet: a round on an external corner softens the case toward
+a consumer appliance, and on a bed-facing edge it prints as an overhang. A
+sharp corner that needs no break may stay sharp — but it never becomes a
+round.
+
+Inside (concave) joints:
+
+* Chamfer by default. The stress-relief at horizontal floor/wall, boss/wall,
+  boss/floor and rib/floor joints is a 45 degree chamfer
+  (`edges.chamfer_factor * wall`).
+
+* Fillets are allowed sparingly and only on hidden inside joints, where a
+  smooth relief is needed and a chamfer would leave a sharp rebate. The
+  sanctioned uses are the vertical wall/wall joints in
+  `geometry/edge_treatment.py` and the Seam tab corners that must nest in
+  them. Never decorative, never on an outside face.
+
+No hardcoded sizes. Every edge size is configuration:
 
 ```
-edge_radius
+corners.chamfer          # outside case corners (mm)
 
-corner_radius
+edges.chamfer_factor     # inside joint relief, scaled from wall.thickness
+
+edges.bed_chamfer        # bed-face perimeter (elephant's foot)
+
+edges.seam_convex_extra  # tab relief over the notch it nests in
 
 ```
 
@@ -633,10 +686,11 @@ retention
 drag-chain channel
 ```
 
-Never integrate slide math into the enclosure. Two guide rods run inside the
-screen lid's side walls; one LM…LUU bearing per rod is clamped in a Bearing
-clamp on the chassis deck behind the keyboard. The bearing size is config
-data; the face-height budget checks the chosen combination.
+Never integrate slide math into the enclosure. Two guide rods sit on the
+screen lid's back panel, held by two printed Rod clamps each; one LM…LUU
+bearing per rod is held in a printed Bearing clamp that straddles the panel and
+is seated in the chassis deck. The bearing size is config data; the face-height
+budget checks the chosen combination.
 
 ---
 

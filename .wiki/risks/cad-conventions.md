@@ -21,8 +21,9 @@ Violating these silently breaks the component → assembly → enclosure contrac
   base. Never redefine origins (`reference_origin` defaults to `(0,0,0)`).
 * **Single wall parameter:** `config.wall.thickness` (`Wall`). Everything
   derives from it — no ad-hoc wall thicknesses.
-* **No hardcoded fillet radii** — use `corners.radius` / `corners.edge_radius`
-  from config.
+* **Chamfer-first, no hardcoded edge sizes** — use `corners.chamfer` for the
+  outside case corners and `edges.*` for inside joint relief; fillets only on
+  hidden inside joints.
 * **Layouts contain no CAD** — only placements.
 * **Hinge math** lives in `components/hinge.py`; **cable routing** in
   `routing/cable_routing.py`; **fasteners** in `utilities/fasteners.py`. Never

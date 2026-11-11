@@ -105,6 +105,22 @@ class WasherRecess:
     depth: float
 
 
+@dataclass(frozen=True)
+class Countersink:
+    """A 90-degree countersink for a flush flat-head machine screw.
+
+    Attributes
+    ----------
+    diameter : float
+        Cone diameter at the surface (mm); slightly larger than the head.
+    depth : float
+        Axial depth of the cone (mm), i.e. how much material the head occupies.
+    """
+
+    diameter: float
+    depth: float
+
+
 # --- Screw library ------------------------------------------------------
 # Standard ISO 1207 / metric hardware dimensions.
 SCREWS: dict[str, Screw] = {
@@ -147,7 +163,7 @@ SCREWS: dict[str, Screw] = {
 STANDARD_LENGTHS: dict[str, tuple[int, ...]] = {
     "M2": (4, 5, 6, 8, 10, 12, 16),
     "M2.5": (5, 6, 8, 10, 12, 16, 20),
-    "M3": (5, 6, 8, 10, 12, 16, 20, 25, 30),
+    "M3": (5, 6, 8, 10, 12, 16, 18, 20, 25, 30),
     "M4": (6, 8, 10, 12, 16, 20, 25, 30),
 }
 
@@ -163,6 +179,16 @@ WASHERS: dict[str, WasherRecess] = {
 }
 
 
+#: Flat-head (ISO 10642) countersinks: surface diameter and cone depth, with a
+#: 0.2 mm fit allowance on the diameter.
+COUNTERSINKS: dict[str, Countersink] = {
+    "M2": Countersink(diameter=4.0, depth=0.9),
+    "M2.5": Countersink(diameter=5.2, depth=1.3),
+    "M3": Countersink(diameter=6.2, depth=1.5),
+    "M4": Countersink(diameter=8.4, depth=1.9),
+}
+
+
 def nut_trap(size: str) -> NutTrap:
     """The nyloc nut pocket for ``size``, e.g. ``"M3"``."""
     return NUT_TRAPS[size]
@@ -171,6 +197,11 @@ def nut_trap(size: str) -> NutTrap:
 def washer(size: str) -> WasherRecess:
     """The flat washer for ``size`` (``diameter`` outer, ``depth`` thickness)."""
     return WASHERS[size]
+
+
+def countersink(size: str) -> Countersink:
+    """The flush-head countersink for ``size`` (``diameter``, ``depth``)."""
+    return COUNTERSINKS[size]
 
 
 def screw(size: str) -> Screw:

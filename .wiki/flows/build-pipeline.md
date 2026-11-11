@@ -50,7 +50,8 @@ For `all`, the stages are:
 
 There is one layout, `compact` (the default): the clamshell declared in
 `config/layouts/clamshell.yaml` — battery in the hollow under the raised
-keyboard plate, SBC and USB hub in the rear I/O strip, no palm rest.
+keyboard plate, SBC in the rear I/O strip, no palm rest. The USB hub is an
+external module on the accessory rail, not a chassis placement.
 
 Use `--layout-recipe PATH` to run an arbitrary recipe file through the same
 composer. Recipes support `{component.field}` and `{config.path}` references

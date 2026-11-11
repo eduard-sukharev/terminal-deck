@@ -78,6 +78,7 @@ _ALLOWED_AST_NODES = (
     ast.Expression, ast.BinOp, ast.UnaryOp,
     ast.Add, ast.Sub, ast.Mult, ast.Div, ast.USub, ast.UAdd,
     ast.Constant, ast.Tuple, ast.List, ast.Load,
+    ast.Call, ast.Name,
 )
 
 
@@ -86,8 +87,9 @@ def _eval_arithmetic(text: str) -> Any:
 
     Recipes derive positions from component sizes (``{keyboard.depth} / 2 +
     {config.wall_thickness}``), so once references are substituted the result
-    still has to be reduced to a number. Only literals and + - * / are
-    permitted — names, calls and attribute access are rejected.
+    still has to be reduced to a number. Only literals, ``max``/``min`` and
+    + - * / are permitted — other names, calls and attribute access are
+    rejected.
     """
     try:
         tree = ast.parse(text, mode="eval")
@@ -97,8 +99,12 @@ def _eval_arithmetic(text: str) -> Any:
         if not isinstance(node, _ALLOWED_AST_NODES):
             return text
     try:
-        return eval(compile(tree, "<recipe>", "eval"), {"__builtins__": {}}, {})
-    except (ArithmeticError, TypeError, ValueError):
+        return eval(
+            compile(tree, "<recipe>", "eval"),
+            {"__builtins__": {}, "max": max, "min": min},
+            {},
+        )
+    except (ArithmeticError, TypeError, ValueError, NameError):
         return text
 
 
@@ -109,8 +115,13 @@ def _lookup(obj: Any, attr: str) -> Any:
     return getattr(obj, attr, None)
 
 
-def _resolve_refs(value: Any, components: dict[str, Any], config: Any) -> Any:
-    """Resolve ``{component.field}`` and ``{config.path}`` references in a value.
+def _resolve_refs(
+    value: Any,
+    components: dict[str, Any],
+    config: Any,
+    budget: Any = None,
+) -> Any:
+    """Resolve ``{component.field}``, ``{config.path}`` and ``{budget.path}``.
 
     Supports:
     * ``{keyboard.depth}`` → ``components["keyboard"].size().depth``
@@ -118,6 +129,7 @@ def _resolve_refs(value: Any, components: dict[str, Any], config: Any) -> Any:
     * ``{config.wall_thickness}`` → ``config.wall_thickness``
     * ``{config.clearance.shell}`` → ``config.clearance.shell``
     * ``{config.hardware.driver_board.height}`` → nested dict lookups
+    * ``{budget.chassis_height}`` → the derived slide budget's field/property
     * ``{battery.cradle_height}`` → any other numeric attribute read straight
       off the component (falls back here once ``width``/``depth``/``height``
       don't match, so a component's own calculated values stay the single
@@ -128,7 +140,9 @@ def _resolve_refs(value: Any, components: dict[str, Any], config: Any) -> Any:
     """
     if isinstance(value, (list, tuple)):
         # Sequence values (via_point, layers) may hold references per element.
-        resolved_items = [_resolve_refs(item, components, config) for item in value]
+        resolved_items = [
+            _resolve_refs(item, components, config, budget) for item in value
+        ]
         return type(value)(resolved_items) if isinstance(value, tuple) else resolved_items
     if not isinstance(value, str):
         return value
@@ -136,6 +150,15 @@ def _resolve_refs(value: Any, components: dict[str, Any], config: Any) -> Any:
     def _resolve_one(match: re.Match) -> str:
         path = match.group(1)
         parts = path.split(".")
+        if parts[0] == "budget":
+            if budget is None:
+                raise ValueError(f"No slide budget available for reference: {path}")
+            obj: Any = budget
+            for attr in parts[1:]:
+                obj = _lookup(obj, attr)
+                if obj is None:
+                    raise ValueError(f"Unknown budget path: {path}")
+            return str(obj)
         if parts[0] == "config":
             obj: Any = config
             for attr in parts[1:]:
@@ -181,6 +204,7 @@ def load_recipe(
     path: str | Path,
     components: dict[str, Any] | None = None,
     config: Any = None,
+    budget: Any = None,
 ) -> list[Constraint]:
     """Load a YAML recipe file and return a list of Constraint objects.
 
@@ -192,6 +216,8 @@ def load_recipe(
         Components keyed by name (needed for ``{component.field}`` refs).
     config : Config or None
         Resolved build configuration (needed for ``{config.path}`` refs).
+    budget : SlideBudget or None
+        Derived slide budget (needed for ``{budget.path}`` refs).
 
     Returns
     -------
@@ -223,9 +249,9 @@ def load_recipe(
         params = dict(item)
         del params["kind"]
 
-        # Resolve component/config references.
+        # Resolve component/config/budget references.
         for key, value in params.items():
-            params[key] = _resolve_refs(value, components, config)
+            params[key] = _resolve_refs(value, components, config, budget)
 
         # Coerce types (list → tuple, string → enum).
         for key, value in params.items():

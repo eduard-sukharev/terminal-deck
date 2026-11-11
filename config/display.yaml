@@ -19,6 +19,10 @@ display:
 
 bezel:
   inset: 3                 # glass opening inset from the panel edge
+  recess: 1.0              # display frame pocket in the front panel's inner
+                           # face: lets the panel sit deeper, so the lid is that
+                           # much thinner. The remaining panel lip (lid_front -
+                           # recess) retains the frame.
 
 driver_board:
   width: 55                 # measured

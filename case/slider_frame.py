@@ -4,10 +4,16 @@ The case is built in the world frame (face-up): X right, Y along the slide
 (+Y = screen end), Z up. The values here are the only place the chassis/lid
 builders read the placement geometry, so the budget, the layout and the CAD
 cannot drift apart silently.
+
+The slide hardware follows the reference mechanism: the two guide rods sit in
+the screen lid's open cavity on the back panel's inner face, each held by two
+printed Rod clamps; a through-slot in the back panel runs between the clamps,
+and the printed Bearing clamp straddles the panel and slides along that slot.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -18,28 +24,68 @@ class SliderFrame:
 
     width: float
     depth: float
+    draft_angle: float
+    chassis_base_width: float
+    lid_face_width: float
     chassis_top: float
+    parting_z: float
+    chassis_band_z0: float
+    chassis_band_z1: float
+    chassis_band_width: float
+    chassis_joint: Any
     lid_height: float
     lid_bottom: float
     lid_thickness: float
+    lid_back: float
+    lid_front: float
+    panel_outer_z: float
+    panel_inner_z: float
+    lid_top: float
+    band_z0: float
+    band_z1: float
+    lid_joint: Any
+    bezel_recess: float
     front: float
     lid_y_center: float
     wall: float
     clearance: float
     side_pod: float
-    pod_solid: float
-    clamp_width: float
     usable_half: float
+    clamp_width: float
+    clamp_body_width: float
     rod_x: float
     rod_y: float
     rod_z: float
+    rod_raise: float
     rod_length: float
+    rod_clamp_len: float
+    rod_clamp_width: float
+    rod_clamp_height: float
+    rod_clamp_screw_span: float
+    rod_clamp_y: tuple[float, float]
+    rod_groove_width: float
+    rod_groove_depth: float
     bearing_outer: float
     bearing_bore: float
     bearing_length: float
     clamp_center_y: float
     clamp_len: float
-    clamp_top: float
+    slot_width: float
+    slot_y0: float
+    slot_y1: float
+    slot_len: float
+    foot_length: float
+    foot_thickness: float
+    foot_top: float
+    foot_top_z: float
+    foot_bottom_z: float
+    seat_width: float
+    seat_length: float
+    seat_height: float
+    seat_bottom: float
+    pocket_width: float
+    pocket_length: float
+    pocket_depth: float
     keyboard_x: float
     keyboard_y: float
     keyboard_w: float
@@ -55,51 +101,139 @@ class SliderFrame:
         keyboard_p = next(p for p in placements if p.component is keyboard)
         display_p = next(p for p in placements if p.component is display)
 
+        slide = config.slide
         wall = config.wall_thickness
         clearance = config.clearance.shell
         chassis_top = keyboard_p.z_bounds()[1]
-        lid_bottom = chassis_top + config.slide.lid_clearance
-        clamp_width = budget.clamp_width
-        rod_x = budget.usable_half + clamp_width / 2.0
-        rod_z = lid_bottom + config.slide.lid_back + config.slide.rod.diameter / 2.0
-        clamp_center_y = (
-            -budget.chassis_height / 2.0
-            + budget.travel
-            + budget.bearing_length / 2.0
-        )
+        chassis_joint = budget.chassis_joint
+        if abs(chassis_top - chassis_joint.chassis_top) > 1e-9:
+            raise ValueError(
+                "slide budget and keyboard disagree on the chassis top "
+                f"({chassis_joint.chassis_top:.3f} vs {chassis_top:.3f} mm)"
+            )
+        parting_z = chassis_joint.parting_z
+        chassis_band_z0 = chassis_joint.band_z0
+        chassis_band_z1 = chassis_joint.band_z1
+        chassis_band_width = chassis_joint.band_width
+        chassis_base_width = chassis_joint.base_width
+        lid_bottom = chassis_top + slide.lid_clearance
+        lid_thickness = budget.thickness - lid_bottom
+        panel_outer_z = lid_bottom
+        panel_inner_z = lid_bottom + slide.lid_back
+        lid_top = lid_bottom + lid_thickness
+        joint = budget.lid_joint
+        band_z0 = panel_inner_z
+        band_z1 = panel_inner_z + joint.band
+        # X side-wall draft: the Tray is widest at its prismatic band, the lid
+        # widest at its back panel, so the two halves match at the closed face
+        # and taper away from it. The Deck and both joint bands are prismatic;
+        # only the Tray below its band and the lid above its band taper.
+        draft_angle = config.draft.angle
+        draft_tan = math.tan(math.radians(draft_angle))
+        taper_height = lid_thickness - slide.lid_back - joint.band
+        lid_face_width = budget.width - 2.0 * draft_tan * max(taper_height, 0.0)
+        if min(chassis_base_width, lid_face_width) <= 0.0:
+            raise ValueError(
+                "draft angle is too large for the case height: the drafted "
+                "face would collapse past the centreline"
+            )
+
+        front = -budget.chassis_height / 2.0
+        rod_raise = budget.rod_raise
+        rod_z = panel_inner_z + rod_raise
         rod_length = budget.rod_usable
-        # The rod's lower end sits at the lid's front edge, so at the open
-        # pose (lid +travel) it still covers the bearing's lower end.
-        rod_y = -budget.chassis_height / 2.0 + rod_length / 2.0
+        # The rod is inset by one end support from each lid end, so the lid's
+        # end wall stays solid. Its usable span is exactly travel + bearing:
+        # at the closed pose its +Y end meets the bearing's +Y end, at the open
+        # pose its -Y end meets the bearing's -Y end.
+        rod_y = budget.rod_y
+        clamp_center_y = rod_y + budget.travel / 2.0
+
+        rod_clamp_len = slide.rod_clamp.length
+        rod_clamp_y = budget.rod_clamp_y
+        slot_y0 = rod_y - rod_length / 2.0 + rod_clamp_len
+        slot_y1 = rod_y + rod_length / 2.0 - rod_clamp_len
+
+        foot_thickness = slide.bearing_clamp.foot_thickness
+        # The foot's top is flush with the Deck top: the neck spans the back
+        # panel and the joint gap, and the foot sits wholly in the pocket.
+        foot_top_z = chassis_top
+        foot_bottom_z = foot_top_z - foot_thickness
+        pocket_depth = max(0.0, chassis_top - foot_bottom_z)
+        pocket_width = budget.clamp_width + 2.0 * slide.bearing_clamp.seat_fit
+        pocket_length = slide.bearing_clamp.foot_length + 2.0 * slide.bearing_clamp.seat_fit
+        seat_height = pocket_depth + slide.bearing_clamp.seat_floor
+
+        clamp_width = budget.clamp_width
+        clamp_body_width = budget.clamp_body_width
+        rod_clamp_width = slide.rod_clamp.width
+        rod_x = budget.rod_x
+
         return cls(
             width=budget.width,
             depth=budget.chassis_height,
+            draft_angle=draft_angle,
+            chassis_base_width=chassis_base_width,
+            lid_face_width=lid_face_width,
             chassis_top=chassis_top,
+            parting_z=parting_z,
+            chassis_band_z0=chassis_band_z0,
+            chassis_band_z1=chassis_band_z1,
+            chassis_band_width=chassis_band_width,
+            chassis_joint=chassis_joint,
             lid_height=budget.lid_height,
             lid_bottom=lid_bottom,
-            lid_thickness=budget.thickness - lid_bottom,
-            front=-budget.chassis_height / 2.0,
-            lid_y_center=-budget.chassis_height / 2.0 + budget.lid_height / 2.0,
+            lid_thickness=lid_thickness,
+            lid_back=slide.lid_back,
+            lid_front=slide.lid_front,
+            panel_outer_z=panel_outer_z,
+            panel_inner_z=panel_inner_z,
+            lid_top=lid_top,
+            band_z0=band_z0,
+            band_z1=band_z1,
+            lid_joint=joint,
+            bezel_recess=config.bezel.recess,
+            front=front,
+            lid_y_center=front + budget.lid_height / 2.0,
             wall=wall,
             clearance=clearance,
             side_pod=budget.side_pod,
-            # The side pod is the solid clamp+outer wall; the shell clearance
-            # is the air gap between the pod and the widest component inside.
-            pod_solid=budget.side_pod - clearance,
-            clamp_width=clamp_width,
             usable_half=budget.usable_half,
+            clamp_width=clamp_width,
+            clamp_body_width=clamp_body_width,
             rod_x=rod_x,
             rod_y=rod_y,
             rod_z=rod_z,
+            rod_raise=rod_raise,
             rod_length=rod_length,
-            bearing_outer=config.slide.bearing.outer_diameter,
-            bearing_bore=config.slide.bearing.bore,
-            bearing_length=config.slide.bearing.length,
+            rod_clamp_len=rod_clamp_len,
+            rod_clamp_width=rod_clamp_width,
+            rod_clamp_height=slide.rod_clamp.height,
+            rod_clamp_screw_span=slide.rod_clamp.screw_span,
+            rod_clamp_y=rod_clamp_y,
+            rod_groove_width=slide.rod.diameter + 0.4,
+            rod_groove_depth=slide.rod.diameter / 2.0 - rod_raise + 0.1,
+            bearing_outer=slide.bearing.outer_diameter,
+            bearing_bore=slide.bearing.bore,
+            bearing_length=slide.bearing.length,
             clamp_center_y=clamp_center_y,
-            clamp_len=config.slide.bearing.length + 2.0 * config.slide.clamp_wall,
-            clamp_top=rod_z
-            + config.slide.bearing.outer_diameter / 2.0
-            + config.slide.clamp_wall,
+            clamp_len=slide.bearing_clamp.length,
+            slot_width=clamp_width + 2.0 * slide.slot_clearance,
+            slot_y0=slot_y0,
+            slot_y1=slot_y1,
+            slot_len=slot_y1 - slot_y0,
+            foot_length=slide.bearing_clamp.foot_length,
+            foot_thickness=foot_thickness,
+            foot_top=foot_top_z - panel_inner_z,
+            foot_top_z=foot_top_z,
+            foot_bottom_z=foot_bottom_z,
+            seat_width=pocket_width + 2.0 * slide.bearing_clamp.seat_wall,
+            seat_length=pocket_length + 2.0 * slide.bearing_clamp.seat_wall,
+            seat_height=seat_height,
+            seat_bottom=chassis_top - seat_height,
+            pocket_width=pocket_width,
+            pocket_length=pocket_length,
+            pocket_depth=pocket_depth,
             keyboard_x=(keyboard_p.box[0] + keyboard_p.box[2]) / 2.0,
             keyboard_y=(keyboard_p.box[1] + keyboard_p.box[3]) / 2.0,
             keyboard_w=keyboard.size().width,

@@ -37,14 +37,19 @@ class RecipeLayout(ConstraintLayout):
         components: dict[str, Any] | None = None,
         config: Any = None,
         recipe_path: str | Path | None = None,
+        budget: Any = None,
     ) -> None:
         super().__init__(components, config)
         self._recipe_path = Path(recipe_path) if recipe_path else None
+        #: Derived slide budget, exposed to recipe expressions as ``{budget.*}``.
+        self._budget = budget
 
     def _build_constraints(self):
         if self._recipe_path is None:
             return []
-        return load_recipe(self._recipe_path, self.components, self._config)
+        return load_recipe(
+            self._recipe_path, self.components, self._config, budget=self._budget
+        )
 
 
 __all__ = ["RecipeLayout"]

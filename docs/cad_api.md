@@ -31,10 +31,15 @@ load configuration -> load components -> place layout -> validate placement
 
 | Method | Consumes | Produces |
 |--------|----------|----------|
-| `Chassis.build()` | config, frame | chassis shell: Tray + Deck, keyboard Well, Bearing clamps |
-| `Chassis.sections()` | — | left/right printable Sections |
-| `ScreenLid.build()` | config, frame | inverted-tray front, glass opening, flat back, guide channels |
-| `ScreenLid.sections()` | — | left/right printable Sections |
+| `Chassis.build()` | config, frame | assembled chassis: Tray + Deck compound |
+| `Chassis.build_tray()` | config, frame | lower bowl: taper to `band_z0`, prismatic band, floor, screw columns, lower scallops |
+| `Chassis.build_deck()` | config, frame | purely prismatic Deck: keyboard Well, seats, insert bosses, upper scallops |
+| `Chassis.sections()` / `tray_sections()` / `deck_sections()` | — | left/right printable Sections of the whole/half |
+| `ScreenLid.build()` | config, frame | assembled lid: Bezel + Back plate as a compound |
+| `ScreenLid.build_bezel()` | config, frame | display tray, glass opening, band posts, joint inserts |
+| `ScreenLid.build_back()` | config, frame | flat Back plate: clamp slots, Rod-clamp inserts, band screws |
+| `ScreenLid.sections()` | — | left/right printable Sections of the assembled lid |
+| `ScreenLid.bezel_sections()` / `back_sections()` | — | left/right printable Sections of each part |
 
 ### Components (`components/`)
 
@@ -53,7 +58,9 @@ reference origin.
   easy to distinguish. Each component role gets its own opaque color; apply
   transparency only where it makes the inside visible (the case shell).
 * `wall_thickness = config.wall.thickness` is the single wall parameter.
-* Fillets use `config.corners.edge_radius` and `config.corners.radius`.
+* Edges are chamfer-first: `config.corners.chamfer` for the visible outer
+  case corners, `config.edges.*` for inside joint relief and the bed face.
+  Fillets are restricted to hidden inside joints (never an outside face).
 * Heat inserts come from `utilities/fasteners.py`, never recreated.
 * Slide math lives in `components/slide.py`, never in the enclosure.
 * Cable routing lives in `routing/cable_routing.py`.

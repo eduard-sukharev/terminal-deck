@@ -21,16 +21,17 @@ Torque hinge (ADR-0007) are retired.
 Derived from the real components, not copied from the reference:
 
 - **Closed face height 140 mm — HARD.** The budget is the slide, not the
-  content: `travel (≈93) + one LM…LUU bearing (35) + end supports + lid top
-  bezel`. Travel is not the keyboard depth (77.75); it is the keyboard's
-  front offset plus its depth plus clearance (≈93), because the lid's lower
-  edge must pass the keyboard's *upper* edge when open.
+  content: `travel (≈93) + one LM…LUU bearing (19, LM6UU) + two Rod clamps
+  (9 + 0.5 each) + end supports + lid top bezel`. Travel is not the keyboard
+  depth (77.75); it is the keyboard's front offset plus its depth plus
+  clearance (≈93), because the lid's lower edge must pass the keyboard's
+  *upper* edge when open.
 - **Thickness ≈ 56 mm — GOAL** (the clamshell closed at 57). Chassis (keyboard,
   SBC, bearing clamps) plus screen lid (panel, driver, guide rods).
-- **Width ≈ 266 mm — derived**: keyboard 230.15 / panel 231 plus two side
-  pods (guide rod, C-channel, bearing clamp, accessary-rail pockets). It is
-  not the reference's 335 mm, which is padded with decorative rails and an
-  antenna.
+- **Width ≈ 283 mm — derived**: keyboard 230.15 / panel 231 plus two side
+  pods (guide rod, clamp slot, Rod clamp, bearing clamp, accessary-rail
+  pockets). It is not the reference's 335 mm, which is padded with decorative
+  rails and an antenna.
 - **Battery external** on an accessory rail, as the reference does; an
   internal pack (ideally a small one that keeps the system alive while
   external packs are swapped) is added later only if the envelope allows.
@@ -40,9 +41,14 @@ Derived from the real components, not copied from the reference:
 
 ## Mechanism
 
+> Revised by ADR-0010: the rods are clamped to the lid's back panel with two
+> printed Rod clamps each, and the Bearing clamps straddle the panel through a
+> through-slot. The side-wall C-channel below is the superseded first
+> generation.
+
 - Two steel guide rods, one per side, run **inside the screen lid's thickness,
   at the sides of the panel**, in a C-channel in the lid's side walls.
-- Two **linear bearings (LM…LUU, default LM6LUU, one per rod)** are clamped in
+- Two **linear bearings (LM…LUU, default LM6UU, one per rod)** are clamped in
   **Bearing Clamps standing on the chassis deck behind the keyboard**, rising
   above the base surface. The clamp enters the lid's C-channel through a slot;
   the rod slides through the bearing.

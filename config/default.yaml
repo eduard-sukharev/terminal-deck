@@ -5,7 +5,16 @@ wall:
   thickness: 2.0        # single wall-thickness parameter; everything derives from it
 
 corners:
-  radius: 4             # outer case corner fillet
+  chamfer: 4            # 45 deg chamfer on the outer case corners (chamfer-first, no fillets outside)
+
+draft:
+  angle: 7.0            # degrees from vertical on the X side walls: the Tray
+                        # widens from its base up to its prismatic band (the
+                        # Deck is prismatic), the Screen lid widens from its
+                        # face panel down to the back panel, so the two halves
+                        # are widest where they meet. The front and rear end
+                        # walls stay vertical (the guide span and rod end clamps
+                        # are pinned to the 140 mm face budget).
 
 clearance:
   shell: 0.35           # air gap between a component and the shell interior
@@ -24,12 +33,29 @@ material:
   min_bed_face_area: 100.0  # mm^2; every Section needs a flat face at least this big on the bed
 
 # Parting plane (ADR 0003): the horizontal plane where the Deck meets the
-# Tray. Reserved for the Tray/Deck split of the slider chassis; the first
-# generation is one fused shell.
+# Tray. The chassis is built as those two parts (ADR-0012).
 parting:
   front_wall_fraction: 0.5
   min: 10.0
   max: 20.0
+
+# Chassis Tray <-> Deck band joint (ADR-0012). The chassis splits at the
+# Parting plane; the band is split evenly around it: the Tray is drafted below
+# its half of the band (up to band_z0) and prismatic through it, the Deck is
+# prismatic all the way to the closed face. Ten M3 screws are driven from below
+# through the Tray floor into heat-set inserts in the Deck's band: four
+# corners, two per long side, one per short side. Each half gets a shallow
+# scallop at every station, straddling the seam.
+chassis_joint:
+  band: 6.0            # band split 3 mm each side of the Parting plane
+  boss: 10.0           # insert boss diameter at the plane (capped per station)
+  boss_margin: 1.5     # material between an insert hole and a free face
+  station_inset: 6.5   # station centre from a drafted (X) wall's outer face
+  side_inset: 4.5      # station centre from a vertical (front/rear) wall
+  scallop_width: 10.0  # scallop along the wall, per station, both halves
+  scallop_depth: 0.8   # how far the scallop cuts into the wall
+  scallop_height: 3.0  # scallop height per half (2 x this = the band)
+  screw: M3            # countersunk from below into a heat-set insert
 
 # Merged boss (ADR 0003): a boss, column, standoff or lug whose outer surface is
 # closer than `threshold_factor * wall` to a wall face is fused into that wall
@@ -40,9 +66,11 @@ merged_boss:
   threshold_factor: 2.0
   bore_margin: 0.5
 
-# Edge treatment (ADR 0003): concave joints get a stress-relief chamfer of
+# Edge treatment (ADR 0003): chamfer-first — outside faces are always
+# chamfered. Concave joints get a stress-relief chamfer of
 # `chamfer_factor * wall`; `bed_chamfer` is the 45 deg chamfer on each
-# Section's bed-face outer edge (elephant's foot).
+# Section's bed-face outer edge (elephant's foot). The only fillets are the
+# vertical concave joints, hidden inside the assembly.
 edges:
   chamfer_factor: 0.5
   bed_chamfer: 0.5

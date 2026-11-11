@@ -10,12 +10,15 @@ is retired). This is **not** a maker platform — no GPIO, sensors, LEDs, or
 decorative elements. Priorities: robustness, serviceability, printability,
 parametricity, reusability.
 
-> **Status.** `docs/form_factor.md`, `CONTEXT.md` and ADR-0009 define the
-> slider. The data skeleton and the first-generation CAD shell are implemented:
-> `--layout slider` (the only layout) derives the budget and builds/exports the
-> chassis, screen lid, guide hardware and the closed/open assembly, with stepped
-> Seams at x=0. The retired clamshell code, config, recipe and tests have been
-> removed. Still next: Seam lugs, heat-set bosses, the drag-chain channel.
+> **Status.** `docs/form_factor.md`, `CONTEXT.md` and ADR-0009/0010/0011/0012
+> define the slider. The data skeleton and the first-generation CAD shell are
+> implemented: `--layout slider` (the only layout) derives the budget and
+> builds/exports the chassis (Tray + Deck, split at the band joint), screen lid
+> (Bezel + Back plate, split at the band joint), guide rods, the printed Rod
+> clamps and Bearing clamps, and the closed/open assembly, with stepped Seams
+> at x=0. The retired clamshell code, config, recipe and tests have been
+> removed. Still next: Seam lugs, the drag-chain channel and the redesigned
+> vents (they must stay out of both joint bands).
 
 ## Build volume
 
@@ -71,12 +74,17 @@ segfault on a chamfer, so `cad_helpers` runs each attempt in a child process
 **Selective build targets** (`--targets`, comma-separated), implemented set:
 
 - `assembly` — chassis + screen lid + guide hardware + components
-- `assembly_opened` — the open pose: lid and rods slid by the travel, bearings/clamps fixed
-- `chassis` — chassis shell + keyboard, SBC, hub, controller
-- `chassis_left` / `chassis_right` — printable chassis Sections (x=0)
-- `screen_lid` — lid shell + display + driver
+- `assembly_opened` — the open pose: lid, rods and Rod clamps slid by the travel; bearings/Bearing clamps fixed
+- `chassis` — chassis shell + keyboard, SBC, controller
+- `chassis_left` / `chassis_right` — whole-chassis Sections (reference only; the
+  printable chassis parts are the Tray and Deck Sections below)
+- `chassis_tray` — the lower bowl with the ten screw columns; `chassis_tray_left/right` — its printable Sections
+- `chassis_deck` — the purely prismatic Deck with the Well, seats and insert bosses; `chassis_deck_left/right` — its printable Sections
+- `screen_lid` — lid shell + display + driver + guide rods + Rod clamps
 - `screen_lid_left` / `screen_lid_right` — printable lid Sections
-- `slide` — two guide rods + two LM…LUU bearings
+- `slide` — guide rods + Rod clamps + LM…LUU bearings + Bearing clamps
+- `rod_clamp` — one printable Rod clamp
+- `bearing_clamp` — one printable Bearing clamp
 - `keyboard_plate` — the switch plate; `keyboard_plate_left/right` — its Sections
 - `display` — LCD panel + HDMI driver combined
 - `components` — all per-component debug STLs
@@ -85,8 +93,8 @@ segfault on a chamfer, so `cad_helpers` runs each attempt in a child process
 
 Every wide part is exported whole for reference and split into **two**
 Sections at x=0 for printing (ADR 0003): the Sections must fit
-220 × 220 × 256 mm or the build fails. Stepped Seams, Seam lugs and the
-tray/deck and bezel/back sub-parts are the next refinement.
+220 × 220 × 256 mm or the build fails. Stepped Seams and Seam lugs are the
+next refinement.
 
 ## Architecture
 
@@ -103,16 +111,25 @@ intuition. Wire-up lives in `main.py` (`BuildPipeline`, `run()`).
   switch/stabilizer libraries → plate geometry model + its own validation).
 - **CAD generation (required build123d):** `Assembly.build()` unions component
   solids at their placements; `case.slider_frame.SliderFrame` derives the
-  world-frame dimensions from the layout + budget; `case.chassis.Chassis.build()`
-  produces the Tray/Deck shell with the keyboard Well and the two Bearing
-  clamps (with the bearing bores), and `sections()` splits it at x=0;
-  `case.screen_lid.ScreenLid.build()` produces the inverted-tray front with the
-  glass opening, the flat back panel and the guide-rod C-channels, and
-  `sections()` splits it; `components/slide.py` also builds the purchased
-  `build_guide_rod()` / `build_linear_bearing()` solids (its data model and the
-  budget stay CAD-free); `geometry/*` hold the primitives. Stepped Seams/lugs,
-  vents, connector cutouts and the tray/deck · bezel/back sub-parts are the
-  next refinement.
+  world-frame dimensions from the layout + budget; `case.chassis.Chassis`
+  builds the two halves at the Parting plane (ADR-0012): `build_tray()` is the
+  drafted bowl (taper from the base to `band_z0`, prismatic band to the plane),
+  the ten frustum screw columns and the lower scallops;
+  `build_deck()` is the purely prismatic Deck: the keyboard Well, the two
+  bearing-clamp seats (merged seat blocks with foot pockets), the insert bosses
+  and the upper scallops; `build()` returns their compound; `tray_sections()` /
+  `deck_sections()` split a half (the `chassis` spec at x=0).
+- `case.screen_lid.ScreenLid.build_bezel()` produces the
+  inverted-tray front with the glass opening and the prismatic band joint;
+  `build_back()` the flat plate with the clamp slots, the Rod-clamp inserts and
+  the band's countersunk screws; `sections()` / `bezel_sections()` /
+  `back_sections()` split them;
+  `components/slide.py` also builds the purchased `build_guide_rod()` /
+  `build_linear_bearing()` solids and the printed `build_rod_clamp()` /
+  `build_bearing_clamp()` parts (its data model and the budget stay CAD-free);
+  `geometry/*` hold the primitives (the two band joints live in
+  `geometry/joint.py` and `geometry/chassis_joint.py`). Stepped Seams/lugs,
+  the drag-chain channel, vents and connector cutouts are the next refinement.
 - `utilities/cad_helpers.py` is the **only** CAD adapter (build123d); it imports
   lazily so the data layer stays importable without a CAD library. Geometry
   modules must go through it, not `import build123d` directly.
@@ -150,7 +167,9 @@ config/layouts/slider.yaml      the recipe (the only one)
 
 Most placements are derived from component sizes and config; the recipe's
 `fixed_position` entries are the deliberate manual overrides, each annotated
-with why it cannot be derived.
+with why it cannot be derived. The envelope itself comes from the derived
+slide budget (`{budget.chassis_height}`, `{budget.rear_band}`, …) rather than
+restating the mechanism formulas in YAML.
 
 Layouts contain no CAD, only placements. `layouts/layout_recipe.py` is the
 adapter that runs a recipe through the composer and returns placements;
@@ -180,6 +199,9 @@ is checked by `keyboard/validation.py`.
   screen end), +Z up (thickness); origin = centre of the chassis footprint on
   the table plane. Never redefine origins.
 - `wall_thickness = config.wall.thickness` is the single wall parameter.
+- **Chamfer-first.** Outside edges are chamfered, never filleted
+  (`corners.chamfer`, `edges.*`). Fillets are only allowed sparingly on hidden
+  inside joints (see `docs/design_spec.md` § Edge Treatment).
 - Layouts contain **no CAD** — only placements.
 - Slide math lives in `components/slide.py`, cable routing in
   `routing/cable_routing.py`, fasteners in `utilities/fasteners.py` — never
@@ -200,26 +222,79 @@ The face is flat — there is no keyboard slope and no slope machinery in the
 code (the clamshell's `deck.slope`/`tilt_x`/`deck_level_at` are gone). `config.slide` holds the purchased
 linear guide (rod diameter/length, bearing model, clamp, travel margin, chain
 pitch/width/bend radius); the build checks the chosen combination against the
-140 mm face-height budget.
+140 mm face-height budget. `config.chassis_joint` holds the Tray/Deck band
+(band height, boss cap, per-wall station insets, scallop size, screw size);
+`config.parting` sets the plane it sits on.
 
 Gotchas:
 
 - **The face-height budget is the binding constraint.** `travel + bearing
-  length + end supports + lid bezel ≤ 140`. Travel is the keyboard's front
-  offset + depth + open clearance (≈ 93), not the keyboard depth (77.75). One
-  bearing per rod; a second one breaks the budget.
+  length + 2 * (Rod clamp + clearance) + end supports + lid bezel ≤ 140`.
+  Travel is the keyboard's front offset + depth + open clearance (≈ 93), not
+  the keyboard depth (77.75). One bearing per rod; the default is the short
+  LM6UU (19 mm) because the 35 mm LM6LUU plus the end clamps does not fit. A
+  second bearing per rod breaks the budget.
+- **The lid is the larger half; the chassis grows to it.** The guide span is
+  fixed by the purchased bearing and the end clamps, so `chassis height =
+  max(keyboard + front offset + rear band, guide span + top bezel)` and the
+  two halves share the closed face (≈ 139.3). Do not shrink the lid to the
+  keyboard-driven chassis depth: the lid would no longer clear the bearing at
+  the open pose. The added rear band is empty behind the bearing-clamp seat.
+- **The band joint grows the case sideways, never inward.** The lid's eight
+  fastening stations include four corners that land where the Rod clamps sit;
+  only 3 mm (front) / 5.5 mm (rear) of free Y is left there, so no insert fits
+  and `slide.joint.corner_post` widens the side pod instead (each part stays
+  under the 220 mm bed). `usable_half` and `rod_x` are measured from the shell's
+  inner face and must not move, or the rod, slot, Deck seats and pockets drift.
+  The band is prismatic and solid — vents stay out of it; the lid is
+  ≈ 16.85 mm thick, set by the display + driver stack, not by the Rod clamp.
+- **The chassis splits at the Parting plane, band-only (ADR-0012).** The 6 mm
+  band is split 3 mm each side of `parting_z`: the Tray is drafted from its
+  base up to `band_z0` and prismatic from there to the plane, the Deck is
+  prismatic all the way to the closed face. The band width is therefore the
+  full closed-face width (`width`), and the base is the drafted width at
+  `band_z0`.
+  Ten M3 × 18 come up from below (`parting_z − countersink` = 14.65 grip) into
+  heat-set inserts in the Deck's band bosses; each boss stands 5.5 mm out of
+  the band's cavity (insert 4 + 1.5 margin) because the Deck's half-band is
+  only 3 mm. The stations are sized per wall:
+  `station_inset` 6.5 from a drafted X wall (the floor skin pulls inward),
+  `side_inset` 4.5 from a vertical front/rear wall (the keyboard plate). The
+  boss is capped at `min(10, 2·(surface − min_feature))` — the long sides only
+  afford **7.8 mm** — and the Tray column is a *frustum* down to what the floor
+  skin allows (≈ Ø8.57), never a full-diameter straight boss. The scallop
+  (10 × 0.8, 3 mm per half) leaves 1.5 mm to the insert at the long sides.
+  Do not widen the insets: the 1.5 mm scallop margin and the 1.4 mm countersink
+  skin are the binding constraints.
 - The keyboard is the tallest content along the face: its Well position sets
-  the travel. The RP2040 controller sits under the keyboard plate; the SBC and
-  the USB hub sit in the Rear band behind the keyboard. Neither adds face
-  height beyond the band.
+  the travel. The RP2040 controller sits under the keyboard plate; the SBC
+  sits in the Rear band behind the keyboard. Neither adds face height beyond
+  the band. The USB hub is external (an accessory-rail module), not a chassis
+  placement.
+- **The X side walls are drafted** (`draft.angle`, 5–10°): the Tray widens
+  from its base up to its band, and the lid widens from its face panel down to
+  the back panel; the Deck is prismatic, so both halves are widest at the
+  closed face. The front/rear end walls
+  stay vertical — drafting them would eat the rod end-clamp clearance inside
+  the 140 mm guide span. The slide budget adds `draft_allowance` to the side
+  pod so the guide hardware keeps its shell clearance as the lid cavity
+  narrows toward the face.
 - The face is flat and the keyboard has no slope: do not add a
   `deck.slope`-style angle or a tilting mount. The slide is pure +Y
   translation.
 - The lid's flat back slides over the keycaps: the Well sets that clearance.
   A keycap standing above the Deck is a collision over the whole travel.
-- The guide rods live in the lid's side walls (C-channel); the Bearing clamps
-  stand on the Deck behind the keyboard and enter the channel through a slot.
-  Neither the clamp nor the rod may protrude outside the closed envelope.
+- The guide rods sit on the lid back panel's inner face, inset `slide.rod.end_support`
+  from each lid end; two printed Rod clamps hold each rod. The Bearing clamps
+  straddle the panel through a long slot, seat in a pocket in the Deck, and
+  slide along the slot. Neither the clamp nor the rod may protrude outside the
+  closed envelope. The slot ends at the Rod clamps; the bearing stops
+  `rod_clamp.clearance` short of each clamp at the extreme poses, so the panel
+  under a clamp stays solid with a shallow rod groove for the clamp to pinch.
+- The rod's usable span is `travel + bearing + 2 * (rod_clamp.length +
+  rod_clamp.clearance)`; the rod is inset by one `end_support` from the chassis
+  front. Do not re-derive the rod or the bearing-clamp centre from the chassis
+  front independently: the bearing will run under an end clamp or off the rod.
 - **Components must be centered on their origin in XY and run `[0, height]`
   in Z** (`Placement.box` / `z_bounds` assume it).
 - A single bounding box per component only reports where it *isn't* solid as a

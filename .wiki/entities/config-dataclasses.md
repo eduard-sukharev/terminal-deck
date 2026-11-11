@@ -24,7 +24,11 @@ Frozen dataclasses nested under `Config`:
 
 * `Wall(thickness)` — the single wall parameter; `Config.wall_thickness` is an
   alias for `config.wall.thickness`. Everything derives from this.
-* `Corners(radius, edge_radius)` — fillet radii, never hardcoded.
+* `Corners(chamfer)` — 45 degree chamfer on the visible outer case corners,
+  never hardcoded.
+* `Draft(angle)` — X side-wall draft in degrees from vertical (5–10°): the
+  Chassis widens up to the Deck, the lid widens down to its back panel. The
+  front/rear end walls stay vertical.
 * `Clearance(shell, insert, screw)` — shell gap, insert clearance, screw clearance.
 * `Display(width, height, thickness, diagonal, active_width, active_height)` —
   the 8.8" panel.

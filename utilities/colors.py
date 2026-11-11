@@ -31,9 +31,15 @@ COMPONENT_COLORS: dict[str, Color] = {
     "section_right": (0.70, 0.88, 0.66, 1.0),
     "case": (0.72, 0.73, 0.76, 0.55),        # translucent shell grey
     "chassis": (0.55, 0.65, 0.78, 0.55),     # slider chassis (translucent)
+    "chassis_tray": (0.50, 0.60, 0.74, 0.50),  # chassis Tray (translucent)
+    "chassis_deck": (0.60, 0.71, 0.84, 0.55),  # chassis Deck (translucent)
     "screen_lid": (0.78, 0.72, 0.55, 0.60),  # slider lid (translucent)
+    "screen_lid_bezel": (0.78, 0.72, 0.55, 0.55),  # lid display tray (translucent)
+    "screen_lid_back": (0.62, 0.58, 0.45, 0.85),   # lid back plate, carries the rods
     "guide_rod": (0.85, 0.86, 0.88, 1.0),    # steel guide rods
+    "rod_clamp": (0.18, 0.32, 0.62, 1.0),    # printed rod end clamps (blue)
     "linear_bearing": (0.45, 0.47, 0.50, 1.0),  # LM...LUU bushings
+    "bearing_clamp": (0.16, 0.48, 0.24, 1.0),   # printed bearing clamps (green)
 }
 
 DEFAULT_COLOR: Color = (0.6, 0.6, 0.6, 1.0)

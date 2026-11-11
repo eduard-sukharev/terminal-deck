@@ -111,8 +111,10 @@ class BuildPipeline:
             # keyboard's raised rear.
             "controller": controller,
             "sbc": sbc,
-            # External accessory: the battery model is retained for the
-            # pack on the accessory rail, but it is not a chassis placement.
+            # External accessories: the battery and the USB hub live on the
+            # accessory rail, not in the chassis. Their models are retained so
+            # they can be exported on their own (comp:<role>), but they are not
+            # placements.
             "battery": Battery(cfg.hardware),
             "usb_breakout": UsbBreakout(cfg.hardware),
         }
@@ -203,41 +205,26 @@ class BuildPipeline:
         from case.chassis import Chassis
         from case.screen_lid import ScreenLid
         from case.slider_frame import SliderFrame
-        from components.slide import build_guide_rod, build_linear_bearing
+        from components.slide import (
+            build_bearing_clamp,
+            build_guide_rod,
+            build_linear_bearing,
+            build_rod_clamp,
+        )
         from exports import EXPORTERS
         from utilities import cad_helpers as ch
 
         ch.require_cad()
         frame = SliderFrame.from_data(config, budget, components, placements)
-        chassis_shell = Chassis(config, frame).build()
+        chassis = Chassis(config, frame)
+        chassis_tray = chassis.build_tray()
+        chassis_deck = chassis.build_deck()
+        chassis_shell = ch.make_compound([chassis_tray, chassis_deck])
 
-        # The hub's +Y port strip is the externally reachable I/O; bore its
-        # openings through the chassis rear wall. The east USB-A is blocked by
-        # the right side pod and is intentionally not exposed.
-        hub = components.get("usb_breakout")
-        hub_placement = next(
-            (p for p in placements if p.component is hub), None
-        ) if hub is not None else None
-        if hub_placement is not None:
-            port_tools = []
-            for connector in hub.connectors():
-                if connector.internal or connector.direction[1] <= 0:
-                    continue
-                wx, _, wz = hub_placement.world_offset(
-                    connector.x, connector.y, connector.z
-                )
-                tool = ch.box_centered(
-                    connector.width + 2.0 * frame.clearance,
-                    3.0 * frame.wall,
-                    connector.height + 2.0 * frame.clearance,
-                )
-                port_tools.append(
-                    ch.translate(tool, wx, frame.depth / 2.0, wz)
-                )
-            if port_tools:
-                chassis_shell = ch.clean(ch.cut(chassis_shell, *port_tools))
-
-        lid_shell = ScreenLid(config, frame).build()
+        lid = ScreenLid(config, frame)
+        lid_bezel = lid.build_bezel()
+        lid_back = lid.build_back()
+        lid_shell = ch.make_compound([lid_bezel, lid_back])
 
         rods = [
             ch.translate(
@@ -245,6 +232,46 @@ class BuildPipeline:
                 side * frame.rod_x,
                 frame.rod_y,
                 frame.rod_z,
+            )
+            for side in (-1, 1)
+        ]
+        rod_clamps = [
+            ch.translate(
+                build_rod_clamp(
+                    config.slide.rod.diameter,
+                    frame.rod_raise,
+                    frame.rod_clamp_len,
+                    frame.rod_clamp_height,
+                    frame.rod_clamp_width,
+                    config.slide.rod_clamp.screw,
+                    frame.rod_clamp_screw_span,
+                    config.slide.rod_clamp.set_screw,
+                ),
+                side * frame.rod_x,
+                center_y,
+                frame.panel_inner_z,
+            )
+            for side in (-1, 1)
+            for center_y in frame.rod_clamp_y
+        ]
+        bearing_clamps = [
+            ch.translate(
+                build_bearing_clamp(
+                    frame.bearing_outer,
+                    config.slide.clamp_wall,
+                    frame.rod_raise,
+                    frame.clamp_len,
+                    frame.foot_length,
+                    frame.foot_thickness,
+                    frame.foot_top,
+                    config.slide.bearing_clamp.screw,
+                    config.slide.bearing_clamp.screw_span_y,
+                    config.slide.bearing_clamp.corner_chamfer,
+                    config.slide.bearing_clamp.top_chamfer,
+                ),
+                side * frame.rod_x,
+                frame.clamp_center_y,
+                frame.panel_inner_z,
             )
             for side in (-1, 1)
         ]
@@ -260,12 +287,15 @@ class BuildPipeline:
             for side in (-1, 1)
         ]
         rods_compound = ch.make_compound(rods)
+        rod_clamps_compound = ch.make_compound(rod_clamps)
         bearings_compound = ch.make_compound(bearings)
-        slide = ch.make_compound(rods + bearings)
+        bearing_clamps_compound = ch.make_compound(bearing_clamps)
+        fixed_hardware = ch.make_compound(bearings + bearing_clamps)
+        slide = ch.make_compound(rods + rod_clamps + bearings + bearing_clamps)
 
         assembly = Assembly(placements, config)
         role_map = {id(component): role for role, component in components.items()}
-        chassis_roles = ("keyboard", "sbc", "usb_breakout", "controller")
+        chassis_roles = ("keyboard", "sbc", "controller")
         lid_roles = ("display", "driver")
         chassis_parts = select_placements(
             placements, {components[r] for r in chassis_roles if r in components}
@@ -277,18 +307,18 @@ class BuildPipeline:
             [chassis_shell] + [assembly.build_subset([p]) for p in chassis_parts]
         )
         lid_with_parts = ch.make_compound(
-            [lid_shell] + [assembly.build_subset([p]) for p in lid_parts]
+            [lid_shell, rods_compound, rod_clamps_compound]
+            + [assembly.build_subset([p]) for p in lid_parts]
         )
         assembly_solid = ch.make_compound(
-            [chassis_with_parts, lid_with_parts, slide]
+            [chassis_with_parts, lid_with_parts, fixed_hardware]
         )
         travel = budget.travel
         assembly_opened = ch.make_compound(
             [
                 chassis_with_parts,
                 ch.translate(lid_with_parts, 0.0, travel, 0.0),
-                ch.translate(rods_compound, 0.0, travel, 0.0),
-                bearings_compound,
+                fixed_hardware,
             ]
         )
 
@@ -297,7 +327,19 @@ class BuildPipeline:
         chassis_left, chassis_right = ch.split_sections(
             chassis_shell, split.get("chassis")
         )
+        tray_left, tray_right = ch.split_sections(
+            chassis_tray, split.get("chassis")
+        )
+        deck_left, deck_right = ch.split_sections(
+            chassis_deck, split.get("chassis")
+        )
         lid_left, lid_right = ch.split_sections(lid_shell, split.get("screen_lid"))
+        bezel_left, bezel_right = ch.split_sections(
+            lid_bezel, split.get("screen_lid_bezel")
+        )
+        back_left, back_right = ch.split_sections(
+            lid_back, split.get("screen_lid_back")
+        )
         plate_left, plate_right = ch.split_sections(
             plate, split.get("keyboard_plate")
         )
@@ -308,10 +350,45 @@ class BuildPipeline:
             "chassis": chassis_with_parts,
             "chassis_left": chassis_left,
             "chassis_right": chassis_right,
+            "chassis_tray": chassis_tray,
+            "chassis_tray_left": tray_left,
+            "chassis_tray_right": tray_right,
+            "chassis_deck": chassis_deck,
+            "chassis_deck_left": deck_left,
+            "chassis_deck_right": deck_right,
             "screen_lid": lid_with_parts,
             "screen_lid_left": lid_left,
             "screen_lid_right": lid_right,
+            "screen_lid_bezel": lid_bezel,
+            "screen_lid_bezel_left": bezel_left,
+            "screen_lid_bezel_right": bezel_right,
+            "screen_lid_back": lid_back,
+            "screen_lid_back_left": back_left,
+            "screen_lid_back_right": back_right,
             "slide": slide,
+            "rod_clamp": build_rod_clamp(
+                config.slide.rod.diameter,
+                frame.rod_raise,
+                frame.rod_clamp_len,
+                frame.rod_clamp_height,
+                frame.rod_clamp_width,
+                config.slide.rod_clamp.screw,
+                frame.rod_clamp_screw_span,
+                config.slide.rod_clamp.set_screw,
+            ),
+            "bearing_clamp": build_bearing_clamp(
+                frame.bearing_outer,
+                config.slide.clamp_wall,
+                frame.rod_raise,
+                frame.clamp_len,
+                frame.foot_length,
+                frame.foot_thickness,
+                frame.foot_top,
+                config.slide.bearing_clamp.screw,
+                config.slide.bearing_clamp.screw_span_y,
+                config.slide.bearing_clamp.corner_chamfer,
+                config.slide.bearing_clamp.top_chamfer,
+            ),
             "keyboard_plate": plate,
             "keyboard_plate_left": plate_left,
             "keyboard_plate_right": plate_right,
@@ -330,8 +407,7 @@ class BuildPipeline:
                 # is an external accessory and the cable plugs are not modelled
                 # in this generation; they stay reachable via comp:<role>.
                 placed_roles = {
-                    "display", "driver", "keyboard", "sbc",
-                    "usb_breakout", "controller",
+                    "display", "driver", "keyboard", "sbc", "controller",
                 }
                 for role, component in components.items():
                     if role not in placed_roles:
@@ -356,10 +432,16 @@ class BuildPipeline:
         # Sections must fit the printer; the whole part is exported for
         # reference but is not printable across X.
         printable = (
-            "chassis_left",
-            "chassis_right",
+            "chassis_tray_left",
+            "chassis_tray_right",
+            "chassis_deck_left",
+            "chassis_deck_right",
             "screen_lid_left",
             "screen_lid_right",
+            "screen_lid_bezel_left",
+            "screen_lid_bezel_right",
+            "screen_lid_back_left",
+            "screen_lid_back_right",
             "keyboard_plate_left",
             "keyboard_plate_right",
         )
@@ -385,24 +467,34 @@ class BuildPipeline:
             placements=placements,
             role_map=role_map,
             extra_parts=[
-                ("chassis", chassis_shell),
-                ("screen_lid", lid_shell),
+                ("chassis_tray", chassis_tray),
+                ("chassis_deck", chassis_deck),
+                ("screen_lid_bezel", lid_bezel),
+                ("screen_lid_back", lid_back),
                 ("guide_rod", rods_compound),
+                ("rod_clamp", rod_clamps_compound),
                 ("linear_bearing", bearings_compound),
+                ("bearing_clamp", bearing_clamps_compound),
             ],
         )
         gltf_chassis = assembly.build_colored(
             placements=chassis_parts,
             role_map=role_map,
-            extra_parts=[("chassis", chassis_shell)],
+            extra_parts=[
+                ("chassis_tray", chassis_tray),
+                ("chassis_deck", chassis_deck),
+                ("linear_bearing", bearings_compound),
+                ("bearing_clamp", bearing_clamps_compound),
+            ],
         )
         gltf_lid = assembly.build_colored(
             placements=lid_parts,
             role_map=role_map,
             extra_parts=[
-                ("screen_lid", lid_shell),
+                ("screen_lid_bezel", lid_bezel),
+                ("screen_lid_back", lid_back),
                 ("guide_rod", rods_compound),
-                ("linear_bearing", bearings_compound),
+                ("rod_clamp", rod_clamps_compound),
             ],
         )
 
@@ -419,10 +511,14 @@ class BuildPipeline:
             role_map=role_map,
             transform=open_transform,
             extra_parts=[
-                ("chassis", chassis_shell),
-                ("screen_lid", _move_y(lid_shell)),
+                ("chassis_tray", chassis_tray),
+                ("chassis_deck", chassis_deck),
+                ("screen_lid_bezel", _move_y(lid_bezel)),
+                ("screen_lid_back", _move_y(lid_back)),
                 ("guide_rod", _move_y(rods_compound)),
+                ("rod_clamp", _move_y(rod_clamps_compound)),
                 ("linear_bearing", bearings_compound),
+                ("bearing_clamp", bearing_clamps_compound),
             ],
         )
         gltf_special = {

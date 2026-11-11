@@ -41,7 +41,7 @@ See `docs/coordinate_system.md`, `docs/component_spec.md`, and
 ```
 config/        YAML configuration (default, display, keyboard, hardware)
 components/    hardware components (Component API, measured data)
-geometry/      generative CAD helpers (boss, fillet, shell, ribs, vents, cutouts)
+geometry/      generative CAD helpers (boss, ribs, vents, cutouts, edge treatment, split)
 layouts/       placement-only layout definitions (no CAD)
 assemblies/    collision / clearance / enclosure resolution
 case/          chassis and screen-lid shell generation
@@ -68,14 +68,14 @@ CAD generation is implemented on build123d. Create the env once with
 `conda create -n cyberdeck python=3.12 && conda activate cyberdeck &&
 pip install -r requirements.txt`.
 
-The target form is a **slider** (ADR-0009): a 140 mm closed face height, a
-screen lid sliding on two guide rods over a chassis, and a 40% keyboard
+The target form is a **slider** (ADR-0009/0010): a 140 mm closed face height,
+a screen lid sliding on two guide rods over a chassis, and a 40% keyboard
 revealed by the slide. The **data skeleton and the first-generation CAD shell**
 are implemented: `python main.py --layout slider --steps data` derives and
-validates the 140/56/260 budget from the real components, and `make all` /
-`make slider` builds and exports the chassis, screen lid, guide hardware and
-both the closed and open assembly (the lid and rods slid by the travel) as
-STEP/STL/glTF, split into two Sections with stepped Seams that fit the
-220 × 220 × 256 mm build volume. The slider is the only layout; the retired
-clamshell code is removed. See `docs/form_factor.md`, `docs/adr/`, and
-`CONTEXT.md`.
+validates the 140/56/283 budget from the real components, and `make all` /
+`make slider` builds and exports the chassis, screen lid, guide rods, printed
+Rod clamps and Bearing clamps, and both the closed and open assembly (the lid,
+rods and Rod clamps slid by the travel) as STEP/STL/glTF, split into two
+Sections with stepped Seams that fit the 220 × 220 × 256 mm build volume. The
+slider is the only layout; the retired clamshell code is removed. See
+`docs/form_factor.md`, `docs/adr/`, and `CONTEXT.md`.

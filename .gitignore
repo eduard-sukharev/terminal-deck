@@ -7,10 +7,12 @@ dist/
 generated/step/*
 generated/stl/*
 generated/svg/*
+generated/png/*
 generated/gltf/*
 !generated/step/.gitkeep
 !generated/stl/.gitkeep
 !generated/svg/.gitkeep
+!generated/png/.gitkeep
 !generated/gltf/.gitkeep
 generated/ergogen/
 generated/renders/
@@ -18,3 +20,14 @@ generated/renders/
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 /graft/
 .env-stamp
+
+.factory/
+.kilocode/
+.agents/
+
+# Local CAD sources and editor scratch (regenerable, not committed).
+*.sc
+*.sc.bak
+/central-unit.step
+/.obsidian/
+.~*.lock

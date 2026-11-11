@@ -1,16 +1,19 @@
 """Edge treatment of concave joints and bed faces (ADR 0003).
 
-Concave joints (wall-floor, boss-wall, boss-floor, rib-floor, Merged
-boss-wall) get a stress-relief edge so printed parts don't crack at sharp
-inside corners: a 45 degree chamfer where the edge is horizontal in print
-orientation (a fillet there would print as a curved overhang), a fillet where
-it runs along print Z. Each Section's bed-face outer edge gets a small chamfer
-against elephant's foot.
+The case is chamfer-first (``docs/design_spec.md`` § Edge Treatment): every
+outside face and every bed-facing edge gets a 45 degree chamfer, never a
+fillet. Inside joints get a stress-relief edge so printed parts don't crack at
+sharp inside corners: a 45 degree chamfer where the edge is horizontal in
+print orientation (a fillet there would print as a curved overhang). The only
+fillets in the build are the vertical concave joints, where a smooth relief
+beats a sharp rebate and the joint is hidden inside the assembly — a fillet
+along print Z prints cleanly.
 
 A stepped Seam leaves each Section a notch on one side of a step and a tab on
-the other. The notch's inside corner gets the concave fillet above, so the
-tab's outside corner that fits into it is rounded too, a little larger
-(``round_seam_corners``), or the two would not mate.
+the other. The notch's inside corner gets the concave relief above, so the
+tab's corner that fits into it is treated too, a little larger
+(``round_seam_corners``), or the two would not mate. Both are hidden inside
+the joined part.
 
 OCC cannot always apply a chamfer (tight spots, thin neighbours). The edges
 are tried together and, on failure, split in halves until the failing edge is
@@ -71,10 +74,13 @@ def _apply(shape, infos, size: float, treat, label: str, report):
 
 
 def relieve_concave_joints(shape, orientation: PrintOrientation, size: float, report):
-    """Chamfer horizontal and fillet vertical concave edges by ``size`` mm.
+    """Relieve the inside joints of ``shape`` by ``size`` mm.
 
-    ``orientation`` is the part's print orientation. Edges that don't take the
-    treatment are skipped with a SOFT warning on ``report``.
+    Horizontal (and slanted) concave edges are chamfered. Vertical concave
+    edges are the one sanctioned fillet use: the relief is hidden inside the
+    assembly and a fillet along print Z prints cleanly. ``orientation`` is the
+    part's print orientation. Edges that don't take the treatment are skipped
+    with a SOFT warning on ``report``.
     """
     if size <= 0.0:
         return shape
@@ -111,8 +117,10 @@ def round_seam_corners(shape, orientation: PrintOrientation, seams, depth: float
     """Fillet the outside corners at the steps of ``seams`` by ``radius`` mm.
 
     Only edges running along print Z through a step corner are touched: the
-    tab corners that fit the (concave-filleted) notches of the neighbouring
-    Section. Edges that don't take the fillet are skipped with a SOFT warning.
+    tab corners that nest in the concave-filleted notches of the neighbouring
+    Section. The joint is hidden inside the assembled part, so this is an
+    inside treatment, not an outside face. Edges that don't take the fillet
+    are skipped with a SOFT warning.
     """
     points = seam_corner_points(seams, depth)
     if radius <= 0.0 or not points:

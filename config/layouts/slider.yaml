@@ -3,27 +3,30 @@
 # plus the Well margin), so no post-pass shift is needed.
 #
 # The keyboard is the datum. The chassis front is `well_front_margin` before
-# its front edge; the rear band holds the SBC and the USB hub between the two
-# Bearing clamps; the display + driver sit in the lid above the rear band.
+# its front edge; the rear band holds the SBC between the two Bearing clamps;
+# the display + driver sit in the lid above the rear band. The USB hub is an
+# external module on an accessory rail, not a chassis placement.
 # The face is flat — no constraint tilts the keyboard.
 #
 # Wall vocabulary: the resolver's "front" is +Y and "rear" is -Y. The screen
-# end of the slider is +Y, so the hub's port strip faces the +Y wall.
+# end of the slider is +Y.
 
 constraints:
-  # ── Enclosure hint. Width = display + two side pods (clamp + outer wall +
-  #    shell clearance); depth = chassis height (front margin + keyboard +
-  #    clamp run + wall). The hint only pins the wall-relative resolvers.
+  # ── Enclosure hint. Width = the slide budget (display/keyboard + two side
+  #    pods, including the draft allowance the tapered side walls need); depth
+  #    = the slide budget's closed face (the lid's guide span), so the chassis
+  #    rear wall is flush with the closed lid instead of the lid overhanging
+  #    it. The hint only pins the wall-relative resolvers.
   - kind: target_envelope
-    width: "{display.width} + 2 * ({config.slide.bearing.outer_diameter} + 2 * {config.slide.clamp_wall} + {config.wall_thickness} + {config.clearance.shell})"
-    depth: "{config.slide.well_front_margin} + {keyboard.depth} + {config.slide.travel_clearance} + {config.slide.bearing.per_rod} * {config.slide.bearing.length} + ({config.slide.bearing.per_rod} - 1) * {config.slide.clamp_wall} + {config.slide.clamp_wall} + {config.wall_thickness}"
+    width: "{budget.width}"
+    depth: "{budget.chassis_height}"
 
   # ── Keyboard: the datum, chassis-centred on Y. Rotated 180° so the
   #    spacebar (local +Y "forward") faces the user at -Y, not the screen.
   - kind: fixed_position
     subject: keyboard
     x: 0.0
-    y: "-( {config.slide.well_front_margin} + {keyboard.depth} + {config.slide.travel_clearance} + {config.slide.bearing.per_rod} * {config.slide.bearing.length} + ({config.slide.bearing.per_rod} - 1) * {config.slide.clamp_wall} + {config.slide.clamp_wall} + {config.wall_thickness} ) / 2 + {config.slide.well_front_margin} + {keyboard.depth} / 2"
+    y: "-{budget.chassis_height} / 2 + {config.slide.well_front_margin} + {keyboard.depth} / 2"
     z: 0.0
     rotation: 180.0
 
@@ -38,45 +41,32 @@ constraints:
     subject: controller
     z: "{config.wall_thickness}"
 
-  # ── USB hub: rear band, port strip to the +Y (screen-end) wall. ────────
-  #    The east USB-A is not exposed: the right side pod (guide rod + Bearing
-  #    clamp) occupies that wall, so the hub sits between the clamps.
+  # ── SBC: in the rear band, centred between the Bearing clamps and anchored
+  #    to the rear wall (not to the clamp band), so it stays inside the rear
+  #    wall when the chassis grows to meet the lid. ────────────────────────
   - kind: relative_placement
-    subject: usb_breakout
+    subject: sbc
     target: keyboard
     offset_x: 0.0
-    offset_y: "-({keyboard.depth} / 2 + ({config.slide.travel_clearance} + {config.slide.bearing.per_rod} * {config.slide.bearing.length} + ({config.slide.bearing.per_rod} - 1) * {config.slide.clamp_wall} + {config.slide.clamp_wall}) / 2)"
-    rotation: 0.0
-  - kind: fixed_position
-    subject: usb_breakout
-    z: "{config.wall_thickness}"
-
-  # ── SBC: in the rear band beside the hub, left of it; the pair is centred
-  #    between the clamps so neither reaches a side pod. ──────────────────
-  - kind: relative_placement
-    subject: sbc
-    target: usb_breakout
-    offset_x: "({usb_breakout.width} / 2 + {config.slide.side_gap} + {sbc.width} / 2)"
-    offset_y: 0.0
+    offset_y: "-({keyboard.depth} / 2 + {budget.rear_band} - {config.slide.rear_wall_margin} - {sbc.depth} / 2)"
     rotation: 0.0
   - kind: fixed_position
     subject: sbc
     z: "{config.wall_thickness}"
-  - kind: centered_group
-    subjects: ["sbc", "usb_breakout"]
-    axes: ["x"]
-    relative_to: keyboard
 
-  # ── Display: in the lid, its top edge one top bezel below the lid's top.
-  #    offset_y assumes the guide span is the binding lid length (true for the
-  #    8.8" panel + JD40); offset_z clears the keycaps (the lid's flat back),
-  #    that back wall, and the flipped driver behind the panel.
+  # ── Display: centred in the lid on both axes (the lid is centred on the
+  #    envelope origin, so x = y = 0 is its middle), matching the reference's
+  #    symmetric bezel and keeping both Y ends of the lid's joint band free;
+  #    offset_z clears the keycaps (the lid's flat back), that back wall, and
+  #    the flipped driver behind the panel.
   - kind: relative_placement
     subject: display
     target: keyboard
     from_top: true
-    offset_y: "-({keyboard.depth} / 2 + {config.slide.travel_clearance} + {config.slide.bearing.per_rod} * {config.slide.bearing.length} + ({config.slide.bearing.per_rod} - 1) * {config.slide.clamp_wall} + 2 * {config.slide.rod.end_support} - {display.depth} / 2)"
     offset_z: "{config.slide.lid_clearance} + {config.slide.lid_back} + {config.slide.driver_gap} + {driver.height}"
+  - kind: centered_on
+    subject: display
+    axes: ["x", "y"]
 
   # ── Driver board flat against the panel back (flipped), rotated 180° so
   #    its FPC slot faces the panel ribbon; the offset comes from the
@@ -90,11 +80,6 @@ constraints:
     flip: true
 
   # ── Checks. ────────────────────────────────────────────────────────────
-  - kind: port_access
-    subject: usb_breakout
-    connector_type: USB-A
-    wall: front
-
   - kind: clearance
     subject: controller
     target: keyboard
@@ -103,15 +88,6 @@ constraints:
     subject: sbc
     target: keyboard
     gap: "{config.slide.component_gap}"
-  - kind: clearance
-    subject: usb_breakout
-    target: keyboard
-    gap: "{config.slide.component_gap}"
-  - kind: clearance
-    subject: sbc
-    target: usb_breakout
-    gap: "{config.slide.side_gap}"
-    axis: x
   - kind: clearance
     subject: display
     target: keyboard

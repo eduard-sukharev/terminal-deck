@@ -36,6 +36,28 @@ the 20° faces at the top and bottom are end chamfers, not a typing slope. The
 rods sit at x = 7.7 and 278.7 (hence ±135.5 from the centreline), outboard of
 the 230 mm keyboard — this is where the side pods come from.
 
+## Mechanism measurements
+
+Measured from the same STEP (axes: X width, Y thickness, Z slide). These are
+the source for ADR-0010:
+
+| Part | X | Thickness (Y) | Along the slide (Z) |
+|---|---|---|---|
+| Guide rod | ⌀8.1 | — | 189.2 |
+| Rod clamp (blue) | 26.0 | 10.0 | 14.0 (2 screws) |
+| Bearing clamp (green) | 26.7 body | 28.2 (foot below the panel) | 31.0 |
+| Through-slot in the back panel | 22.6 | 6.0 panel | 161.2 (between rod clamps) |
+
+The rod centre sits 0.45 mm off the back panel's inner face. The printed
+Bearing clamp straddles the panel: its body is on the lid side, its foot drops
+through the slot into a pocket in the chassis (the chassis top is 15 mm thick
+there). The slot ends at the two rod clamps, which are screwed into solid panel
+on either side of it. The project's rod clamps are narrower (22 mm), its
+bearing clamp shorter (14 mm) and its bearing is the short LM6UU (19 mm,
+instead of the reference's 12.7 mm housing): the 140 mm budget has to pay for
+two rod clamps at the rod ends as well, so the long LM6LUU does not fit. The
+arrangement is the same.
+
 ## Reference envelope vs project target
 
 The reference spends its 335 × 80.6 mm on decorative rails, an antenna and an
@@ -44,7 +66,7 @@ the envelope from the components:
 
 | Dimension | Reference | Project |
 |---|---|---|
-| Width | 334.8 | ≈ 266 (keyboard/panel + side pods) |
+| Width | 334.8 | ≈ 283 (keyboard/panel + side pods) |
 | Thickness | 80.6 | ≈ 56 (GOAL) |
 | Face height (closed) | 226.4 | **140 (HARD)** |
 

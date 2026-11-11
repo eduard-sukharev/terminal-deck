@@ -15,6 +15,7 @@ All coordinates in this codebase follow the global convention:
 from __future__ import annotations
 
 import importlib
+import math
 from dataclasses import dataclass, field
 from enum import Enum
 from itertools import chain
@@ -132,6 +133,70 @@ def frustum_centered(bottom_diameter: float, top_diameter: float, height: float)
     return b3d.Cone(bottom_diameter / 2.0, top_diameter / 2.0, height)
 
 
+def draft_inset(angle_deg: float, height: float) -> float:
+    """Horizontal inset of a drafted wall over ``height`` mm (mm).
+
+    ``angle_deg`` is measured from vertical. Used to derive the narrow face of
+    a drafted box from its wide face.
+    """
+    return math.tan(math.radians(angle_deg)) * height
+
+
+def _rect_vertices(
+    width: float, depth: float, chamfer: float
+) -> list[tuple[float, float]]:
+    """CCW vertices of a rectangle, optionally with its four corners chopped.
+
+    The chamfered form is an octagon so a ruled loft between two such outlines
+    keeps a flat 45 degree face at each corner (chamfer-first, never a fillet).
+    """
+    if width <= 0.0 or depth <= 0.0:
+        raise ValueError("tapered box needs positive width and depth")
+    half_w, half_d = width / 2.0, depth / 2.0
+    c = min(max(chamfer, 0.0), half_w, half_d)
+    if c <= 0.0:
+        return [
+            (-half_w, -half_d),
+            (half_w, -half_d),
+            (half_w, half_d),
+            (-half_w, half_d),
+        ]
+    return [
+        (-half_w + c, -half_d),
+        (half_w - c, -half_d),
+        (half_w, -half_d + c),
+        (half_w, half_d - c),
+        (half_w - c, half_d),
+        (-half_w + c, half_d),
+        (-half_w, half_d - c),
+        (-half_w, -half_d + c),
+    ]
+
+
+def tapered_box(
+    bottom_width: float,
+    bottom_depth: float,
+    top_width: float,
+    top_depth: float,
+    z0: float,
+    z1: float,
+    chamfer: float = 0.0,
+    x: float = 0.0,
+    y: float = 0.0,
+) -> Any:
+    """Loft a solid between two rectangular outlines at ``z0`` and ``z1``.
+
+    The side faces are ruled planes, so a width change drafts the walls. With
+    ``chamfer > 0`` both outlines are octagons and the outer corners stay
+    chopped (chamfer-first). The solid spans exactly ``z0..z1``.
+    """
+    if z1 <= z0:
+        raise ValueError("tapered box needs z1 > z0")
+    bottom = _rect_vertices(bottom_width, bottom_depth, chamfer)
+    top = _rect_vertices(top_width, top_depth, chamfer)
+    return loft_between(bottom, top, z1 - z0, x=x, y=y, z=z0)
+
+
 def translate(shape: Any, x: float, y: float, z: float) -> Any:
     """Translate a shape by an absolute (x, y, z) offset in mm."""
     return require_cad().Pos(x, y, z) * shape
@@ -215,14 +280,16 @@ def clean(shape: Any) -> Any:
     return shape.clean()
 
 
-def fillet_vertical_edges(shape: Any, radius: float) -> Any:
-    """Fillet only the Z-parallel (vertical) edges of ``shape``.
+def chamfer_vertical_edges(shape: Any, length: float) -> Any:
+    """Chamfer only the Z-parallel (vertical) edges of ``shape``.
 
-    Used to round the four vertical corners of a base/lid shell without
-    touching its horizontal edges.
+    The chamfer-first treatment: the four vertical corners of a case shell,
+    a Bearing clamp's base and its chassis pocket get a 45-degree chamfer
+    while the top/bottom edges stay square. Never a fillet on these — an
+    outside corner is always chopped (``docs/design_spec.md``).
     """
     b3d = require_cad()
-    return b3d.fillet(shape.edges().filter_by(b3d.Axis.Z), radius)
+    return b3d.chamfer(shape.edges().filter_by(b3d.Axis.Z), length)
 
 
 def chamfer_face_edges(shape: Any, face_ref: FaceRef, length: float) -> Any:
@@ -560,12 +627,15 @@ class EdgeInfo:
     """An edge located by where it is, so it can be found again after a boolean.
 
     ``key`` is the edge midpoint and length, rounded to a micron; ``tangent``
-    is the unit tangent at the midpoint.
+    is the unit tangent at the midpoint; ``curve_type`` is the OCC geometry
+    class (``"line"``, ``"circle"``, ...) so a caller can treat only straight
+    edges (a chamfer along an arc is a different, much fussier operation).
     """
 
     key: tuple[float, float, float, float]
     length: float
     tangent: tuple[float, float, float]
+    curve_type: str = "line"
 
     @property
     def midpoint(self) -> tuple[float, float, float]:
@@ -637,6 +707,7 @@ def concave_edges(shape: Any) -> list[EdgeInfo]:
             continue
         found.append(EdgeInfo(
             key=_edge_key(edge), length=edge.length, tangent=_unit(edge.tangent_at(0.5)),
+            curve_type=edge.geom_type.name.lower(),
         ))
     return found
 
@@ -656,6 +727,7 @@ def convex_edges(shape: Any) -> list[EdgeInfo]:
             continue
         found.append(EdgeInfo(
             key=_edge_key(edge), length=edge.length, tangent=_unit(edge.tangent_at(0.5)),
+            curve_type=edge.geom_type.name.lower(),
         ))
     return found
 
@@ -682,6 +754,7 @@ def bed_boundary_edges(shape: Any, normal: tuple[float, float, float], tol: floa
             found.append(EdgeInfo(
                 key=_edge_key(edge), length=edge.length,
                 tangent=_unit(edge.tangent_at(0.5)),
+                curve_type=edge.geom_type.name.lower(),
             ))
     return found
 

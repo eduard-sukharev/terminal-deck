@@ -36,7 +36,8 @@ def test_slider_layout_places_the_core_parts():
     names = {p.component.name for p in placements}
     assert "40% Keyboard (RP2040)" in names
     assert "Orange Pi Zero 2W" in names
-    assert "USB Hub" in names
+    # The USB hub is an external module on the accessory rail, not a chassis part.
+    assert "USB Hub" not in names
     assert 'Display 8.8" 1920x480' in names
     assert "HDMI Driver Board" in names
     assert "RP2040-Zero" in names
@@ -72,12 +73,32 @@ def test_slider_layout_is_centred_on_the_chassis():
 # ── budget ─────────────────────────────────────────────────────────────
 
 
+def test_case_draft_is_configured_and_inside_the_requested_range():
+    _, config, components, _, _ = _data()
+    assert 5.0 <= config.draft.angle <= 10.0
+    budget = _budget(config, components)
+    assert budget.draft_allowance > 0.0
+    # The budget widens the side pod by the draft inset, so the guide hardware
+    # stays put while the outer wall moves out. The display only clears the
+    # moving housing (the back-panel cutout width), not the fixed Rod clamps.
+    assert budget.side_pod > (
+        config.slide.component_gap
+        + budget.hardware_width
+        + config.wall_thickness
+        + config.clearance.shell
+    )
+    assert budget.hardware_width == pytest.approx(
+        budget.clamp_width + 2.0 * config.slide.slot_clearance
+    )
+    assert budget.clamp_body_width == pytest.approx(budget.clamp_width)
+
+
 def test_slide_budget_defaults():
     config, components, *_, = _data()[1:]
     budget = _budget(config, components)
     keyboard = components["keyboard"]
 
-    assert budget.bearing_model == "LM6LUU"
+    assert budget.bearing_model == "LM6UU"
     assert budget.travel == pytest.approx(
         config.slide.well_front_margin
         + keyboard.size().depth
@@ -87,7 +108,11 @@ def test_slide_budget_defaults():
     assert budget.within_face_limit
     assert budget.open_face_height > budget.closed_face_height
     assert budget.thickness < config.slide.face_height_limit
-    assert 250.0 <= budget.width <= 275.0
+    # The width carries the joint corner posts outboard of the Rod clamps
+    # (ADR-0011); each half must still fit the 220 mm bed.
+    assert 250.0 <= budget.width <= 300.0
+    assert budget.width / 2.0 <= 220.0
+    assert budget.slot_fits
 
 
 def test_second_bearing_breaks_the_face_height_budget():
@@ -99,6 +124,22 @@ def test_second_bearing_breaks_the_face_height_budget():
     budget = _budget(dataclasses.replace(config, slide=two), components)
     assert not budget.within_face_limit
     assert budget.closed_face_height > config.slide.face_height_limit
+
+
+def test_chassis_matches_the_lid_depth():
+    """The closed lid must not overhang the chassis at the rear.
+
+    The lid's guide span is fixed by the mechanism, so the chassis grows to
+    the closed face instead: the two halves share one depth.
+    """
+    _, config, components, _, _ = _data()
+    budget = _budget(config, components)
+    assert budget.chassis_height == pytest.approx(budget.lid_height)
+    assert budget.face_flush
+    assert budget.rear_band == pytest.approx(
+        budget.rear_band_min + budget.rear_band_extension
+    )
+    assert budget.rear_band_extension > 0.0
 
 
 def test_open_pose_adds_the_travel():
@@ -162,6 +203,8 @@ def test_slider_checks_cover_placement_geometry():
         "slide-keycap-clearance",
         "slide-rear-band-fit",
         "slide-display-fit",
+        "slide-display-guide-clear",
+        "slide-rod-clamp-clear",
     ):
         assert name in by_name, name
         assert by_name[name].passed, by_name[name].message
@@ -170,19 +213,20 @@ def test_slider_checks_cover_placement_geometry():
 def test_clamp_corridor_check_catches_a_wide_rear_band():
     """A rear-band part pushed into a side pod must fail the clamp check."""
     _, config, components, _, placements = _data()
+    budget = _budget(config, components)
     moved = [
-        dataclasses.replace(p, x=p.x + 30.0)
+        dataclasses.replace(p, x=p.x + budget.usable_half + 10.0)
         if p.component.name == "Orange Pi Zero 2W"
         else p
         for p in placements
     ]
-    report = run_slider_checks(_budget(config, components), config, moved)
+    report = run_slider_checks(budget, config, moved)
     assert "slide-clamp-clear" in {c.name for c in report.failures}
 
 
 def test_slide_config_loads_from_its_topic():
     _, config, *_ = _data()
     assert "slide" in config.topics
-    assert config.slide.bearing.model == "LM6LUU"
+    assert config.slide.bearing.model == "LM6UU"
     assert config.slide.bearing.length > 0
     assert config.slide.chain.bend_radius >= 30.0

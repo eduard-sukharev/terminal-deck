@@ -13,15 +13,36 @@ sliding along the face to expose the keyboard. Replaces the clamshell
 _Avoid:_ "clamshell", "laptop".
 
 **Chassis** — The lower half that rests on the table: holds the keyboard, the
-SBC, the controller, the USB hub, and the Bearing clamps. Made of the Tray and
-the Deck. The battery is not inside it; it hangs on an Accessory rail.
+SBC, the controller, and the bearing-clamp seats. Made of the Tray and the
+Deck. The battery and the USB hub are not inside it; they are external
+accessories on an Accessory rail.
 _Avoid:_ "Base" (retired clamshell term).
 
 **Screen lid** — The upper half that slides: carries the display, its driver,
-the guide rods and the drag chain. Made of the inverted-tray Bezel and the
-flat back panel.
+the guide rods, their Rod clamps and the drag chain. Made of the inverted-tray
+Bezel and the flat Back plate, joined at the Band joint.
 _Avoid:_ "Lid" alone (ambiguous with the retired clamshell Lid), "cover",
 "screen".
+
+**Bezel** — The Screen lid's inverted tray: the front panel with the glass
+opening, the display cavity and the prismatic fastening band along its bottom
+edge, which holds the heat-set inserts for the Back plate. The display frame
+sinks into the `bezel.recess` pocket in the panel's inner face; the remaining
+lip retains it.
+_Avoid:_ "face" (that is the device plane), "front cover".
+
+**Back plate** — The Screen lid's flat 4 mm plate: faces the keyboard, carries
+the two Guide rods and their Rod clamps, the two Clamp slots and the eight
+countersunk Band-joint screws. Removable, so the display and the guide
+hardware are serviceable from the keyboard side.
+
+**Band joint** — The butt joint where the Bezel's band meets the Back plate at
+the Back's inner face. The band is prismatic (the lid only tapers above it), so
+the joint sits in straight walls. Eight stations — two per long side, one at
+each corner — take an M3 countersunk screw from the Back's outer face into a
+heat-set insert in the band; the four corners use printed posts outboard of the
+Rod clamps.
+_Avoid:_ "flange", "lap" (it is a plain butt joint).
 
 **Face** — The plane carrying the keyboard and the screen. The device is
 modelled face-up. The face is flat: the keyboard has no slope, and the build
@@ -49,23 +70,36 @@ the lid's lower edge must pass the keyboard's upper edge — not by the
 keyboard's depth alone.
 _Avoid:_ "stroke", "throw".
 
-**Guide rod** — One of the two steel rods the screen lid rides on. It runs
-inside the Screen lid's thickness, beside the panel, in a C-channel in the
-lid's side wall.
+**Guide rod** — One of the two steel rods the screen lid rides on. It runs in
+the Screen lid's open cavity along the back panel's inner face, in a through-slot,
+held at both ends by two printed Rod clamps.
 _Avoid:_ "rail" (an Accessory rail is a different part), "shaft".
 
 **Linear bearing** — A purchased LM…LUU ball bushing riding on a Guide rod.
 One per rod; its length is part of the Face-height budget.
 _Avoid:_ "bushing" when the purchased part is meant.
 
-**Bearing clamp** — The block on the Chassis Deck behind the keyboard that
-holds a Linear bearing and rises above the base surface; it enters the Screen
-lid's C-channel through a slot and is the load-bearing interface between the
-halves.
+**Bearing clamp** — The printed clamp on the Chassis that holds a Linear
+bearing. Its **cylindrical head** sits inside the Screen lid above the back
+panel at the neck width (there is no flange), its neck passes through the
+back-panel slot and the joint gap, and its foot is seated in a pocket in the
+Chassis Deck. It slides along the slot as the lid moves and is the
+load-bearing interface between the halves. The rod passing through the bearing
+is what retains the lid against lift-off. The foot is longer than the bearing
+and its screws land outboard of it, so the tips cannot reach the bore; its top
+face is flush with the Deck top, in the pocket. The foot's vertical corners and
+the pocket get a 5 mm relief, and the foot's top rim and the pocket mouth
+0.5 mm; the head's circular rims stay as formed.
 _Avoid:_ "housing", "bearing block".
 
-**C-channel** — The slot in the Screen lid's side wall that contains the Guide
-rod and lets the Bearing clamp reach it. Open toward the Chassis.
+**Rod clamp** — A printed clamp at one end of a Guide rod, screwed into the
+lid back panel across the rod. Two per rod; the screws sit outboard of the
+back-panel slot.
+
+**Clamp slot** — The long through-slot in the Screen lid's back panel between
+the two Rod clamps. The Bearing clamp's neck slides along it. The slot ends at
+the Rod clamps; the bearing stops short of each clamp at the extreme poses.
+_Avoid:_ "C-channel" (the retired first-generation side-wall channel).
 
 **Drag chain** — The articulated cable carrier that lets the display/driver
 cable cross the sliding joint. It runs along the slide axis in a channel
@@ -78,24 +112,37 @@ side walls. The shell carries square-nut pockets (nuts inserted during a print
 pause); the rail bars themselves are user-supplied accessories, not printed
 shell parts. The external battery pack hangs on one.
 
-**Rear band** — The strip of Deck behind the keyboard, between and around the
-Bearing clamps. Holds the USB hub and the drag-chain anchor; not used for the
-battery.
+**Rear band** — The strip of Deck behind the keyboard, between the
+bearing-clamp seats. Holds the SBC and the drag-chain anchor; not used for the
+battery. It runs to the lid's rear edge — the chassis grows to the closed
+face — so the bearing-clamp seats sit slightly forward of the rear wall.
 
 **Well** — The recess in the Deck the keyboard sits in. In the slider it sets
 the clearance under the Screen lid's flat back; the keycaps sit flush with, or
 just below, the Deck's top surface.
 _Avoid:_ "pocket".
 
-**Tray** — The Chassis's floor and walls (bosses, ribs, vents, cutouts); the
-lower part of the Parting plane.
+**Tray** — The Chassis's floor and walls (bosses, ribs, vents, cutouts) below
+the Parting plane: drafted from its base up to `band_z0`, then a prismatic
+half-band to the plane. Carries the ten frustum columns the Deck's screws pass
+through into the Deck's insert bosses.
+_Avoid:_ "base" (retired clamshell term).
 
-**Deck** — The Chassis's top surface: the keyboard Well, the Bearing clamps and
-the Rear band sit on it; its skirt meets the Tray at the Parting plane.
+**Deck** — The Chassis's purely prismatic top half: the keyboard Well, the
+bearing-clamp seats and the Rear band sit on it; its skirt meets the Tray at
+the Parting plane and holds the ten heat-set inserts in the band's insert
+bosses.
 
 **Parting plane** — The horizontal plane where the Deck meets the Tray,
 part-way up the Chassis walls, so the Deck has a flat face and a wall skirt.
+Across it a prismatic 6 mm band carries the joint, split 3 mm on each half:
+the side draft continues only below the Tray's half-band (the Deck is purely
+prismatic). Ten M3 countersunk screws come up from below.
 _Avoid:_ "seam" for the Tray/Deck joint — a Seam joins Sections of one part.
+
+**Scallop** — A shallow (10 × 0.8 mm) relief cut into the outside wall at
+every Tray/Deck fastener station, 3 mm on each half across the Parting plane.
+A visual/indexing notch, never a structural feature.
 
 **Envelope** — The closed device's outer dimensions (width × face height ×
 thickness), the number the design minimises.
@@ -118,9 +165,17 @@ good, as opposed to screws, which come apart for service.
 is fused into it instead of standing free; the wall then serves as part of its
 sleeve.
 
+**Chamfer** — The default edge treatment: a 45 degree cut on an outside corner
+or inside joint. It gives the case its chopped, brutal hi-tech look and prints
+without support. Outside edges are chamfered, never filleted.
+
+**Fillet** — A rounded edge. Allowed only sparingly on hidden inside joints
+(the vertical concave relief and the Seam tab corners that nest in it), never
+on an outside face. See `docs/design_spec.md` (Edge Treatment).
+
 **Core component** — A purchased hardware item modelled to its measured size:
 SBC, USB hub, battery pack, display panel, display driver, controller,
-keyboard. Distinct from case parts (Tray, Deck, Bezel, back panel, Bearing
+keyboard. Distinct from case parts (Tray, Deck, Bezel, Back plate, Bearing
 clamp), which are generated around them.
 
 ## Retired (clamshell)

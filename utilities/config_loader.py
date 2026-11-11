@@ -54,7 +54,37 @@ class Wall:
 
 @dataclass(frozen=True)
 class Corners:
-    radius: float
+    """45 degree chamfer on the case's visible outer corners (mm).
+
+    The case is chamfer-first (``docs/design_spec.md`` § Edge Treatment):
+    outside faces are chopped, never rounded. Fillets are reserved for hidden
+    inside joints in :mod:`geometry.edge_treatment`.
+    """
+
+    chamfer: float
+
+    def __post_init__(self) -> None:
+        if self.chamfer < 0:
+            raise ValueError("corners.chamfer must be >= 0")
+
+
+@dataclass(frozen=True)
+class Draft:
+    """Draft on the case's side walls (degrees from vertical).
+
+    The Tray widens from its base up to its prismatic band (the Deck is
+    prismatic); the Screen lid widens
+    from its face panel down to the back panel, so the two halves are widest
+    where they meet. Only the X side walls are drafted: the front/rear end
+    walls stay vertical because the guide span and the rod end clamps are
+    pinned to the 140 mm face-height budget.
+    """
+
+    angle: float = 7.0
+
+    def __post_init__(self) -> None:
+        if not 0.0 <= self.angle < 45.0:
+            raise ValueError("draft.angle must be in [0, 45) degrees")
 
 
 @dataclass(frozen=True)
@@ -86,6 +116,7 @@ class Flex:
 @dataclass(frozen=True)
 class Bezel:
     inset: float
+    recess: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -223,6 +254,49 @@ class Parting:
 
 
 @dataclass(frozen=True)
+class ChassisJoint:
+    """The chassis Tray <-> Deck band joint (ADR-0012).
+
+    The chassis splits at the Parting plane. The ``band`` is split evenly
+    around it: the Tray is drafted from its base up to ``band_z0`` and
+    prismatic from there to the plane; the Deck is prismatic all the way to
+    the closed face. Ten M3 screws are driven from below into heat-set
+    inserts in the Deck's band; each station gets a shallow scallop on both
+    halves, straddling the seam.
+
+    ``station_inset`` is measured from a drafted (X) wall's outer face: the
+    draft pulls the Tray's floor skin inward, so the column and its
+    countersink need the extra room. ``side_inset`` is measured from a
+    vertical (front/rear) wall, where the keyboard plate sits one Well
+    margin behind the outer face and the insert boss has to stay clear of it.
+    """
+
+    band: float = 6.0
+    boss: float = 10.0
+    boss_margin: float = 1.5
+    station_inset: float = 6.5
+    side_inset: float = 4.5
+    scallop_width: float = 10.0
+    scallop_depth: float = 0.8
+    scallop_height: float = 3.0
+    screw: str = "M3"
+
+    def __post_init__(self) -> None:
+        if self.band <= 0 or self.boss <= 0:
+            raise ValueError("chassis_joint band and boss must be positive")
+        if self.boss_margin <= 0:
+            raise ValueError("chassis_joint.boss_margin must be positive")
+        if self.station_inset <= 0 or self.side_inset <= 0:
+            raise ValueError("chassis_joint insets must be positive")
+        if self.scallop_width <= 0 or self.scallop_depth <= 0:
+            raise ValueError("chassis_joint scallop sizes must be positive")
+        if not 0.0 < self.scallop_height <= self.band:
+            raise ValueError(
+                "chassis_joint.scallop_height must fit inside the band"
+            )
+
+
+@dataclass(frozen=True)
 class MergedBoss:
     """When a boss is fused into the wall beside it (ADR 0003).
 
@@ -246,7 +320,9 @@ class Edges:
 
     ``chamfer_factor`` scales ``wall.thickness`` into the stress-relief size
     of a concave joint; ``bed_chamfer`` (mm) is the 45 degree chamfer on each
-    Section's bed-face outer edge against elephant's foot.
+    Section's bed-face outer edge against elephant's foot. Chamfers are the
+    default everywhere (including every outside face); the vertical concave
+    joints are the only fillets, hidden inside the assembly.
     """
 
     chamfer_factor: float = 0.5
@@ -285,13 +361,15 @@ class SlideBearing:
     """The purchased LM...LUU linear bushing (one per guide rod).
 
     ``per_rod`` is part of the face-height budget: a second bearing per rod
-    puts the guide span beyond the 140 mm limit.
+    puts the guide span beyond the 140 mm limit. The short LM6UU (19 mm) leaves
+    room for the two printed Rod clamps at the rod ends; the long LM6LUU
+    (35 mm) does not fit together with them.
     """
 
-    model: str = "LM6LUU"
+    model: str = "LM6UU"
     bore: float = 6.0
     outer_diameter: float = 12.0
-    length: float = 35.0
+    length: float = 19.0
     per_rod: int = 1
 
     def __post_init__(self) -> None:
@@ -303,7 +381,7 @@ class SlideBearing:
 
 @dataclass(frozen=True)
 class SlideRod:
-    """A steel guide rod living in the screen lid's side wall."""
+    """A steel guide rod clamped to the screen lid's back panel."""
 
     diameter: float = 6.0
     end_support: float = 3.0  # lid material beyond the rod's usable span
@@ -311,6 +389,83 @@ class SlideRod:
     def __post_init__(self) -> None:
         if self.diameter <= 0 or self.end_support < 0:
             raise ValueError("slide.rod needs diameter > 0 and end_support >= 0")
+
+
+@dataclass(frozen=True)
+class RodClamp:
+    """A printed clamp holding one end of a Guide rod to the lid back panel.
+
+    Two per rod, one at each end, screwed into the back panel across the rod.
+    ``height`` is measured above the back panel's inner face; the rod sits in a
+    half-bore on the clamp's underside and in the slot through the panel. The
+    screws sit outboard of the slot, in solid panel.
+    """
+
+    length: float = 9.0  # grip length along the rod
+    height: float = 10.0  # block height above the back panel's inner face
+    width: float = 22.0  # block width across the rod (screws outside the slot)
+    clearance: float = 0.5  # axial gap between the bearing's extreme and the clamp
+    screw: str = "M2"
+    screw_span: float = 17.0  # centre distance of the two screws across the rod
+    set_screw: str = "M2"  # locks the rod axially in the clamp
+
+    def __post_init__(self) -> None:
+        if min(self.length, self.height, self.width, self.screw_span) <= 0:
+            raise ValueError("slide.rod_clamp dimensions must be positive")
+        if self.clearance < 0:
+            raise ValueError("slide.rod_clamp.clearance must be >= 0")
+
+
+@dataclass(frozen=True)
+class BearingClamp:
+    """A printed clamp holding a Linear bearing, straddling the lid back panel.
+
+    The body sits inside the lid, above the back panel; the neck passes through
+    the back-panel slot and the 1 mm joint gap into a pocket in the chassis
+    deck. The head is a cylinder coaxial with the bearing, as wide as the neck
+    (no flange): the rod passing through the bearing retains the lid. The clamp
+    slides along the slot as the lid moves; its foot is seated in the deck
+    pocket with its top face flush with the Deck top, so the neck spans the
+    back panel and the joint gap. The foot is longer than the bearing, so the
+    two screws land outboard of it. ``corner_chamfer`` breaks the foot's
+    vertical corners (the pocket matches); ``top_chamfer`` breaks the exposed
+    top perimeter of the foot (matched by the pocket mouth). The cylindrical
+    head's rims stay as formed: an arc chamfer is a different, fragile
+    operation and a round rim is already print-friendly.
+    """
+
+    length: float = 14.0  # grip length along the bearing (the bearing is 35)
+    foot_length: float = 30.0  # longer than the bearing: screws land outboard
+    foot_thickness: float = 4.0
+    seat_wall: float = 2.6  # material around the chassis seat pocket
+    seat_floor: float = 2.0
+    seat_fit: float = 0.4  # clearance each side of the foot in the pocket
+    screw: str = "M2.5"
+    screw_span_y: float = 24.0  # wider than the bearing: tips miss the bore
+    corner_chamfer: float = 5.0  # vertical corner relief on the foot and pocket
+    top_chamfer: float = 0.5  # foot's top perimeter and the pocket mouth
+
+    def __post_init__(self) -> None:
+        if min(
+            self.length,
+            self.foot_length,
+            self.foot_thickness,
+            self.seat_wall,
+            self.seat_floor,
+            self.screw_span_y,
+        ) <= 0:
+            raise ValueError("slide.bearing_clamp dimensions must be positive")
+        if self.seat_fit < 0:
+            raise ValueError("slide.bearing_clamp.seat_fit must be >= 0")
+        if self.corner_chamfer < 0:
+            raise ValueError("slide.bearing_clamp chamfers must be >= 0")
+        if self.top_chamfer < 0:
+            raise ValueError("slide.bearing_clamp.top_chamfer must be >= 0")
+        if self.corner_chamfer >= self.foot_length / 2.0:
+            raise ValueError(
+                "slide.bearing_clamp.corner_chamfer must be under half the "
+                "foot length"
+            )
 
 
 @dataclass(frozen=True)
@@ -342,21 +497,31 @@ class SlideRail:
 
 
 @dataclass(frozen=True)
-class SlideVents:
-    """A row of vertical vent slots through the chassis rear wall."""
+class SlideJoint:
+    """The Bezel <-> Back band joint of the screen lid (ADR-0011).
 
-    slot_width: float = 0.8
-    gap: float = 3.2
-    height: float = 10.0
-    start_x: float = 45.0
-    end_x: float = 125.0
-    z_center: float = 11.0
+    The lid splits at the Back panel's inner face. The Bezel carries a
+    prismatic band whose perimeter wall is locally thickened into posts at the
+    eight stations (four corners, two per long side); the Back is a flat plate
+    with a countersunk screw at each station, driven from its outer face.
+    """
+
+    band: float = 6.0
+    boss: float = 8.0
+    boss_margin: float = 1.5
+    corner_post: float = 6.0
+    corner_clearance: float = 0.5
+    corner_length: float = 20.0
+    station_inset: float = 5.0
+    screw: str = "M3"
 
     def __post_init__(self) -> None:
-        if self.slot_width <= 0 or self.gap < 0 or self.height <= 0:
-            raise ValueError("slide.vents slot width/height must be positive and gap >= 0")
-        if self.end_x < self.start_x:
-            raise ValueError("slide.vents end_x must be >= start_x")
+        if self.band <= 0 or self.boss <= 0 or self.corner_post < 0:
+            raise ValueError("slide.joint sizes must be positive")
+        if self.boss_margin <= 0 or self.corner_clearance < 0:
+            raise ValueError("slide.joint margins must be positive")
+        if self.station_inset <= 0:
+            raise ValueError("slide.joint.station_inset must be positive")
 
 
 @dataclass(frozen=True)
@@ -375,16 +540,19 @@ class Slide:
     clamp_wall: float = 2.0
     top_bezel: float = 2.5
     lid_clearance: float = 1.0
-    lid_back: float = 2.0
+    lid_back: float = 4.0
     lid_front: float = 2.0
     driver_gap: float = 0.5
     component_gap: float = 1.5
-    side_gap: float = 2.5
+    rear_wall_margin: float = 6.0  # SBC clearance to the rear wall
+    slot_clearance: float = 0.25  # each side between clamp neck and back-panel slot
     bearing: SlideBearing = field(default_factory=SlideBearing)
     rod: SlideRod = field(default_factory=SlideRod)
+    rod_clamp: RodClamp = field(default_factory=RodClamp)
+    bearing_clamp: BearingClamp = field(default_factory=BearingClamp)
+    joint: SlideJoint = field(default_factory=SlideJoint)
     chain: SlideChain = field(default_factory=SlideChain)
     rail: SlideRail = field(default_factory=SlideRail)
-    vents: SlideVents = field(default_factory=SlideVents)
     split: dict[str, Split] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -396,8 +564,12 @@ class Slide:
             raise ValueError("slide.clamp_wall must be positive and top_bezel >= 0")
         if self.lid_clearance < 0 or self.lid_back <= 0 or self.lid_front <= 0:
             raise ValueError("slide lid walls must be positive and clearance >= 0")
-        if min(self.driver_gap, self.component_gap, self.side_gap) < 0:
+        if min(self.driver_gap, self.component_gap) < 0:
             raise ValueError("slide gaps must be >= 0")
+        if self.rear_wall_margin < 0:
+            raise ValueError("slide.rear_wall_margin must be >= 0")
+        if self.slot_clearance < 0:
+            raise ValueError("slide.slot_clearance must be >= 0")
         if self.rod.diameter > self.bearing.bore + 0.05:
             raise ValueError(
                 "slide.rod.diameter must fit the bearing bore "
@@ -405,6 +577,33 @@ class Slide:
             )
         if self.bearing.outer_diameter <= self.bearing.bore:
             raise ValueError("slide.bearing outer diameter must exceed its bore")
+
+    @property
+    def rear_band_clamp(self) -> float:
+        """Face-space strip behind the keyboard the guide hardware needs.
+
+        The Bearing clamp sits at the rear end of the rod's travel envelope;
+        its seat extends half a seat length further. Expressed without the
+        keyboard depth so the layout recipe can use it directly.
+        """
+        stack = (
+            self.bearing.per_rod * self.bearing.length
+            + (self.bearing.per_rod - 1) * self.clamp_wall
+        )
+        seat_length = (
+            self.bearing_clamp.foot_length
+            + 2.0 * self.bearing_clamp.seat_fit
+            + 2.0 * self.bearing_clamp.seat_wall
+        )
+        return (
+            self.rod.end_support
+            + self.travel_clearance
+            + stack / 2.0
+            + self.rod_clamp.length
+            + self.rod_clamp.clearance
+            + seat_length / 2.0
+            + self.clamp_wall / 2.0
+        )
 
 
 @dataclass(frozen=True)
@@ -420,7 +619,9 @@ class Config:
     screws: Screws
     material: Material
     hardware: dict[str, Any] = field(default_factory=dict)
+    draft: Draft = field(default_factory=Draft)
     parting: Parting = field(default_factory=Parting)
+    chassis_joint: ChassisJoint = field(default_factory=ChassisJoint)
     merged_boss: MergedBoss = field(default_factory=MergedBoss)
     edges: Edges = field(default_factory=Edges)
     seam_pin: SeamPin = field(default_factory=SeamPin)
@@ -466,9 +667,11 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
     slide_raw = raw.get("slide") if isinstance(raw.get("slide"), dict) else {}
     slide_bearing = slide_raw.get("bearing") or {}
     slide_rod = slide_raw.get("rod") or {}
+    slide_rod_clamp = slide_raw.get("rod_clamp") or {}
+    slide_bearing_clamp = slide_raw.get("bearing_clamp") or {}
     slide_chain = slide_raw.get("chain") or {}
     slide_rail = slide_raw.get("rail") or {}
-    slide_vents = slide_raw.get("vents") or {}
+    slide_joint = slide_raw.get("joint") or {}
     slide_split = {
         name: Split(
             sections=int(v.get("sections", 2)),
@@ -486,21 +689,53 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
         clamp_wall=float(slide_raw.get("clamp_wall", 2.0)),
         top_bezel=float(slide_raw.get("top_bezel", 2.5)),
         lid_clearance=float(slide_raw.get("lid_clearance", 1.0)),
-        lid_back=float(slide_raw.get("lid_back", 2.0)),
+        lid_back=float(slide_raw.get("lid_back", 4.0)),
         lid_front=float(slide_raw.get("lid_front", 2.0)),
         driver_gap=float(slide_raw.get("driver_gap", 0.5)),
         component_gap=float(slide_raw.get("component_gap", 1.5)),
-        side_gap=float(slide_raw.get("side_gap", 2.5)),
+        rear_wall_margin=float(slide_raw.get("rear_wall_margin", 6.0)),
+        slot_clearance=float(slide_raw.get("slot_clearance", 0.25)),
         bearing=SlideBearing(
-            model=str(slide_bearing.get("model", "LM6LUU")),
+            model=str(slide_bearing.get("model", "LM6UU")),
             bore=float(slide_bearing.get("bore", 6.0)),
             outer_diameter=float(slide_bearing.get("outer_diameter", 12.0)),
-            length=float(slide_bearing.get("length", 35.0)),
+            length=float(slide_bearing.get("length", 19.0)),
             per_rod=int(slide_bearing.get("per_rod", 1)),
         ),
         rod=SlideRod(
             diameter=float(slide_rod.get("diameter", 6.0)),
             end_support=float(slide_rod.get("end_support", 3.0)),
+        ),
+        rod_clamp=RodClamp(
+            length=float(slide_rod_clamp.get("length", 9.0)),
+            height=float(slide_rod_clamp.get("height", 10.0)),
+            width=float(slide_rod_clamp.get("width", 22.0)),
+            clearance=float(slide_rod_clamp.get("clearance", 0.5)),
+            screw=str(slide_rod_clamp.get("screw", "M2")),
+            screw_span=float(slide_rod_clamp.get("screw_span", 17.0)),
+            set_screw=str(slide_rod_clamp.get("set_screw", "M2")),
+        ),
+        bearing_clamp=BearingClamp(
+            length=float(slide_bearing_clamp.get("length", 14.0)),
+            foot_length=float(slide_bearing_clamp.get("foot_length", 30.0)),
+            foot_thickness=float(slide_bearing_clamp.get("foot_thickness", 4.0)),
+            seat_wall=float(slide_bearing_clamp.get("seat_wall", 2.6)),
+            seat_floor=float(slide_bearing_clamp.get("seat_floor", 2.0)),
+            seat_fit=float(slide_bearing_clamp.get("seat_fit", 0.4)),
+            screw=str(slide_bearing_clamp.get("screw", "M2.5")),
+            screw_span_y=float(slide_bearing_clamp.get("screw_span_y", 24.0)),
+            corner_chamfer=float(slide_bearing_clamp.get("corner_chamfer", 5.0)),
+            top_chamfer=float(slide_bearing_clamp.get("top_chamfer", 0.5)),
+        ),
+        joint=SlideJoint(
+            band=float(slide_joint.get("band", 6.0)),
+            boss=float(slide_joint.get("boss", 8.0)),
+            boss_margin=float(slide_joint.get("boss_margin", 1.5)),
+            corner_post=float(slide_joint.get("corner_post", 6.0)),
+            corner_clearance=float(slide_joint.get("corner_clearance", 0.5)),
+            corner_length=float(slide_joint.get("corner_length", 20.0)),
+            station_inset=float(slide_joint.get("station_inset", 5.0)),
+            screw=str(slide_joint.get("screw", "M3")),
         ),
         chain=SlideChain(
             pitch=float(slide_chain.get("pitch", 10.0)),
@@ -513,14 +748,6 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
             nut=str(slide_rail.get("nut", "M4")),
             pocket_depth=float(slide_rail.get("pocket_depth", 5.0)),
             pitch=float(slide_rail.get("pitch", 10.0)),
-        ),
-        vents=SlideVents(
-            slot_width=float(slide_vents.get("slot_width", 0.8)),
-            gap=float(slide_vents.get("gap", 3.2)),
-            height=float(slide_vents.get("height", 10.0)),
-            start_x=float(slide_vents.get("start_x", 45.0)),
-            end_x=float(slide_vents.get("end_x", 125.0)),
-            z_center=float(slide_vents.get("z_center", 11.0)),
         ),
         split=slide_split,
     )
@@ -540,6 +767,7 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
     }
 
     flex = display.pop("flex", None)
+    chassis_joint_raw = raw.get("chassis_joint") or {}
     config = Config(
         wall=Wall(**{k: float(v) for k, v in wall.items()}),
         corners=Corners(**{k: float(v) for k, v in corners.items()}),
@@ -573,7 +801,19 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
             min_bed_face_area=float(material.get("min_bed_face_area", 100.0)),
         ),
         hardware=hardware,
+        draft=Draft(**{k: float(v) for k, v in (raw.get("draft") or {}).items()}),
         parting=Parting(**{k: float(v) for k, v in (raw.get("parting") or {}).items()}),
+        chassis_joint=ChassisJoint(
+            band=float(chassis_joint_raw.get("band", 6.0)),
+            boss=float(chassis_joint_raw.get("boss", 10.0)),
+            boss_margin=float(chassis_joint_raw.get("boss_margin", 1.5)),
+            station_inset=float(chassis_joint_raw.get("station_inset", 6.5)),
+            side_inset=float(chassis_joint_raw.get("side_inset", 4.5)),
+            scallop_width=float(chassis_joint_raw.get("scallop_width", 10.0)),
+            scallop_depth=float(chassis_joint_raw.get("scallop_depth", 0.8)),
+            scallop_height=float(chassis_joint_raw.get("scallop_height", 3.0)),
+            screw=str(chassis_joint_raw.get("screw", "M3")),
+        ),
         merged_boss=MergedBoss(**{k: float(v) for k, v in (raw.get("merged_boss") or {}).items()}),
         edges=Edges(**{k: float(v) for k, v in (raw.get("edges") or {}).items()}),
         seam_pin=SeamPin(**{k: float(v) for k, v in (raw.get("seam_pin") or {}).items()}),

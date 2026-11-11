@@ -21,11 +21,13 @@ storage:
 
 io:
   hdmi: true              # 1x Mini HDMI TX 2.0
-  usb_a: 0                # no USB-A on the SBC; USB-A comes from the expansion board
+  usb_a: 0                # no USB-A on the SBC; the external USB hub supplies them
   usb_c: 2                # 2x Type-C USB 2.0 (one is power input)
 
 usb_breakout:
   # ZMT23_HUB_VER1.0 multifunction USB hub board (measured with calipers).
+  # External module on an accessory rail: not a chassis placement. Kept in the
+  # component library so the module can be modelled/exported (comp:usb_breakout).
   # Ribbon cable on the west edge; 1x USB-A on the east edge; on the north
   # edge, west to east: 3x USB-A, micro-SD reader, audio jack, USB-C.
   pcb_width: 133.0          # measured

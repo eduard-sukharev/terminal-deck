@@ -616,3 +616,28 @@ def test_fpc_guard_does_not_touch_the_bearing_clamp_head(data, guard, bearing_cl
         bearing_clamp, frame.rod_x, frame.clamp_center_y, frame.panel_inner_z
     )
     assert ch.volume_mm3(ch.intersect(world, head)) == pytest.approx(0, abs=1e-6)
+
+
+def test_lid_sweeps_clear_of_the_chassis_over_the_whole_travel(data, solids):
+    """A real solid sweep, not the placement boxes: the shells never touch."""
+    _, _, budget, _ = data
+    chassis, lid = solids
+    for step in range(4):
+        shift = budget.travel * step / 3.0
+        assert ch.volume_mm3(
+            ch.intersect(ch.translate(lid, 0.0, shift, 0.0), chassis)
+        ) == pytest.approx(0, abs=1e-3)
+
+
+def test_fpc_guard_stays_clear_of_the_head_over_the_whole_travel(data, guard, bearing_clamp):
+    """The guard slides with the lid; the head is fixed to the Deck."""
+    _, _, budget, frame = data
+    world = ch.translate(guard, frame.display_x, frame.display_y, frame.display_z0)
+    head = ch.translate(
+        bearing_clamp, frame.rod_x, frame.clamp_center_y, frame.panel_inner_z
+    )
+    for step in range(9):
+        shift = budget.travel * step / 8.0
+        assert ch.volume_mm3(
+            ch.intersect(ch.translate(world, 0.0, shift, 0.0), head)
+        ) == pytest.approx(0, abs=1e-6)

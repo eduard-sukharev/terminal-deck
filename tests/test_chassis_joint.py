@@ -10,6 +10,7 @@ import math
 import pytest
 
 from case.chassis import Chassis
+from utilities import fasteners
 from case.slider_frame import SliderFrame
 from components.slide import compute_slide_budget
 from layouts import make_layout
@@ -59,13 +60,28 @@ def test_ten_stations_four_corners_four_sides_two_ends(data):
 
 
 def test_stations_mirror_about_both_centreplanes(data):
+    """The long walls and the corners mirror both ways.
+
+    The two short-side stations cannot: the narrow case leaves no band beside
+    the keyboard, so they sit in the free band *behind* it, which only exists
+    at one end. They mirror about the X centreplane alone.
+    """
     _, budget, _, _ = data
     joint = budget.chassis_joint
-    points = {(round(s.x, 6), round(s.y, 6)) for s in joint.stations}
-    for x, y in points:
-        assert (-x, y) in points
-        assert (x, -y) in points
-        assert (-x, -y) in points
+    wall_points = {
+        (round(s.x, 6), round(s.y, 6))
+        for s in joint.stations
+        if not s.is_end
+    }
+    for x, y in wall_points:
+        assert (-x, y) in wall_points
+        assert (x, -y) in wall_points
+        assert (-x, -y) in wall_points
+    end_points = {(round(s.x, 6), round(s.y, 6)) for s in joint.end_stations}
+    assert len(end_points) == 2
+    for x, y in end_points:
+        assert (-x, y) in end_points
+        assert y > 0.0
 
 
 def test_parting_plane_and_band_are_derived(data):
@@ -106,12 +122,20 @@ def test_column_is_a_frustum_inside_the_floor_skin(data):
     config, budget, _, _ = data
     joint = budget.chassis_joint
     minimum = config.material.minimum_feature
-    clearance = joint.countersink.diameter  # wider than the screw clearance
+    # The countersink lives in the 2 mm floor, *below* the column's base, so it
+    # does not bound the column: the screw shank does, and the floor's skin
+    # bounds the countersink itself.
+    shank = fasteners.screw(joint.screw.size).clearance
     for station in joint.stations:
         assert 0.0 < station.base_boss <= station.boss
-        assert station.base_boss >= clearance + 2.0 * minimum - 1e-6
+        assert station.base_boss >= shank + 2.0 * minimum - 1e-6
         # The column's outer surface stays inside the Tray's floor skin.
         assert station.base_distance >= station.base_boss / 2.0 + minimum - 1e-6
+        # The countersink keeps a printable skin to the outer face.
+        assert (
+            station.base_distance - joint.countersink.diameter / 2.0
+            >= minimum - 1e-6
+        )
 
 
 def test_stations_stay_clear_of_the_placed_components(data):

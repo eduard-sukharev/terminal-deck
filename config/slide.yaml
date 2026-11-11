@@ -3,9 +3,11 @@
 # lid's back panel carries two steel guide rods, each held at both ends by two
 # printed Rod clamps; between the clamps a through-slot in the back panel lets
 # the Bearing clamps — printed clamps that straddle the panel and are seated in
-# the chassis deck — slide as the lid moves. The face height is the binding
-# constraint, so every value here is checked against `face_height_limit` by
-# the data layer.
+# the chassis deck — slide as the lid moves. The rods sit *under* the display
+# (ADR-0013), so the width is the content plus a thin drafted wall and the lid
+# thickness carries the moving head and a printed FPC guard. The face height is
+# the binding constraint, so every value here is checked against
+# `face_height_limit` by the data layer.
 
 slide:
   face_height_limit: 140.0   # HARD closed face height (the product target)
@@ -30,8 +32,6 @@ slide:
     band: 6.0                # prismatic fastening band at the Bezel's bottom
     boss: 8.0                # square pad per station, standing into the cavity
     boss_margin: 1.5         # material between an insert hole and a free face
-    corner_post: 8.75        # extra side-pod width each side, so the lid has
-                             # solid corner posts outboard of the Rod clamps
     corner_clearance: 0.5    # corner post <-> Rod clamp
     corner_length: 20.0      # corner post along the side wall
     station_inset: 5.0       # station centre from the lid's outer edge
@@ -47,6 +47,22 @@ slide:
   rod:
     diameter: 6.0
     end_support: 3.0         # lid material beyond the rod's usable span
+    side_margin: 2.5         # keep the stance a margin inside its tightest
+                             # bound (the Deck seat vs the chassis band corner
+                             # boss is a plan-space proxy for a Z-separated pair)
+
+  fpc_guard:                 # printed grille plate between the ribbon and the
+                             # moving Bearing-clamp head: tape-bonded to the
+                             # display's back, channel open at both ends
+    total: 1.6               # grille floor (total - recess) + ribbon channel
+    recess: 0.6              # channel depth on the display-facing side; must
+                             # swallow display.flex.stack
+    margin: 5.0              # plan margin beyond the ribbon and the slot band
+    sag_allowance: 0.5       # TODO: measure by a load test on the assembled lid
+                             # (0.5 assumed): the head is a printed cantilever
+                             # bolted into the Deck, the display is lip-retained
+    grille_slot: 2.0         # max width of a blind lightening slot
+    fit: 0.4                 # clearance to the driver's FPC connector body
 
   rod_clamp:                 # printed end clamps: 2 per rod, on the lid back panel
     length: 9.0              # grip length along the rod at each end

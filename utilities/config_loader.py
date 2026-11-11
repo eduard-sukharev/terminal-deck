@@ -109,7 +109,7 @@ class Display:
 class Flex:
     width: float  # ribbon width, measured
     thickness: float  # ribbon thickness (TODO: measure)
-    fold: float  # folded-ribbon allowance behind panel (TODO: measure)
+    stack: float  # flat ribbon stack the FPC guard channel captures (TODO: measure)
     edge_protrusion: float = 0.75  # ribbon stub proud of the panel edge (mm)
 
 
@@ -385,10 +385,51 @@ class SlideRod:
 
     diameter: float = 6.0
     end_support: float = 3.0  # lid material beyond the rod's usable span
+    side_margin: float = 2.5  # how far the stance sits inside its tightest bound
 
     def __post_init__(self) -> None:
         if self.diameter <= 0 or self.end_support < 0:
             raise ValueError("slide.rod needs diameter > 0 and end_support >= 0")
+        if self.side_margin < 0:
+            raise ValueError("slide.rod.side_margin must be >= 0")
+
+
+@dataclass(frozen=True)
+class FpcGuard:
+    """The printed grille plate that guards the display's FPC ribbon.
+
+    The plate is tape-bonded to the display's back with ``total`` thickness:
+    a grille floor of ``total - recess`` and a ``recess``-deep channel on the
+    display-facing side that captures the flat ribbon (``display.flex.stack``).
+    The channel is open at both ends, so the ribbon can leave it toward the
+    driver board. ``margin`` is the plan margin the plate keeps beyond the
+    ribbon and the slot band the moving Bearing-clamp head sweeps;
+    ``sag_allowance`` is the documented deflection allowance between the head's
+    crown and the plate's underside.
+    """
+
+    total: float = 1.6
+    recess: float = 0.6
+    margin: float = 5.0
+    sag_allowance: float = 0.5
+    grille_slot: float = 2.0
+    fit: float = 0.4  # clearance to the driver's FPC connector body
+
+    def __post_init__(self) -> None:
+        if self.total <= 0 or self.grille_slot <= 0:
+            raise ValueError("slide.fpc_guard total/grille_slot must be positive")
+        if not 0.0 < self.recess < self.total:
+            raise ValueError(
+                "slide.fpc_guard.recess must be positive and under total "
+                f"(recess {self.recess}, total {self.total})"
+            )
+        if self.margin < 0 or self.sag_allowance < 0 or self.fit < 0:
+            raise ValueError("slide.fpc_guard margins must be >= 0")
+
+    @property
+    def floor(self) -> float:
+        """The grille floor left between the channel and the plate's underside."""
+        return self.total - self.recess
 
 
 @dataclass(frozen=True)
@@ -509,14 +550,13 @@ class SlideJoint:
     band: float = 6.0
     boss: float = 8.0
     boss_margin: float = 1.5
-    corner_post: float = 6.0
     corner_clearance: float = 0.5
     corner_length: float = 20.0
     station_inset: float = 5.0
     screw: str = "M3"
 
     def __post_init__(self) -> None:
-        if self.band <= 0 or self.boss <= 0 or self.corner_post < 0:
+        if self.band <= 0 or self.boss <= 0:
             raise ValueError("slide.joint sizes must be positive")
         if self.boss_margin <= 0 or self.corner_clearance < 0:
             raise ValueError("slide.joint margins must be positive")
@@ -548,6 +588,7 @@ class Slide:
     slot_clearance: float = 0.25  # each side between clamp neck and back-panel slot
     bearing: SlideBearing = field(default_factory=SlideBearing)
     rod: SlideRod = field(default_factory=SlideRod)
+    fpc_guard: FpcGuard = field(default_factory=FpcGuard)
     rod_clamp: RodClamp = field(default_factory=RodClamp)
     bearing_clamp: BearingClamp = field(default_factory=BearingClamp)
     joint: SlideJoint = field(default_factory=SlideJoint)
@@ -672,6 +713,7 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
     slide_chain = slide_raw.get("chain") or {}
     slide_rail = slide_raw.get("rail") or {}
     slide_joint = slide_raw.get("joint") or {}
+    slide_fpc_guard = slide_raw.get("fpc_guard") or {}
     slide_split = {
         name: Split(
             sections=int(v.get("sections", 2)),
@@ -705,6 +747,15 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
         rod=SlideRod(
             diameter=float(slide_rod.get("diameter", 6.0)),
             end_support=float(slide_rod.get("end_support", 3.0)),
+            side_margin=float(slide_rod.get("side_margin", 2.5)),
+        ),
+        fpc_guard=FpcGuard(
+            total=float(slide_fpc_guard.get("total", 1.6)),
+            recess=float(slide_fpc_guard.get("recess", 0.6)),
+            margin=float(slide_fpc_guard.get("margin", 5.0)),
+            sag_allowance=float(slide_fpc_guard.get("sag_allowance", 0.5)),
+            grille_slot=float(slide_fpc_guard.get("grille_slot", 2.0)),
+            fit=float(slide_fpc_guard.get("fit", 0.4)),
         ),
         rod_clamp=RodClamp(
             length=float(slide_rod_clamp.get("length", 9.0)),
@@ -731,7 +782,6 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
             band=float(slide_joint.get("band", 6.0)),
             boss=float(slide_joint.get("boss", 8.0)),
             boss_margin=float(slide_joint.get("boss_margin", 1.5)),
-            corner_post=float(slide_joint.get("corner_post", 6.0)),
             corner_clearance=float(slide_joint.get("corner_clearance", 0.5)),
             corner_length=float(slide_joint.get("corner_length", 20.0)),
             station_inset=float(slide_joint.get("station_inset", 5.0)),

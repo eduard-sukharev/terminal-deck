@@ -157,9 +157,14 @@ def _station(
     if kind == "side":
         surface = band_half_y - ay
     elif kind == "end":
-        surface = band_half_x - ax
+        # The short-side stations sit in the free band behind the keyboard (the
+        # narrow case leaves no band beside the keys), so they are close to two
+        # walls: cap the boss by the nearer.
+        surface = min(band_half_x - ax, band_half_y - ay)
     else:
-        surface = chamfer_surface
+        # A corner is close to both walls and on the diagonal chamfer; the
+        # tightest of the three is what the boss may grow to.
+        surface = min(chamfer_surface, band_half_x - ax, band_half_y - ay)
 
     # At the floor the drafted X walls have receded toward the station by the
     # full draft inset; the Y walls are still where they were.
@@ -187,6 +192,7 @@ def chassis_joint(
     width: float,
     depth: float,
     chassis_top: float,
+    content_y1: float,
     draft_angle: float,
     minimum_feature: float,
     chamfer: float,
@@ -199,8 +205,14 @@ def chassis_joint(
     Tray's draft ends and its prismatic band begins, ``band_z1`` is the top of
     the Deck's prismatic band (halfway up the Deck, in practice). Because the
     Deck is prismatic, the band width is the full closed-face width and the
-    base is the drafted width at ``band_z0`` rather than at the table. Raises
-    ``ValueError`` when no stock screw fits the Tray column and the Deck
+    base is the drafted width at ``band_z0`` rather than at the table.
+
+    ``content_y1`` is the plan Y of the tallest content's rear edge (the
+    keyboard): the case is only as wide as the display plus a thin drafted
+    wall, so the band beside the keys has no room for a station and the short
+    sides are fastened in the free band behind the keyboard instead.
+
+    Raises ``ValueError`` when no stock screw fits the Tray column and the Deck
     insert; the data layer turns that into a HARD check.
     """
     insert = fasteners.heat_insert(joint.screw)
@@ -223,10 +235,16 @@ def chassis_joint(
     depth_half = depth / 2.0
 
     x_edge = band_half_x - joint.station_inset
-    y_corner = depth_half - joint.station_inset
-    y_side = depth_half - joint.side_inset
+    # Every long-wall station -- the corners included -- sits `side_inset` from
+    # the vertical front/rear wall: the narrow case leaves only this much band
+    # beside the keyboard, which caps those bosses at 2 x (inset - min feature).
+    y_wall = depth_half - joint.side_inset
+    # One station per short side, in the middle of the free band behind the
+    # keyboard. There is no band beside the keys at this width, and the 10 mm
+    # front strip is narrower than a boss.
+    y_end = (content_y1 + depth_half) / 2.0
     x_mid = band_width / 6.0
-    if min(x_edge, y_corner, y_side, x_mid) <= 0.0:
+    if min(x_edge, y_wall, x_mid) <= 0.0 or y_end <= 0.0:
         raise ValueError(
             "chassis joint station inset is too large for the chassis plan "
             f"(band {band_width:.2f} x {depth:.2f} mm)"
@@ -249,9 +267,10 @@ def chassis_joint(
             for sy in ((-1, 1) if y else (1,)):
                 stations.append(_station(sx * x, sy * y, kind, **common))
 
-    add(x_edge, y_corner, "corner")
-    add(x_mid, y_side, "side")
-    add(x_edge, 0.0, "end")
+    add(x_edge, y_wall, "corner")
+    add(x_mid, y_wall, "side")
+    for sx in (-1, 1):
+        stations.append(_station(sx * x_edge, y_end, "end", **common))
 
     return ChassisJoint(
         band=joint.band,

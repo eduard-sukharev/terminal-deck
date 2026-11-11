@@ -12,11 +12,11 @@ def test_display_flex_config():
         "width": 231.0,
         "height": 64.5,
         "thickness": 6.5,
-        "flex": {"width": 38.5, "thickness": 1.0, "fold": 6.0, "edge_protrusion": 1.0},
+        "flex": {"width": 38.5, "thickness": 1.0, "stack": 0.6, "edge_protrusion": 1.0},
     })
     assert d._flex_width == 38.5
     assert d._flex_thickness == 1.0
-    assert d._flex_fold == 6.0
+    assert d._flex_stack == 0.6
     assert d._flex_edge_protrusion == 1.0
 
 
@@ -24,7 +24,7 @@ def test_display_flex_defaults():
     d = Display88({"width": 231.0, "height": 64.5, "thickness": 6.5})
     assert d._flex_width == 38.5
     assert d._flex_thickness == 1.0
-    assert d._flex_fold == 6.0
+    assert d._flex_stack == 0.6
     assert d._flex_edge_protrusion == 0.75
 
 

@@ -7,10 +7,11 @@ with an M3 countersunk screw driven from the Back's outer face into a heat-set
 insert in the Bezel's band.
 
 The free middle of each *short* side is the Bearing-clamp slot, and the four
-corners are where the four Rod clamps sit, so the corner stations need solid
-posts outboard of the clamps. That is what ``slide.joint.corner_post`` buys in
-the side pod: the lid (and the chassis, which shares the closed face) grows, and
-the guard hardware stays exactly where the travel puts it.
+corners are where the four Rod clamps sit. The guide rods are now *under* the
+display (ADR-0013), so the corner posts sit **inboard of the cavity wall** and
+follow the Rod clamp's outer edge: nothing widens the case for them any more.
+``post_inner = rod_x + rod_clamp.width/2 + corner_clearance``; the post runs
+from there out to the wall and carries the insert with its boss margin.
 
 Pure data: no CAD import, so the data layer can size and check the joint before
 the case is built.
@@ -111,16 +112,25 @@ def lid_joint(
             stations.append(BandStation(x=x, y=sign * y, kind=kind))
 
     # Corner post: from just outboard of the Rod clamp to the cavity wall, and
-    # `corner_length` along the side. It merges with the two walls.
+    # `corner_length` along the side. It merges with the two walls. The guide
+    # rods are under the display (ADR-0013), so this post no longer grows the
+    # case: its width is whatever is left between the clamp and the wall.
+    post_outer_x = width / 2.0 - wall
     post_inner_x = rod_x + rod_clamp_width / 2.0 + joint.corner_clearance
+    if post_inner_x >= post_outer_x:
+        raise ValueError(
+            "the lid band's corner post has no width: the Rod clamp at "
+            f"x {rod_x:.2f} reaches the cavity wall (post inner "
+            f"{post_inner_x:.2f} >= outer {post_outer_x:.2f} mm)"
+        )
     return LidJoint(
         band=joint.band,
         boss=joint.boss,
         boss_margin=joint.boss_margin,
         corner_clearance=joint.corner_clearance,
         corner_length=joint.corner_length,
-        corner_post_width=width / 2.0 - post_inner_x,
-        post_x=(post_inner_x, width / 2.0 - wall),
+        corner_post_width=post_outer_x - post_inner_x,
+        post_x=(post_inner_x, post_outer_x),
         post_y=(lid_height / 2.0 - joint.corner_length, lid_height / 2.0 - wall),
         insert_hole=hole,
         insert_depth=insert.depth,

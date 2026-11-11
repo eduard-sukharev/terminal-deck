@@ -43,7 +43,7 @@ class Display88(Component):
         flex = data.get("flex", {})
         self._flex_width = float(flex.get("width", 38.5))
         self._flex_thickness = float(flex.get("thickness", 1.0))
-        self._flex_fold = float(flex.get("fold", 6.0))
+        self._flex_stack = float(flex.get("stack", 0.6))
         self._flex_edge_protrusion = float(flex.get("edge_protrusion", 0.75))
 
     def size(self) -> BoundingBox:
@@ -66,7 +66,7 @@ class Display88(Component):
                 direction=DIR_POS_X,
                 width=self._flex_width,
                 height=self._flex_thickness,
-                depth=self._flex_fold,
+                depth=self._flex_stack,
                 internal=True,
             )
         ]

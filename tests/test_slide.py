@@ -78,19 +78,136 @@ def test_case_draft_is_configured_and_inside_the_requested_range():
     assert 5.0 <= config.draft.angle <= 10.0
     budget = _budget(config, components)
     assert budget.draft_allowance > 0.0
-    # The budget widens the side pod by the draft inset, so the guide hardware
-    # stays put while the outer wall moves out. The display only clears the
-    # moving housing (the back-panel cutout width), not the fixed Rod clamps.
-    assert budget.side_pod > (
-        config.slide.component_gap
-        + budget.hardware_width
-        + config.wall_thickness
-        + config.clearance.shell
+    # The guide hardware is inboard, under the display, so the side pod is the
+    # wall, the shell clearance and the draft inset of the tapered lid wall --
+    # no hardware, no `component_gap`, no `joint.corner_post`.
+    assert budget.side_pod == pytest.approx(
+        config.wall_thickness + config.clearance.shell + budget.draft_allowance
+    )
+    assert budget.usable_half == pytest.approx(
+        max(components["keyboard"].size().width, components["display"].size().width)
+        / 2.0
     )
     assert budget.hardware_width == pytest.approx(
         budget.clamp_width + 2.0 * config.slide.slot_clearance
     )
     assert budget.clamp_body_width == pytest.approx(budget.clamp_width)
+
+
+def test_width_derives_from_the_content_and_the_drafted_cavity():
+    """The width is the content plus the drafted side wall, nothing more."""
+    _, config, components, _, _ = _data()
+    display = components["display"].size()
+    budget = _budget(config, components)
+
+    # Every term of the side pod is derived: the draft inset follows the
+    # display's top height inside the tapered lid cavity.
+    assert 0.0 < budget.draft_allowance < 3.0
+    assert budget.width == pytest.approx(display.width + 2.0 * budget.side_pod)
+    # The side bezel drops from the old 30 mm pod to a few mm.
+    assert budget.width < 250.0
+    assert budget.width - display.width < 12.0
+
+
+def test_rod_x_is_bounded_by_the_post_the_seat_and_the_display():
+    """The stance is derived from the three features it must clear."""
+    _, config, components, _, _ = _data()
+    budget = _budget(config, components)
+    bounds = budget.rod_x_bounds
+
+    # 1. the lid's band corner post must still hold the insert outboard of the
+    #    Rod clamp; 2. the Deck's seat must clear the chassis band's corner
+    #    boss; 3. the moving head must stay under the display.
+    assert bounds.post == pytest.approx(
+        budget.width / 2.0
+        - config.wall_thickness
+        - budget.rod_clamp_width / 2.0
+        - config.slide.joint.corner_clearance
+        - (budget.lid_joint.insert_hole + 2.0 * config.slide.joint.boss_margin)
+    )
+    seat_half = (
+        budget.clamp_width / 2.0
+        + config.slide.bearing_clamp.seat_fit
+        + config.slide.bearing_clamp.seat_wall
+    )
+    assert bounds.seat == pytest.approx(
+        budget.width / 2.0
+        - config.chassis_joint.station_inset
+        - config.chassis_joint.boss / 2.0
+        - config.material.minimum_feature
+        - seat_half
+    )
+    assert bounds.head == pytest.approx(
+        components["display"].size().width / 2.0 - budget.clamp_width / 2.0
+    )
+    assert budget.rod_x <= min(bounds.post, bounds.seat, bounds.head) + 1e-9
+    assert budget.rod_x == pytest.approx(
+        min(bounds.post, bounds.seat, bounds.head) - config.slide.rod.side_margin
+    )
+    # The rods moved from beside the display (±125) to under it.
+    assert budget.rod_x < components["display"].size().width / 2.0
+
+
+def test_display_cavity_follows_the_head_the_guard_and_the_sag():
+    """The lid thickness is what the moving head and the guard need."""
+    _, config, components, _, _ = _data()
+    budget = _budget(config, components)
+    display = components["display"].size()
+    guard = config.slide.fpc_guard
+
+    assert budget.head_crown == pytest.approx(
+        budget.rod_raise + budget.clamp_width / 2.0
+    )
+    assert budget.display_cavity == pytest.approx(
+        budget.head_crown
+        + config.slide.component_gap
+        + guard.sag_allowance
+        + guard.total
+    )
+    assert budget.lid_thickness == pytest.approx(
+        config.slide.lid_back
+        + budget.display_cavity
+        + display.height
+        + config.slide.lid_front
+        + config.clearance.shell
+        - config.bezel.recess
+    )
+    assert budget.thickness == pytest.approx(
+        budget.chassis_top + config.slide.lid_clearance + budget.lid_thickness
+    )
+    # The cavity is deeper than the driver sitting at the back panel, so the
+    # display is carried by the stack, not by the old 5 mm driver allowance.
+    assert budget.display_cavity > config.slide.driver_gap + components["driver"].size().height
+    # Still inside the 140 mm HARD face limit (the budget is Z, not Y).
+    assert budget.thickness < config.slide.face_height_limit
+
+
+def test_guard_covers_the_ribbon_and_the_slot_band():
+    """The guard's planform is derived from the ribbon and the head's sweep."""
+    _, config, components, _, _ = _data()
+    budget = _budget(config, components)
+    display = components["display"].size()
+    guard = config.slide.fpc_guard
+    x0, y0, x1, y1 = budget.guard_planform
+
+    # The ribbon: the display's FPC exits the east short edge, centred in Y.
+    ribbon_half = config.display.flex.width / 2.0
+    assert y0 <= -ribbon_half - guard.margin + 1e-9
+    assert y1 >= ribbon_half + guard.margin - 1e-9
+    # The slot band the head sweeps: the guard spans it with margin.
+    slot_x0 = budget.rod_x - budget.hardware_width / 2.0
+    slot_x1 = budget.rod_x + budget.hardware_width / 2.0
+    assert x0 <= slot_x0 - guard.margin + 1e-9
+    assert x1 >= slot_x1 + guard.margin - 1e-9
+    # The west end starts at the driver's FPC connector, the east end stays
+    # inside the display's shadow (so it never pierces the lid wall).
+    assert x0 == pytest.approx(
+        components["driver"].offset_x
+        + components["driver"].width / 2.0
+        + guard.fit
+    )
+    assert x1 <= display.width / 2.0
+    assert x1 <= budget.width / 2.0 - config.wall_thickness
 
 
 def test_slide_budget_defaults():
@@ -108,9 +225,10 @@ def test_slide_budget_defaults():
     assert budget.within_face_limit
     assert budget.open_face_height > budget.closed_face_height
     assert budget.thickness < config.slide.face_height_limit
-    # The width carries the joint corner posts outboard of the Rod clamps
-    # (ADR-0011); each half must still fit the 220 mm bed.
-    assert 250.0 <= budget.width <= 300.0
+    # The guides are inboard, so the width is the display plus a thin drafted
+    # wall -- not the old 292 mm side-pod envelope. Each half still fits the
+    # 220 mm bed.
+    assert 230.0 <= budget.width <= 250.0
     assert budget.width / 2.0 <= 220.0
     assert budget.slot_fits
 
@@ -205,9 +323,40 @@ def test_slider_checks_cover_placement_geometry():
         "slide-display-fit",
         "slide-display-guide-clear",
         "slide-rod-clamp-clear",
+        "slide-fpc-guard-stack",
+        "slide-fpc-guard-cover",
+        "slide-chassis-seat-clear",
+        "slide-lid-joint-post-inboard",
     ):
         assert name in by_name, name
         assert by_name[name].passed, by_name[name].message
+
+
+def test_display_clearance_is_a_z_check_against_the_guard():
+    """A display placed 1 mm low must fail the Z clearance, not pass silently."""
+    _, config, components, _, placements = _data()
+    budget = _budget(config, components)
+    sagged = [
+        dataclasses.replace(p, z=p.z - 1.0)
+        if "display" in p.component.name.lower()
+        else p
+        for p in placements
+    ]
+    report = run_slider_checks(budget, config, sagged)
+    assert "slide-display-guide-clear" in {c.name for c in report.failures}
+
+
+def test_guard_stack_check_fails_when_the_channel_is_too_shallow():
+    """The channel must swallow the measured ribbon stack."""
+    _, config, components, _, placements = _data()
+    tight = dataclasses.replace(
+        config.slide,
+        fpc_guard=dataclasses.replace(config.slide.fpc_guard, recess=0.2),
+    )
+    config2 = dataclasses.replace(config, slide=tight)
+    placements2 = make_layout("slider", components, config=config2).placements()
+    report = run_slider_checks(_budget(config2, components), config2, placements2)
+    assert "slide-fpc-guard-stack" in {c.name for c in report.failures}
 
 
 def test_clamp_corridor_check_catches_a_wide_rear_band():

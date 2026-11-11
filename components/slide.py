@@ -3,9 +3,14 @@
 Pure data — no CAD. The screen lid carries two steel Guide rods on its back
 panel's inner face, each held by two printed Rod clamps; the printed Bearing
 clamps straddle the back panel through a long slot and are seated in the
-Chassis Deck (ADR-0010). The closed face height is the binding constraint, so
-the budget is derived from the real keyboard/display/driver sizes and the slide
-config and checked by the build.
+Chassis Deck (ADR-0010/0013). The rods sit **under the display**, so they no
+longer set the case width; the moving Bearing-clamp head passes under the
+panel instead, which is what sets the lid's thickness. A printed FPC grille
+plate guards the display's ribbon where that head sweeps it.
+
+The closed face height is the binding constraint, so the budget is derived from
+the real keyboard/display/driver sizes and the slide config and checked by the
+build.
 """
 
 from __future__ import annotations
@@ -18,6 +23,31 @@ from routing.cable_routing import CONNECTOR_HDMI, MIN_BEND_RADIUS_MM
 
 from geometry.chassis_joint import chassis_joint as chassis_band_joint
 from geometry.joint import lid_joint
+from utilities import fasteners
+
+
+@dataclass(frozen=True)
+class RodBounds:
+    """The three features the guide stance must clear (X, mm).
+
+    ``post`` is the lid's band corner post (the insert plus its boss margin
+    outboard of the Rod clamp), ``seat`` the Deck's Bearing-clamp seat against
+    the chassis band's corner boss, and ``head`` the moving clamp head under
+    the display. The stance is derived from the tightest of them.
+    """
+
+    post: float
+    seat: float
+    head: float
+
+    @property
+    def tightest(self) -> float:
+        return min(self.post, self.seat, self.head)
+
+    @property
+    def tightest_name(self) -> str:
+        values = {"post": self.post, "seat": self.seat, "head": self.head}
+        return min(values, key=values.get)
 
 
 @dataclass(frozen=True)
@@ -49,6 +79,12 @@ class SlideBudget:
     rod_x: float
     rod_clamp_width: float
     rod_raise: float
+    head_crown: float
+    display_cavity: float
+    lid_thickness: float
+    rod_x_bounds: RodBounds
+    guard_planform: tuple[float, float, float, float]
+    fpc_guard: Any
     lid_joint: Any
     chassis_top: float
     chassis_joint: Any
@@ -59,6 +95,7 @@ class SlideBudget:
     bearing_clamp_length: float
     slot_span: float
     slot_needed: float
+    clamp_center_y: float
     face_height_limit: float
     chain_bend_radius: float
     cable_min_bend_radius: float
@@ -107,9 +144,15 @@ class SlideBudget:
             f"{self.chassis_joint.screw.size}x{self.chassis_joint.screw.length} "
             f"(tightest boss {self.chassis_joint.smallest_boss():.2f} mm)",
             f"open face height: {self.open_face_height:.2f} mm",
-            f"thickness: {self.thickness:.2f} mm, width: {self.width:.2f} mm "
-            f"(side pod {self.side_pod:.2f} incl. draft {self.draft_allowance:.2f}, "
-            f"clamp {self.clamp_width:.2f})",
+            f"thickness: {self.thickness:.2f} mm (lid {self.lid_thickness:.2f}, "
+            f"display cavity {self.display_cavity:.2f}), width: {self.width:.2f} mm "
+            f"(side pod {self.side_pod:.2f} incl. draft {self.draft_allowance:.2f})",
+            f"guides: rod x +/-{self.rod_x:.2f} "
+            f"(bounds post {self.rod_x_bounds.post:.2f}, "
+            f"seat {self.rod_x_bounds.seat:.2f}, head {self.rod_x_bounds.head:.2f}), "
+            f"FPC guard {self.fpc_guard.total:.2f} mm over x "
+            f"{self.guard_planform[0]:.2f}..{self.guard_planform[2]:.2f}, "
+            f"y +/-{self.guard_planform[3]:.2f}",
             f"drag chain: bend radius {self.chain_bend_radius:.1f} mm "
             f"(cable minimum {self.cable_min_bend_radius:.1f})",
         ]
@@ -148,6 +191,7 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
 
     keyboard = _size(components, "keyboard")
     display = _size(components, "display")
+    # Required: the FPC guard's planform is anchored to its FPC connector.
     driver = _size(components, "driver")
     sbc = _size(components, "sbc")
     controller = _size(components, "controller")
@@ -188,18 +232,8 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
         wall + sbc.height,
         wall + controller.height,
     )
-    thickness = (
-        chassis_thickness
-        + slide.lid_clearance
-        + slide.lid_back
-        + slide.driver_gap
-        + driver.height
-        + display.height
-        + slide.lid_front
-        + shell
-        - config.bezel.recess
-    )
 
+    # -- The moving head has to pass under the display --------------------
     # The rod sits half-sunk in the back panel: its lowest point is the panel's
     # mid-thickness, so the inverted tray's cavity above it stays as deep as
     # possible. Derived, never tuned.
@@ -216,44 +250,81 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
     # is the width of the back-panel cutout it travels in.
     clamp_body_width = clamp_width
     hardware_width = clamp_width + 2.0 * slide.slot_clearance
-    # The X side walls are drafted, so the lid cavity narrows toward its face
-    # panel. The hardware sits on the back panel's inner face and is tallest at
-    # its top; widening the side pod by the draft inset over that height keeps
-    # the shell clearance there without moving the guide hardware (rod_x stays
-    # put because usable_half is unchanged by the side pod).
-    hardware_height = max(
-        slide.rod_clamp.height,
-        rod_raise + clamp_width / 2.0,
+    # The head's crown: the highest point the moving clamp reaches above the
+    # back panel's inner face.
+    head_crown = rod_raise + clamp_width / 2.0
+    guard = slide.fpc_guard
+    # The display's back must clear the head's crown by the component gap and
+    # the documented sag allowance, plus the guard plate bonded to it.
+    display_cavity = (
+        head_crown + slide.component_gap + guard.sag_allowance + guard.total
     )
-    draft_allowance = math.tan(math.radians(config.draft.angle)) * (
-        slide.lid_back + hardware_height
-    )
-    side_pod = (
-        slide.component_gap
-        + hardware_width
-        + wall
+    lid_thickness = (
+        slide.lid_back
+        + display_cavity
+        + display.height
+        + slide.lid_front
         + shell
-        + draft_allowance
-        + slide.joint.corner_post
+        - config.bezel.recess
     )
-    width = max(keyboard.width, display.width) + 2 * side_pod
+    thickness = chassis_thickness + slide.lid_clearance + lid_thickness
+
+    # -- Width: the content plus the drafted side wall --------------------
+    # The guide hardware is inboard now, so nothing but the display sets the
+    # width. The lid's X side walls are drafted: the cavity narrows from the
+    # prismatic band toward the face panel, so the side pod has to include the
+    # draft inset over the display's height.
+    display_top = display_cavity + display.height
+    cavity_z1 = lid_thickness - slide.lid_front  # the front panel's inner face
+    taper_height = max(
+        0.0, min(display_top, cavity_z1) - slide.joint.band
+    )
+    draft_allowance = math.tan(math.radians(config.draft.angle)) * taper_height
+    side_pod = wall + shell + draft_allowance
+    content_width = max(keyboard.width, display.width)
+    width = content_width + 2 * side_pod
     # The Tray <-> Deck band joint (ADR-0012): the Parting plane and the ten
     # fastener stations, sized from the chassis plan at that plane.
     chassis_band = chassis_band_joint(
         width=width,
         depth=chassis_height,
         chassis_top=chassis_thickness,
+        content_y1=-chassis_height / 2.0 + keyboard_top,
         draft_angle=config.draft.angle,
         minimum_feature=config.material.minimum_feature,
         chamfer=config.corners.chamfer,
         parting=config.parting,
         joint=config.chassis_joint,
     )
+    # `usable_half` is the inner wall at the content's plane: what the layout
+    # may fill before the shell clearance runs out.
     usable_half = width / 2.0 - side_pod
-    # Only the moving bearing housing and the fixed Rod clamps live outboard
-    # of `usable_half`. The display clears the moving housing; the fixed Rod
-    # clamps are Y-separated from it and are checked separately.
-    rod_x = usable_half + slide.component_gap + hardware_width / 2.0
+
+    # -- Guide stance: bounded by the three features it must clear --------
+    insert_hole = fasteners.heat_insert(slide.joint.screw).printed_hole_diameter
+    post_bound = (
+        width / 2.0
+        - wall
+        - slide.joint.corner_clearance
+        - slide.rod_clamp.width / 2.0
+        - (insert_hole + 2.0 * slide.joint.boss_margin)
+    )
+    seat_half = (
+        clamp_width / 2.0
+        + slide.bearing_clamp.seat_fit
+        + slide.bearing_clamp.seat_wall
+    )
+    seat_bound = (
+        width / 2.0
+        - config.chassis_joint.station_inset
+        - config.chassis_joint.boss / 2.0
+        - config.material.minimum_feature
+        - seat_half
+    )
+    head_bound = display.width / 2.0 - clamp_width / 2.0
+    rod_bounds = RodBounds(post=post_bound, seat=seat_bound, head=head_bound)
+    rod_x = rod_bounds.tightest - rod.side_margin
+
     joint = lid_joint(
         width=width,
         lid_height=lid_height,
@@ -275,6 +346,32 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
     )
     slot_span = rod_usable - 2.0 * rod_clamp_length
     slot_needed = travel + bearing_clamp_length + 2.0 * slide.slot_clearance
+    # The Bearing clamp's seat sits at the middle of its travel envelope.
+    clamp_center_y = rod_y + travel / 2.0
+
+    # -- The FPC guard's planform, in the display's own frame -------------
+    # Bonded to the display's back: it starts at the driver's FPC connector
+    # (the ribbon enters there) and spans the head's sweeps with margin, over
+    # the ribbon's full width. The east end stays inside the display's shadow
+    # so it can never pierce the drafted lid wall.
+    flex = config.display.flex
+    ribbon_half = flex.width / 2.0 if flex is not None else 0.0
+    driver_component = components["driver"]
+    guard_x0 = (
+        driver_component.offset_x
+        + driver_component.width / 2.0
+        + guard.fit
+    )
+    guard_x1 = min(
+        display.width / 2.0,
+        rod_x + hardware_width / 2.0 + guard.margin,
+    )
+    guard_planform = (
+        guard_x0,
+        -(ribbon_half + guard.margin),
+        guard_x1,
+        ribbon_half + guard.margin,
+    )
 
     return SlideBudget(
         travel=travel,
@@ -302,6 +399,12 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
         rod_x=rod_x,
         rod_clamp_width=slide.rod_clamp.width,
         rod_raise=rod_raise,
+        head_crown=head_crown,
+        display_cavity=display_cavity,
+        lid_thickness=lid_thickness,
+        rod_x_bounds=rod_bounds,
+        guard_planform=guard_planform,
+        fpc_guard=guard,
         lid_joint=joint,
         chassis_top=chassis_thickness,
         chassis_joint=chassis_band,
@@ -312,6 +415,7 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
         bearing_clamp_length=bearing_clamp_length,
         slot_span=slot_span,
         slot_needed=slot_needed,
+        clamp_center_y=clamp_center_y,
         face_height_limit=slide.face_height_limit,
         chain_bend_radius=slide.chain.bend_radius,
         cable_min_bend_radius=MIN_BEND_RADIUS_MM[CONNECTOR_HDMI],

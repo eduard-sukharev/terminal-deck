@@ -1,7 +1,8 @@
 """The screen lid's Bezel <-> Back band joint (ADR-0011).
 
-Data-level assertions only: the station pattern, the corner posts outboard of
-the Rod clamps, and the insert/screw sizing that the CAD builds from.
+Data-level assertions only: the station pattern, the corner posts that follow
+the Rod clamps inboard of the cavity wall, and the insert/screw sizing that the
+CAD builds from.
 """
 
 import dataclasses
@@ -72,6 +73,25 @@ def test_corner_post_is_wide_enough_for_the_insert():
         assert joint.post_y[0] < abs(station.y) < joint.post_y[1]
 
 
+def test_corner_post_follows_the_rod_clamp_inboard_of_the_wall():
+    """The post is sized by the clamp, not by a side-pod widening."""
+    _, config, _, budget, _ = _data()
+    joint = budget.lid_joint
+    assert joint.post_x[0] == pytest.approx(
+        budget.rod_x
+        + budget.rod_clamp_width / 2.0
+        + config.slide.joint.corner_clearance
+    )
+    assert joint.post_x[1] == pytest.approx(budget.width / 2.0 - config.wall_thickness)
+    assert joint.corner_post_width == pytest.approx(
+        joint.post_x[1] - joint.post_x[0]
+    )
+    # The lid's outer face is the only thing outboard of the post.
+    assert budget.width / 2.0 - joint.post_x[1] == pytest.approx(
+        config.wall_thickness
+    )
+
+
 def test_band_holds_the_insert_and_counts_toward_the_lid_thickness():
     _, config, _, budget, _ = _data()
     joint = budget.lid_joint
@@ -93,21 +113,18 @@ def test_countersunk_screw_passes_the_back_and_engages_the_insert():
     assert joint.screw.engagement <= joint.insert_depth
 
 
-def test_corner_posts_grow_the_envelope_without_moving_the_rods():
-    """The corner posts add width outboard of the clamps, not under them."""
+def test_narrower_wall_keeps_the_post_but_moves_the_rod_inboard():
+    """Nothing widens the case for the post any more: a thinner wall moves
+    both the post's outer edge and the derived stance inboard."""
     _, config, components, budget, _ = _data()
-    narrow_config = dataclasses.replace(
+    thin_config = dataclasses.replace(
         config,
-        slide=dataclasses.replace(
-            config.slide,
-            joint=dataclasses.replace(config.slide.joint, corner_post=0.0),
-        ),
+        wall=dataclasses.replace(config.wall, thickness=1.5),
     )
-    narrow = compute_slide_budget(narrow_config, components)
-    assert budget.width - narrow.width == pytest.approx(
-        2.0 * config.slide.joint.corner_post
+    thin = compute_slide_budget(thin_config, components)
+    assert thin.width < budget.width
+    assert thin.rod_x < budget.rod_x
+    # The post still follows the clamp and still holds the insert.
+    assert thin.lid_joint.corner_post_width >= (
+        thin.lid_joint.insert_hole + 2.0 * config.slide.joint.boss_margin
     )
-    # `usable_half` is the clamp corridor from the shell's inner face, so the
-    # envelope can grow outward without moving the guide hardware.
-    assert budget.usable_half == pytest.approx(narrow.usable_half)
-    assert budget.rod_x == pytest.approx(narrow.rod_x)

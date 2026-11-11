@@ -12,8 +12,11 @@ display:
   flex:
     width: 38.5            # FPC ribbon width, measured
     thickness: 1.0         # TODO: measure ribbon thickness (1.0 assumed)
-    fold: 6.0              # TODO: measure folded-ribbon allowance behind panel
-                           # (6.0 assumed)
+    stack: 0.6             # TODO: measure the flat ribbon stack (stiffener +
+                           # coverlay) that the FPC guard's channel captures
+                           # (0.6 assumed). The ribbon is taped flat against the
+                           # display's back, so there is no folded-loop
+                           # allowance any more.
     edge_protrusion: 0.75  # ribbon stub standing proud of the panel's east
                            # short edge, toward the driver slot (0.5-1.0)
 

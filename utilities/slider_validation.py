@@ -114,11 +114,16 @@ def run_slider_checks(
             "SBC stays inside the rear band",
         )
         extent = max(max(abs(p.box[0]), abs(p.box[2])) for p in rear_band_parts)
+        # The corridor is the inboard face of the moving head: the rods are
+        # under the display now, so a rear-band part would hit the head long
+        # before it reached the shell wall.
+        corridor = budget.rod_x - budget.hardware_width / 2.0
         report.add(
             "slide-clamp-clear",
-            extent <= budget.usable_half + 1e-6,
+            extent <= corridor + 1e-6,
             f"rear-band extent {extent:.2f} <= clamp corridor "
-            f"{budget.usable_half:.2f}",
+            f"{corridor:.2f} (rod {budget.rod_x:.2f} - head half "
+            f"{budget.hardware_width / 2.0:.2f})",
         )
     else:
         report.add("slide-rear-band-fit", False, "no rear-band components")
@@ -147,27 +152,27 @@ def run_slider_checks(
         f"lid and chassis share the closed face {budget.lid_height:.2f} mm",
     )
 
-    # The display only has to clear the *moving* guide part: the bearing-clamp
-    # head, which is as wide as the back-panel slot it travels in. The fixed
-    # Rod clamps sit outboard in X but are Y-separated from the display.
-    if display is not None:
-        display_rect = (
-            display.box[0],
-            display.box[1],
-            display.box[2],
-            display.box[3],
-        )
-        display_half = max(abs(display_rect[0]), abs(display_rect[2]))
-        head_inner = budget.rod_x - budget.hardware_width / 2.0
+    # The moving head passes *under* the display now, so the clearance is a Z
+    # stack: the head's crown, the component gap, the sag allowance and the FPC
+    # guard plate all sit between the back panel and the display's back. The
+    # guard is bonded to the display, so its underside is the surface the head
+    # must never reach.
+    if display is not None and keyboard is not None:
+        display_z0 = display.z_bounds()[0]
+        guard_underside = display_z0 - budget.fpc_guard.total
+        panel_inner = keyboard.z_bounds()[1] + slide.lid_clearance + slide.lid_back
+        crown = panel_inner + budget.head_crown
+        required = crown + slide.component_gap + budget.fpc_guard.sag_allowance
         report.add(
             "slide-display-guide-clear",
-            head_inner - display_half >= slide.component_gap - 1e-6,
-            f"display half {display_half:.2f} + gap {slide.component_gap:.2f} "
-            f"<= moving head inner edge {head_inner:.2f}",
+            guard_underside - required >= -1e-6,
+            f"head crown {crown:.2f} + gap {slide.component_gap:.2f} + sag "
+            f"{budget.fpc_guard.sag_allowance:.2f} <= guard underside "
+            f"{guard_underside:.2f} (panel inner {panel_inner:.2f})",
         )
         clamp_clear = min(
             _rect_gap(
-                display_rect,
+                (display.box[0], display.box[1], display.box[2], display.box[3]),
                 (
                     budget.rod_x - budget.rod_clamp_width / 2.0,
                     center_y - budget.rod_clamp_length / 2.0,
@@ -186,6 +191,98 @@ def run_slider_checks(
     else:
         report.add("slide-display-guide-clear", False, "display is not placed")
         report.add("slide-rod-clamp-clear", False, "display is not placed")
+
+    # The FPC guard: a floor thick enough to print, a channel that swallows the
+    # measured ribbon stack, and a planform that covers everything the moving
+    # head can sweep over the ribbon.
+    guard = budget.fpc_guard
+    flex = config.display.flex
+    min_feature = config.material.minimum_feature
+    stack_ok = (
+        flex is not None
+        and guard.recess >= flex.stack - 1e-6
+        and guard.floor >= min_feature - 1e-6
+    )
+    report.add(
+        "slide-fpc-guard-stack",
+        stack_ok,
+        f"guard {guard.total:.2f} = floor {guard.floor:.2f} + channel "
+        f"{guard.recess:.2f} (ribbon stack "
+        f"{flex.stack if flex is not None else float('nan'):.2f}, min feature "
+        f"{min_feature:.2f})",
+    )
+    if display is not None and flex is not None:
+        display_cx = (display.box[0] + display.box[2]) / 2.0
+        display_cy = (display.box[1] + display.box[3]) / 2.0
+        gx0, gy0, gx1, gy1 = budget.guard_planform
+        guard_rect = (display_cx + gx0, display_cy + gy0,
+                      display_cx + gx1, display_cy + gy1)
+        ribbon_half = flex.width / 2.0
+        ribbon_rect = (
+            display_cx - 1e9, display_cy - ribbon_half,
+            display_cx + 1e9, display_cy + ribbon_half,
+        )
+        slot_rect = (
+            budget.rod_x - budget.hardware_width / 2.0,
+            -1e9,
+            budget.rod_x + budget.hardware_width / 2.0,
+            1e9,
+        )
+        ribbon_margin = min(
+            (display_cy - ribbon_half) - guard_rect[1],
+            guard_rect[3] - (display_cy + ribbon_half),
+        )
+        slot_margin = min(
+            slot_rect[0] - guard_rect[0],
+            guard_rect[2] - slot_rect[2],
+        )
+        inside_x = budget.width / 2.0 - config.wall_thickness
+        inside_y = budget.lid_height / 2.0 - config.wall_thickness
+        report.add(
+            "slide-fpc-guard-cover",
+            min(ribbon_margin, slot_margin) >= guard.margin - 1e-6
+            and abs(guard_rect[0]) <= inside_x + 1e-6
+            and abs(guard_rect[2]) <= inside_x + 1e-6
+            and abs(guard_rect[1]) <= inside_y + 1e-6
+            and abs(guard_rect[3]) <= inside_y + 1e-6,
+            f"guard covers the ribbon (+{ribbon_margin:.2f}) and the slot band "
+            f"(+{slot_margin:.2f}) with margin {guard.margin:.2f}, inside the "
+            f"lid wall {inside_x:.2f} x {inside_y:.2f}",
+        )
+    else:
+        report.add("slide-fpc-guard-cover", False, "display/ribbon is not placed")
+
+    # The Deck's Bearing-clamp seat moved inboard with the rods; it must not
+    # merge with the chassis band's corner boss. The pair is Z-separated (the
+    # boss stands in the band, the seat sits on the Deck top), so this is the
+    # plan-space guard the two inboard features need.
+    seat_x1 = budget.rod_x + budget.clamp_width / 2.0 + slide.bearing_clamp.seat_fit + slide.bearing_clamp.seat_wall
+    seat_y = budget.clamp_center_y
+    seat_half_y = (
+        slide.bearing_clamp.foot_length / 2.0
+        + slide.bearing_clamp.seat_fit
+        + slide.bearing_clamp.seat_wall
+    )
+    seat_rect = (budget.rod_x - (seat_x1 - budget.rod_x), seat_y - seat_half_y,
+                 seat_x1, seat_y + seat_half_y)
+    closest = float("inf")
+    for station in budget.chassis_joint.corner_stations:
+        radius = station.boss / 2.0
+        boss_rect = (
+            abs(station.x) - radius,
+            abs(station.y) - radius,
+            abs(station.x) + radius,
+            abs(station.y) + radius,
+        )
+        closest = min(closest, _rect_gap(seat_rect, boss_rect))
+    report.add(
+        "slide-chassis-seat-clear",
+        closest >= min_feature - 1e-6,
+        f"Deck seat to chassis band corner boss {closest:.2f} >= "
+        f"{min_feature:.2f} (plan guard; the boss top "
+        f"{budget.chassis_joint.parting_z + budget.chassis_joint.boss_height:.2f}"
+        f" is below the Deck top {budget.chassis_top:.2f})",
+    )
 
     report.add(
         "slide-guide-span",
@@ -208,16 +305,22 @@ def run_slider_checks(
     )
 
     if keyboard is not None and display is not None:
-        lid_back_bottom = min(
-            p.z_bounds()[0] for p in placements if _is_lid(p)
-        ) - slide.lid_back
+        # The lid's back panel is no longer the lowest lid placement (the driver
+        # floats under the panel now), so the keycap gap comes from the
+        # keyboard plus the configured clearance, and the display's back is
+        # checked against the cavity the budget derived from the head + guard.
         keycap_top = keyboard.z_bounds()[1]
-        gap = lid_back_bottom - keycap_top
+        panel_inner = keycap_top + slide.lid_clearance + slide.lid_back
+        display_back = display.z_bounds()[0]
+        gap = display_back - panel_inner
         report.add(
             "slide-keycap-clearance",
-            gap >= MIN_LID_CLEARANCE - 1e-6,
-            f"lid back {lid_back_bottom:.2f} - keycap top {keycap_top:.2f} "
-            f"= {gap:.2f} >= {MIN_LID_CLEARANCE:.1f}",
+            slide.lid_clearance >= MIN_LID_CLEARANCE - 1e-6
+            and abs(gap - budget.display_cavity) <= 1e-6,
+            f"lid back {panel_inner - slide.lid_back:.2f} - keycap top "
+            f"{keycap_top:.2f} = {slide.lid_clearance:.2f} >= "
+            f"{MIN_LID_CLEARANCE:.1f}; display back {display_back:.2f} sits at "
+            f"the derived cavity {budget.display_cavity:.2f}",
         )
     else:
         report.add("slide-keycap-clearance", False, "keyboard/display not placed")
@@ -300,6 +403,15 @@ def run_slider_checks(
         joint.corner_post_width >= joint.insert_hole + 2.0 * joint.boss_margin - 1e-6,
         f"corner post {joint.corner_post_width:.2f} >= insert hole "
         f"{joint.insert_hole:.2f} + 2 x margin {joint.boss_margin:.2f}",
+    )
+    report.add(
+        "slide-lid-joint-post-inboard",
+        joint.post_x[1] <= budget.width / 2.0 - config.wall_thickness + 1e-6
+        and joint.post_x[0] >= budget.rod_x + budget.rod_clamp_width / 2.0
+        + joint.corner_clearance - 1e-6,
+        f"corner post {joint.post_x[0]:.2f}..{joint.post_x[1]:.2f} sits between "
+        f"the Rod clamp {budget.rod_x + budget.rod_clamp_width / 2.0:.2f} and "
+        f"the cavity wall {budget.width / 2.0 - config.wall_thickness:.2f}",
     )
     report.add(
         "slide-lid-joint-screw",
@@ -447,6 +559,9 @@ def run_slider_checks(
     report.goals["open-face-height"] = budget.open_face_height
     report.goals["thickness"] = budget.thickness
     report.goals["width"] = budget.width
+    report.goals["lid-thickness"] = budget.lid_thickness
+    report.goals["display-cavity"] = budget.display_cavity
+    report.goals["rod-x"] = budget.rod_x
     return report
 
 

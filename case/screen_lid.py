@@ -8,7 +8,9 @@ prismatic fastening band at its bottom and the eight band posts the Back's
 countersunk screws thread into.
 
 The rods/bearings/clamps are separate printed/purchased parts (the ``slide``
-target).
+target). The FPC guard is a separate printed plate built by this module
+(``build_fpc_guard``): it is bonded to the display's back, not part of the lid
+shell, so it is exported and printed on its own.
 """
 
 from __future__ import annotations
@@ -227,6 +229,60 @@ class ScreenLid:
         )
         body = ch.cut(body, window, pocket)
         return ch.clean(body)
+
+    # -- the FPC guard ---------------------------------------------------
+    def build_fpc_guard(self):
+        """The printed grille plate that guards the display's FPC ribbon.
+
+        Local origin: the display's back face, on the display's centre. The
+        plate spans ``z = -total..0``: the ribbon channel is recessed from the
+        display-facing side (``recess`` deep, open at both ends so the ribbon
+        can leave toward the driver) and the blind grille slots are cut from
+        the underside, leaving ``minimum_feature`` of grille floor under the
+        channel. Bonded to the display's back with tape; the moving
+        Bearing-clamp head can only ever reach the plate's underside.
+        """
+        from utilities import cad_helpers as ch
+
+        ch.require_cad()
+        f = self.frame
+        guard = f.fpc_guard
+        gx0, gy0, gx1, gy1 = f.guard_planform
+        x0, x1 = gx0 - f.display_x, gx1 - f.display_x
+        y0, y1 = gy0 - f.display_y, gy1 - f.display_y
+        cx, cy = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+
+        body = ch.box_centered(x1 - x0, y1 - y0, guard.total)
+        body = ch.translate(body, cx, cy, -guard.total / 2.0)
+
+        # The ribbon channel, cut from the display-facing side. Open at both X
+        # ends by running the cutter past them.
+        channel = ch.box_centered(
+            (x1 - x0) + 2.0, f.guard_channel_width, guard.recess + 1.0
+        )
+        channel = ch.translate(channel, cx, cy, -guard.recess / 2.0 + 0.5)
+        body = ch.cut(body, channel)
+
+        # Blind grille slots from the underside: along X (the ribbon's run),
+        # one border of minimum feature all round, struts between them.
+        border = self.config.material.minimum_feature
+        slot = guard.grille_slot
+        inset = border + slot / 2.0
+        slots = []
+        y = y0 + inset
+        while y <= y1 - inset + 1e-9:
+            cutter = ch.box_centered(
+                (x1 - x0) - 2.0 * border,
+                slot,
+                f.guard_slot_depth + 1.0,
+            )
+            slots.append(
+                ch.translate(
+                    cutter, cx, y, -guard.total + f.guard_slot_depth / 2.0 - 0.5
+                )
+            )
+            y += f.guard_slot_pitch
+        return ch.clean(ch.cut(body, *slots))
 
     # -- printing --------------------------------------------------------
     def sections(self) -> tuple[Any, Any]:

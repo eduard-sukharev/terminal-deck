@@ -528,3 +528,91 @@ def test_chassis_has_a_bearing_clamp_seat(data, solids):
     wall_x = frame.rod_x + frame.seat_width / 2.0 - 1.0
     in_wall = ch.translate(probe, wall_x, frame.clamp_center_y, z_mid)
     assert ch.volume_mm3(ch.intersect(chassis, in_wall)) > 1.0
+
+
+# -- the FPC guard -------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def guard(data):
+    config, _, _, frame = data
+    return ScreenLid(config, frame).build_fpc_guard()
+
+
+def test_fpc_guard_matches_the_budget(data, guard):
+    """A flat plate: the budget's planform, `total` thick."""
+    _, _, _, frame = data
+    g = frame.fpc_guard
+    gx0, gy0, gx1, gy1 = frame.guard_planform
+    x, y, z = ch.bounding_box_mm(guard)
+    assert x == pytest.approx(gx1 - gx0, abs=0.05)
+    assert y == pytest.approx(gy1 - gy0, abs=0.05)
+    assert z == pytest.approx(g.total, abs=1e-6)
+    assert g.floor == pytest.approx(g.total - g.recess)
+
+
+def test_fpc_guard_has_a_ribbon_channel_and_free_end(data, guard):
+    """The channel is recessed from the display-facing side, open at both ends."""
+    _, _, _, frame = data
+    g = frame.fpc_guard
+    gx0, gy0, gx1, gy1 = frame.guard_planform
+    x0, x1 = gx0 - frame.display_x, gx1 - frame.display_x
+    xc = (x0 + x1) / 2.0
+    # Local origin: the display's back face, on its centre; z = -total..0. The
+    # plate starts at the driver's FPC connector, so it is not centred on X.
+    for x in (xc, x0 + 0.2, x1 - 0.2):
+        assert _material_at(guard, x, 0.0, -g.recess / 2.0) == pytest.approx(0)
+    # The grille floor under the channel is solid.
+    assert _material_at(guard, xc, 0.0, -g.recess - g.floor / 2.0) > 0
+
+
+def test_fpc_guard_is_a_grille_not_a_solid_plate(data, guard):
+    """Blind slots on the underside leave struts between them."""
+    config, _, _, frame = data
+    g = frame.fpc_guard
+    gx0, gy0, gx1, gy1 = frame.guard_planform
+    xc = (gx0 + gx1) / 2.0 - frame.display_x
+    gy0 = gy0 - frame.display_y
+    inset = config.material.minimum_feature + g.grille_slot / 2.0
+    slot_y = gy0 + inset
+    strut_y = slot_y + frame.guard_slot_pitch / 2.0
+    z = -g.total + frame.guard_slot_depth / 2.0
+    assert _material_at(guard, xc, slot_y, z) == pytest.approx(0)
+    assert _material_at(guard, xc, strut_y, z) > 0
+    assert frame.guard_slot_depth == pytest.approx(
+        g.floor - config.material.minimum_feature
+    )
+
+
+def test_fpc_guard_covers_the_slot_band_and_clears_the_head(data, guard):
+    """In the assembly frame: covers the ribbon and the slot band, and the
+    moving head's crown stays `gap + sag` below its underside."""
+    config, _, budget, frame = data
+    g = frame.fpc_guard
+    world = ch.translate(guard, frame.display_x, frame.display_y, frame.display_z0)
+    gx0, gy0, gx1, gy1 = frame.guard_planform
+    ribbon_half = config.display.flex.width / 2.0
+    assert gx0 <= budget.rod_x - budget.hardware_width / 2.0 - g.margin + 1e-6
+    assert gx1 >= budget.rod_x + budget.hardware_width / 2.0 + g.margin - 1e-6
+    assert gy0 <= frame.display_y - ribbon_half - g.margin + 1e-6
+    assert gy1 >= frame.display_y + ribbon_half + g.margin - 1e-6
+    # Its top face is the display's back, and its underside is what the head
+    # must clear.
+    box = ch.bounding_box(world)
+    assert box.zmax == pytest.approx(frame.display_z0, abs=1e-6)
+    assert box.zmax - box.zmin == pytest.approx(g.total, abs=1e-6)
+    underside = frame.display_z0 - g.total
+    crown = frame.panel_inner_z + frame.head_crown
+    assert underside - crown >= (
+        config.slide.component_gap + g.sag_allowance - 1e-6
+    )
+
+
+def test_fpc_guard_does_not_touch_the_bearing_clamp_head(data, guard, bearing_clamp):
+    """The guard is the sacrificial part: the head stops short of it."""
+    _, _, _, frame = data
+    world = ch.translate(guard, frame.display_x, frame.display_y, frame.display_z0)
+    head = ch.translate(
+        bearing_clamp, frame.rod_x, frame.clamp_center_y, frame.panel_inner_z
+    )
+    assert ch.volume_mm3(ch.intersect(world, head)) == pytest.approx(0, abs=1e-6)

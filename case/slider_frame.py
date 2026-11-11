@@ -90,9 +90,17 @@ class SliderFrame:
     keyboard_y: float
     keyboard_w: float
     keyboard_d: float
+    display_x: float
     display_y: float
     display_w: float
     display_d: float
+    display_z0: float
+    head_crown: float
+    fpc_guard: Any
+    guard_planform: tuple[float, float, float, float]
+    guard_channel_width: float
+    guard_slot_depth: float
+    guard_slot_pitch: float
 
     @classmethod
     def from_data(cls, config: Any, budget: Any, components: dict, placements: list) -> "SliderFrame":
@@ -169,6 +177,38 @@ class SliderFrame:
         rod_clamp_width = slide.rod_clamp.width
         rod_x = budget.rod_x
 
+        # The FPC guard sits on the display's back, in the display's own frame:
+        # the budget's planform is display-local, and the plate's underside is
+        # what the moving head has to clear.
+        display_x = (display_p.box[0] + display_p.box[2]) / 2.0
+        display_y = (display_p.box[1] + display_p.box[3]) / 2.0
+        display_z0 = display_p.z_bounds()[0]
+        if abs(display_z0 - (panel_inner_z + budget.display_cavity)) > 1e-6:
+            raise ValueError(
+                "the display placement disagrees with the derived cavity "
+                f"({display_z0 - panel_inner_z:.3f} vs "
+                f"{budget.display_cavity:.3f} mm)"
+            )
+        guard = slide.fpc_guard
+        gx0, gy0, gx1, gy1 = budget.guard_planform
+        guard_planform = (
+            display_x + gx0,
+            display_y + gy0,
+            display_x + gx1,
+            display_y + gy1,
+        )
+        flex = config.display.flex
+        guard_channel_width = (
+            flex.width + 2.0 * clearance if flex is not None else 0.0
+        )
+        guard_slot_depth = guard.floor - config.material.minimum_feature
+        if guard_slot_depth <= 0.0:
+            raise ValueError(
+                "the FPC guard's grille floor is thinner than the printable "
+                f"minimum feature (floor {guard.floor:.2f} <= "
+                f"{config.material.minimum_feature:.2f} mm)"
+            )
+
         return cls(
             width=budget.width,
             depth=budget.chassis_height,
@@ -238,9 +278,17 @@ class SliderFrame:
             keyboard_y=(keyboard_p.box[1] + keyboard_p.box[3]) / 2.0,
             keyboard_w=keyboard.size().width,
             keyboard_d=keyboard.size().depth,
-            display_y=(display_p.box[1] + display_p.box[3]) / 2.0,
+            display_x=display_x,
+            display_y=display_y,
             display_w=display.size().width,
             display_d=display.size().depth,
+            display_z0=display_z0,
+            head_crown=budget.head_crown,
+            fpc_guard=guard,
+            guard_planform=guard_planform,
+            guard_channel_width=guard_channel_width,
+            guard_slot_depth=guard_slot_depth,
+            guard_slot_pitch=guard.grille_slot + 2.0 * config.material.minimum_feature,
         )
 
 

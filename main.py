@@ -225,6 +225,11 @@ class BuildPipeline:
         lid_bezel = lid.build_bezel()
         lid_back = lid.build_back()
         lid_shell = ch.make_compound([lid_bezel, lid_back])
+        # The FPC guard is a separate printed plate, bonded to the display's
+        # back: build it in the display's frame, then place it on the panel.
+        guard = ch.translate(
+            lid.build_fpc_guard(), frame.display_x, frame.display_y, frame.display_z0
+        )
 
         rods = [
             ch.translate(
@@ -307,7 +312,7 @@ class BuildPipeline:
             [chassis_shell] + [assembly.build_subset([p]) for p in chassis_parts]
         )
         lid_with_parts = ch.make_compound(
-            [lid_shell, rods_compound, rod_clamps_compound]
+            [lid_shell, rods_compound, rod_clamps_compound, guard]
             + [assembly.build_subset([p]) for p in lid_parts]
         )
         assembly_solid = ch.make_compound(
@@ -366,6 +371,7 @@ class BuildPipeline:
             "screen_lid_back_left": back_left,
             "screen_lid_back_right": back_right,
             "slide": slide,
+            "fpc_guard": guard,
             "rod_clamp": build_rod_clamp(
                 config.slide.rod.diameter,
                 frame.rod_raise,
@@ -432,6 +438,7 @@ class BuildPipeline:
         # Sections must fit the printer; the whole part is exported for
         # reference but is not printable across X.
         printable = (
+            "fpc_guard",
             "chassis_tray_left",
             "chassis_tray_right",
             "chassis_deck_left",
@@ -473,6 +480,7 @@ class BuildPipeline:
                 ("screen_lid_back", lid_back),
                 ("guide_rod", rods_compound),
                 ("rod_clamp", rod_clamps_compound),
+                ("fpc_guard", guard),
                 ("linear_bearing", bearings_compound),
                 ("bearing_clamp", bearing_clamps_compound),
             ],
@@ -495,6 +503,7 @@ class BuildPipeline:
                 ("screen_lid_back", lid_back),
                 ("guide_rod", rods_compound),
                 ("rod_clamp", rod_clamps_compound),
+                ("fpc_guard", guard),
             ],
         )
 
@@ -517,6 +526,7 @@ class BuildPipeline:
                 ("screen_lid_back", _move_y(lid_back)),
                 ("guide_rod", _move_y(rods_compound)),
                 ("rod_clamp", _move_y(rod_clamps_compound)),
+                ("fpc_guard", _move_y(guard)),
                 ("linear_bearing", bearings_compound),
                 ("bearing_clamp", bearing_clamps_compound),
             ],
@@ -591,8 +601,9 @@ class BuildPipeline:
         targets : str
             Comma-separated build targets (default ``"all"``): ``assembly``,
             ``assembly_opened``, ``chassis`` (+``_left/_right``),
-            ``screen_lid`` (+``_left/_right``), ``slide``,
-            ``keyboard_plate``, ``display``, ``components``. Per-component:
+            ``screen_lid`` (+``_left/_right``), ``slide``, ``fpc_guard``,
+            ``rod_clamp``, ``bearing_clamp``, ``keyboard_plate``, ``display``,
+            ``components``. Per-component:
             ``comp:<role>``.
         ignore_validation : bool
             Normally a hard constraint violation aborts the build before any

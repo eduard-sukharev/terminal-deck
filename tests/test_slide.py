@@ -323,6 +323,7 @@ def test_slider_checks_cover_placement_geometry():
         "slide-display-fit",
         "slide-display-guide-clear",
         "slide-rod-clamp-clear",
+        "slide-guide-stance",
         "slide-fpc-guard-stack",
         "slide-fpc-guard-cover",
         "slide-chassis-seat-clear",

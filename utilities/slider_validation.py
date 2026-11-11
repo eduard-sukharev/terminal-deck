@@ -218,10 +218,6 @@ def run_slider_checks(
         guard_rect = (display_cx + gx0, display_cy + gy0,
                       display_cx + gx1, display_cy + gy1)
         ribbon_half = flex.width / 2.0
-        ribbon_rect = (
-            display_cx - 1e9, display_cy - ribbon_half,
-            display_cx + 1e9, display_cy + ribbon_half,
-        )
         slot_rect = (
             budget.rod_x - budget.hardware_width / 2.0,
             -1e9,
@@ -256,23 +252,30 @@ def run_slider_checks(
     # merge with the chassis band's corner boss. The pair is Z-separated (the
     # boss stands in the band, the seat sits on the Deck top), so this is the
     # plan-space guard the two inboard features need.
-    seat_x1 = budget.rod_x + budget.clamp_width / 2.0 + slide.bearing_clamp.seat_fit + slide.bearing_clamp.seat_wall
-    seat_y = budget.clamp_center_y
+    seat_half_x = (
+        budget.clamp_width / 2.0
+        + slide.bearing_clamp.seat_fit
+        + slide.bearing_clamp.seat_wall
+    )
     seat_half_y = (
         slide.bearing_clamp.foot_length / 2.0
         + slide.bearing_clamp.seat_fit
         + slide.bearing_clamp.seat_wall
     )
-    seat_rect = (budget.rod_x - (seat_x1 - budget.rod_x), seat_y - seat_half_y,
-                 seat_x1, seat_y + seat_half_y)
+    seat_rect = (
+        budget.rod_x - seat_half_x,
+        budget.clamp_center_y - seat_half_y,
+        budget.rod_x + seat_half_x,
+        budget.clamp_center_y + seat_half_y,
+    )
     closest = float("inf")
     for station in budget.chassis_joint.corner_stations:
         radius = station.boss / 2.0
         boss_rect = (
-            abs(station.x) - radius,
-            abs(station.y) - radius,
-            abs(station.x) + radius,
-            abs(station.y) + radius,
+            station.x - radius,
+            station.y - radius,
+            station.x + radius,
+            station.y + radius,
         )
         closest = min(closest, _rect_gap(seat_rect, boss_rect))
     report.add(
@@ -284,6 +287,15 @@ def run_slider_checks(
         f" is below the Deck top {budget.chassis_top:.2f})",
     )
 
+    bounds = budget.rod_x_bounds
+    report.add(
+        "slide-guide-stance",
+        budget.rod_x <= bounds.tightest - slide.rod.side_margin + 1e-6,
+        f"rod x {budget.rod_x:.2f} <= tightest bound {bounds.tightest_name} "
+        f"{bounds.tightest:.2f} - margin {slide.rod.side_margin:.2f} "
+        f"(post {bounds.post:.2f}, seat {bounds.seat:.2f}, head "
+        f"{bounds.head:.2f})",
+    )
     report.add(
         "slide-guide-span",
         budget.rod_usable >= budget.travel + budget.bearing_per_rod * budget.bearing_length

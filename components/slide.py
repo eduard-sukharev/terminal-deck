@@ -192,7 +192,7 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
     keyboard = _size(components, "keyboard")
     display = _size(components, "display")
     # Required: the FPC guard's planform is anchored to its FPC connector.
-    driver = _size(components, "driver")
+    _size(components, "driver")
     sbc = _size(components, "sbc")
     controller = _size(components, "controller")
 

@@ -1347,9 +1347,12 @@ def well_mounts(
                         f"clash: boss vs {obstacle.name} "
                         f"(z {obstacle.z0:.2f}-{obstacle.z1:.2f})"
                     )
-            # ... nor sit under the plate where the ear has to be.
+            # ... nor sit under the plate where the ear has to be. The ear is a
+            # square tab, so test it against the feature's real footprint (a
+            # column's disc, not its bounding square) exactly as the walk does.
             for obstacle in sheet_obstacles:
-                if ear_rect.overlaps(obstacle.rect, clearance):
+                interval = _blocked_interval(obstacle, y, ear_half, clearance)
+                if interval is not None and interval[0] + _EPS < sx < interval[1] - _EPS:
                     reasons.append(f"clash: ear vs {obstacle.name}")
             for index, cut in enumerate(cutouts):
                 if ear_local.overlaps(cut):

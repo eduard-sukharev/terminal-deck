@@ -12,8 +12,10 @@ width and the closed face follow from that.
   from below through a countersink in the floor, up the column, and across the
   plane into a heat-set insert in the Deck.
 * The **Deck** is purely prismatic from the Parting plane to the closed face:
-  the keyboard Well, the two bearing-clamp seats and their pockets, and one
-  insert boss per station standing out of the band's cavity.
+  the keyboard Well (a wall-thick ring around the keycap Cutout, descending to
+  the plate's top face, with the plate's eight M2 insert bosses merged into its
+  front/rear lips), the two bearing-clamp seats and their pockets, and one
+  insert boss per band station standing out of the band's cavity.
 
 Both halves carry a shallow scallop at every station, straddling the seam.
 
@@ -134,7 +136,7 @@ class Chassis:
         return ch.clean(ch.cut(body, *scallops))
 
     def build_deck(self):
-        """The upper shell: a prismatic body with the Well, seats and bosses."""
+        """The upper shell: a prismatic body with the Well ring and seats."""
         from utilities import cad_helpers as ch
 
         ch.require_cad()
@@ -190,15 +192,19 @@ class Chassis:
         # plate is notched; the ring's outer reach is interrupted there too so
         # the column does not share volume with the Well wall. Only the outer
         # sliver goes: the Well stays sealed along its inner face.
-        notches = [
-            ch.translate(
-                ch.box_centered(n.rect.width, n.rect.depth, ring_height + 2.0),
-                mounts.frame.to_plan(n.rect.cx, n.rect.cy)[0],
-                mounts.frame.to_plan(n.rect.cx, n.rect.cy)[1],
-                plate_top + ring_height / 2.0,
+        notches = []
+        for notch in mounts.notches:
+            centre = mounts.frame.to_plan(notch.rect.cx, notch.rect.cy)
+            notches.append(
+                ch.translate(
+                    ch.box_centered(
+                        notch.rect.width, notch.rect.depth, ring_height + 2.0
+                    ),
+                    centre[0],
+                    centre[1],
+                    plate_top + ring_height / 2.0,
+                )
             )
-            for n in mounts.notches
-        ]
         if notches:
             ring = ch.cut(ring, *notches)
         body = ch.union(body, ring)
@@ -210,10 +216,10 @@ class Chassis:
         well = ch.translate(well, cut.cx, cut.cy, top)
         body = ch.cut(body, well)
 
-        # One insert boss per plate station, merged to the ring's outer face
+        # One M2 insert boss per plate station, merged to the ring's outer face
         # inside the front/rear lip. It stands on the plate's top face (the
         # plate's ear is below it), so no boss can enter the Cutout.
-        bosses = [
+        well_bosses = [
             ch.translate(
                 ch.cylinder_centered(m.boss_diameter, m.boss_z1 - m.boss_z0),
                 m.x,
@@ -222,13 +228,13 @@ class Chassis:
             )
             for m in mounts.mounts
         ]
-        body = ch.union(body, *bosses)
+        body = ch.union(body, *well_bosses)
 
-        # One insert boss per station, standing out of the band's cavity. The
-        # boss is taller than the Deck's half-band: the M3 heat-set insert is
-        # 4 mm deep and still needs a boss margin of material above it.
+        # One insert boss per chassis band station, standing out of the band's
+        # cavity. The boss is taller than the Deck's half-band: the M3 heat-set
+        # insert is 4 mm deep and still needs a boss margin of material above it.
         boss_height = joint.boss_height
-        bosses = [
+        band_bosses = [
             ch.translate(
                 ch.cylinder_centered(station.boss, boss_height),
                 station.x,
@@ -237,7 +243,7 @@ class Chassis:
             )
             for station in joint.stations
         ]
-        body = ch.union(body, *bosses)
+        body = ch.union(body, *band_bosses)
 
         body = ch.union(body, self._seat(-1), self._seat(1))
         body = ch.cut(body, self._seat_pocket(-1), self._seat_pocket(1))

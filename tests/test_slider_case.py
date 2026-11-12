@@ -846,7 +846,6 @@ def test_ring_is_interrupted_where_the_plate_is_notched(data, deck, mounts):
     The notch removes the ring's outer reach only: the inner sliver of the
     ring stays, so the Well remains sealed end to end.
     """
-    _, _, _, frame = data
     assert mounts.notches, "the plate is not notched under the band columns"
     for notch in mounts.notches:
         plan = mounts.frame.to_plan_rect(notch.rect)
@@ -869,7 +868,7 @@ def test_ring_is_interrupted_where_the_plate_is_notched(data, deck, mounts):
 
 def test_scallop_cannot_pierce_the_ring_or_a_boss(data, deck, mounts):
     """The band's relief stops at the ring; the Well walls stay whole."""
-    config, _, _, frame = data
+    _, _, _, frame = data
     joint = frame.chassis_joint
     z = frame.parting_z + joint.scallop_height / 2.0 + 0.35
     cut = mounts.cutout_rect

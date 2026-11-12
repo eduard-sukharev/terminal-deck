@@ -41,6 +41,11 @@ class WelledPlate:
     (front wall inner face -> ring, and ring -> rear wall inner face); the
     plate's M2 insert bosses are merged to the ring's outer face there, so each
     lip must host one (``boss_lip_required``).
+
+    ``seam`` is the plate's split Seam (the row-jogging path between key
+    columns). It rides on the Well because the Well sizes the plate: the Deck's
+    insert bosses and the plate's ears are one pattern, so both must read the
+    same path from one place.
     """
 
     keycap_width: float
@@ -60,6 +65,10 @@ class WelledPlate:
     front_lip: float
     rear_lip: float
     boss_lip_required: float
+    #: The plate's split Seam (a ``RowSeam``-like path), if the keyboard
+    #: component supplied one. The Well is the single source the Deck's bosses
+    #: and the plate's ears both derive their stations from.
+    seam: Any = None
 
     @property
     def cutout(self) -> tuple[float, float]:
@@ -247,6 +256,19 @@ def _size(components: dict[str, Any], role: str) -> Any:
     return component.size()
 
 
+def _plate_seam(keyboard_component: Any) -> Any:
+    """The plate's split Seam, if the keyboard component can supply it.
+
+    The keyboard assembly exposes its plate model (``plate_model()``), which is
+    pure data; a component without one simply carries no Seam and the Well
+    leaves it ``None``.
+    """
+    plate_model = getattr(keyboard_component, "plate_model", None)
+    if plate_model is None:
+        return None
+    return getattr(plate_model(), "seam", None)
+
+
 def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget:
     """Derive the travel, guide span and envelope from config + components.
 
@@ -395,6 +417,10 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
         front_lip=well_front_margin - wall,
         rear_lip=rear_band,
         boss_lip_required=boss_lip_required,
+        # The plate's Seam rides on the Well: the Deck's insert bosses and the
+        # plate's ears are one pattern (the face-height budget above already
+        # read the keyboard component, so the path costs nothing extra here).
+        seam=_plate_seam(keyboard_component),
     )
 
     # -- The moving head has to pass under the display --------------------

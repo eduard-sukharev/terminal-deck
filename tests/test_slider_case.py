@@ -883,6 +883,35 @@ def test_scallop_cannot_pierce_the_ring_or_a_boss(data, deck, mounts):
         assert _material_at(deck, mount.x, mount.y + off, z + 0.5) > 0
 
 
+def test_a_scallop_that_would_reach_the_well_is_skipped(data):
+    """A relief whose plan reaches the ring is dropped, not cut into it."""
+    config, _, _, frame = data
+    joint = frame.chassis_joint
+    station = next(s for s in joint.stations if s.y < 0.0 and s.kind == "side")
+    chassis = Chassis(config, frame)
+
+    def cutter(avoid):
+        return chassis._scallop(
+            station,
+            z0=frame.parting_z,
+            distance=station.surface,
+            shift=0.0,
+            avoid=avoid,
+        )
+
+    # The cutter spans the station's wall band, outward of the station.
+    reach = [
+        (
+            station.x - 1.0,
+            station.y - 10.0,
+            station.x + 1.0,
+            station.y - 1.0,
+        )
+    ]
+    assert cutter(reach) is None
+    assert cutter([]) is not None
+
+
 def test_deck_sections_rejoin_and_print_closed_face_down(data, deck):
     """The ring is part of the Deck: it splits at the Seam and prints flat."""
     config, _, _, frame = data

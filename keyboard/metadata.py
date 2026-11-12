@@ -25,6 +25,16 @@ class KeyboardMetadata:
     switch_centers: list[tuple[float, float]] = field(default_factory=list)
     mounting_points: list[tuple[float, float]] = field(default_factory=list)
     bounding_box: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    #: The Well Cutout ``(x0, y0, x1, y1)`` the plate is derived from (mm).
+    cutout: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    #: Switch-free border per side ``(left, right, bottom, top)`` (mm): plate
+    #: edge to the outermost switch/stabilizer cutout edge.
+    edge_margins: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+
+    @property
+    def edge_margin(self) -> float:
+        """The narrowest switch-free border (mm) — the plate's bearing rim."""
+        return min(self.edge_margins)
 
 
 @dataclass(frozen=True)

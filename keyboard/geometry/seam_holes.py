@@ -1,17 +1,18 @@
-"""Seam-adjacent mounting holes (ADR 0003).
+"""Seam-adjacent mounting holes (ADR 0003), kept for the Seam split (T5).
 
 A plate split into two Sections is a pair of thin strips butt-jointed at the
 Seam, with nothing under the joint: it sags and cracks along it. Each Section
-therefore gets two extra mounting holes within one key unit of the Seam, one in
-the upper rows and one in the lower rows, so the Seam is clamped from both
+therefore gets two extra holes within one key unit of the Seam, one in the
+upper rows and one in the lower rows, so the Seam is clamped from both
 sides along its length. The holes sit in the gaps between key rows, clear of
-every switch and stabilizer cutout; the cyberdeck turns them into standoffs on
-the Tray floor.
+every switch and stabilizer cutout.
 
-Pure data (no CAD, no cyberdeck imports), like the rest of the keyboard
-package. ``blocked`` lets a caller veto spots (the parts buried under the
-plate); a Section/group with no free spot simply gets no hole, and the caller's
-own check fails on the shortfall.
+ADR-0014 retired the Tray-floor standoffs these holes used to feed, and the
+plate generator no longer calls this module; the Seam split (issue #9) is the
+remaining consumer, so it stays pure data (no CAD, no cyberdeck imports).
+``blocked`` lets a caller veto spots (the parts buried under the plate); a
+Section/group with no free spot simply gets no hole, and the caller's own check
+fails on the shortfall.
 """
 
 from __future__ import annotations

@@ -1,20 +1,69 @@
 """Plate generator — assembles the complete keyboard geometry model.
 
 Entry point: :func:`generate` takes a parsed layout, switch/stabilizer
-families, and plate configuration, and returns a
-:class:`~keyboard.metadata.KeyboardGeometryModel`.
+families, the Well ring's wall thickness and (optionally) the Well Cutout, and
+returns a :class:`~keyboard.metadata.KeyboardGeometryModel`.
+
+The plate is **derived**, never chosen (ADR-0014): the Well Cutout is the real
+keycap footprint plus the wobble allowance, and the plate is the Cutout grown by
+one wall thickness on each side so it bears on the Well walls' lower faces. The
+switch-free border therefore falls out of the two sizes; there is no free
+``edge_margin`` knob. The plate carries **no** mounting holes of its own — the
+enclosure injects the Well-mount holes it needs.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from keyboard.geometry.cutouts import stabilizer_cutouts, switch_cutouts
-from keyboard.geometry.mounting import generate_mounting_holes
-from keyboard.geometry.seam import plate_seam
-from keyboard.geometry.seam_holes import seam_holes
+from keyboard.geometry.keycaps import keycap_footprint, keycap_specs
 from keyboard.geometry.outline import generate_outline
 from keyboard.layout.layout import KeyboardLayout
-from keyboard.metadata import KeyboardGeometryModel, KeyboardMetadata
-from keyboard.registry import get_switch
+from keyboard.metadata import Cutout, KeyboardGeometryModel, KeyboardMetadata, MountingHole
+from keyboard.registry import get_keycap, get_switch
+
+#: A rectangle ``(x0, y0, x1, y1)`` in plate-local mm.
+Rect = tuple[float, float, float, float]
+
+
+def cutout_bounds(
+    layout: KeyboardLayout,
+    keycap_profile: str = "xda",
+    wobble: float = 0.0,
+) -> Rect:
+    """The Well Cutout rect: the real keycap footprint + the wobble allowance.
+
+    The Cutout is sized by the keycaps, not by the plate and not by
+    ``clearance.shell``: a keycap rocking under switch play must never strike a
+    Well wall, so every cap's base gets ``wobble`` of clearance per side.
+    """
+    specs = keycap_specs(
+        list(layout.keys),
+        get_keycap(keycap_profile)(),
+        pitch=layout.pitch,
+        layout_centroid=layout._centroid(),
+    )
+    x0, y0, x1, y1 = keycap_footprint(layout.switch_centers, specs)
+    return (x0 - wobble, y0 - wobble, x1 + wobble, y1 + wobble)
+
+
+def _border(
+    cutouts: list[Cutout], plate: Rect
+) -> tuple[float, float, float, float]:
+    """Switch-free border per side ``(left, right, bottom, top)`` in mm."""
+    px0, py0, px1, py1 = plate
+    if not cutouts:
+        return (0.0, 0.0, 0.0, 0.0)
+    left = right = bottom = top = float("inf")
+    for cut in cutouts:
+        xs = [cut.x + vx for vx, _ in cut.vertices]
+        ys = [cut.y + vy for _, vy in cut.vertices]
+        left = min(left, min(xs) - px0)
+        right = min(right, px1 - max(xs))
+        bottom = min(bottom, min(ys) - py0)
+        top = min(top, py1 - max(ys))
+    return (left, right, bottom, top)
 
 
 def generate(
@@ -22,10 +71,13 @@ def generate(
     switch_family: str = "mx_alps",
     stabilizer_family: str = "cherry",
     plate_thickness: float = 1.5,
-    edge_margin: float = 8.0,
-    corner_radius: float = 8.0,
-    screw_diameter: float = 2.0,
-    screw_edge_offset: float = 5.0,
+    *,
+    wall: float,
+    cutout: Rect | None = None,
+    keycap_profile: str = "xda",
+    wobble: float = 0.0,
+    corner_radius: float = 2.0,
+    mounting_holes: Iterable[MountingHole] = (),
 ) -> KeyboardGeometryModel:
     """Generate the complete keyboard geometry model.
 
@@ -40,84 +92,87 @@ def generate(
         Registered stabilizer family name (default ``"cherry"``).
     plate_thickness : float
         Plate thickness in mm.
-    edge_margin : float
-        Margin beyond outermost switch centers (mm).
+    wall : float
+        The Well ring / plate border per side (``config.wall.thickness``, mm).
+        The plate extends exactly this far past the Cutout on every side. No
+        default: the border is otherwise a guess.
+    cutout : Rect | None
+        The Well Cutout ``(x0, y0, x1, y1)`` in plate-local mm. ``None``
+        derives it from the real keycap footprint plus *wobble*.
+    keycap_profile : str
+        Keycap profile used to derive the footprint when *cutout* is ``None``.
+    wobble : float
+        Keycap wobble allowance each side of the Cutout (mm, ADR-0014).
     corner_radius : float
         Plate corner radius (mm).
-    screw_diameter : float
-        Mounting screw hole diameter (mm).
-    screw_edge_offset : float
-        Mounting hole inset from plate edge (mm).
+    mounting_holes : Iterable[MountingHole]
+        Holes the plate carries, in plate-local ``(x, y, diameter)`` mm. Empty
+        by default: the enclosure injects its Well-mount holes (ADR-0014).
 
     Returns
     -------
     KeyboardGeometryModel
         Pure-data geometry model ready for the CAD adapter.
     """
-    pitch = layout.pitch
-    centroid = layout._centroid()
+    if wall <= 0.0:
+        raise ValueError(f"the plate needs a positive Well wall, got {wall}")
     centers = layout.switch_centers
+    if not centers:
+        raise ValueError("layout has no switches: no plate to generate")
 
-    sw = get_switch(switch_family)()
-    verts = sw.cutout_vertices()
-    cutout_half_x = max(abs(v[0]) for v in verts)
-    cutout_half_y = max(abs(v[1]) for v in verts)
-    effective_margin = edge_margin + max(cutout_half_x, cutout_half_y)
+    if cutout is None:
+        cutout = cutout_bounds(layout, keycap_profile, wobble)
+    cx0, cy0, cx1, cy1 = cutout
+    if not (cx0 < cx1 and cy0 < cy1):
+        raise ValueError(f"degenerate Well Cutout: {cutout}")
 
-    outline = generate_outline(centers, margin=effective_margin, corner_radius=corner_radius)
+    # Plate = Cutout + one wall per side (ADR-0014).
+    plate = (cx0 - wall, cy0 - wall, cx1 + wall, cy1 + wall)
+    plate_x0, plate_y0, plate_x1, plate_y1 = plate
 
-    sw_cuts = switch_cutouts(layout.keys, switch_family, pitch, centroid)
-    stab_cuts = stabilizer_cutouts(layout.keys, stabilizer_family, pitch, centroid)
-
-    holes = generate_mounting_holes(
-        outline, edge_offset=screw_edge_offset, screw_diameter=screw_diameter,
-        switch_cutouts=sw_cuts, stabilizer_cutouts=stab_cuts,
-        keys=layout.keys, pitch=pitch, centroid=centroid,
+    # The margin of the plate past the switch centers is what the outline
+    # needs; it is asymmetric whenever the Cutout is off their bounding box.
+    xs = [p[0] for p in centers]
+    ys = [p[1] for p in centers]
+    margins = (
+        min(xs) - plate_x0,
+        plate_x1 - max(xs),
+        min(ys) - plate_y0,
+        plate_y1 - max(ys),
+    )
+    if min(margins) <= 0.0:
+        raise ValueError(
+            f"the Well Cutout {cutout} does not contain the switch grid: "
+            "the outline would fold over itself"
+        )
+    outline = generate_outline(
+        centers, margin=margins, corner_radius=corner_radius,
     )
 
-    xs = [p[0] for p in outline]
-    ys = [p[1] for p in outline]
-    bbox = (max(xs) - min(xs), max(ys) - min(ys), plate_thickness)
+    sw_cuts = switch_cutouts(layout.keys, switch_family, layout.pitch, layout._centroid())
+    stab_cuts = stabilizer_cutouts(
+        layout.keys, stabilizer_family, layout.pitch, layout._centroid()
+    )
+
+    holes = list(mounting_holes)
+    width = plate_x1 - plate_x0
+    height = plate_y1 - plate_y0
 
     metadata = KeyboardMetadata(
-        width=bbox[0],
-        height=bbox[1],
+        width=width,
+        height=height,
         plate_thickness=plate_thickness,
-        switch_centers=centers,
+        switch_centers=list(centers),
         mounting_points=[(h.x, h.y) for h in holes],
-        bounding_box=bbox,
+        bounding_box=(width, height, plate_thickness),
+        cutout=cutout,
+        edge_margins=_border(sw_cuts + stab_cuts, plate),
     )
 
-    model = KeyboardGeometryModel(
+    return KeyboardGeometryModel(
         plate_outline=outline,
         switch_cutouts=sw_cuts,
         stabilizer_cutouts=stab_cuts,
         mounting_holes=holes,
         metadata=metadata,
-    )
-    # The plate is split in two Sections along the key-column gaps; each gets
-    # two more holes within one unit of that Seam (ADR 0003).
-    try:
-        seam = plate_seam(model)
-    except ValueError:  # a row with no gap to split at: nothing to clamp
-        return model
-    extra = seam_holes(
-        sw_cuts, stab_cuts, seam, (min(xs), min(ys), max(xs), max(ys)),
-        pitch, screw_diameter,
-    )
-    if not extra:
-        return model
-    all_holes = list(holes) + [h.as_hole() for h in extra]
-    return KeyboardGeometryModel(
-        plate_outline=outline,
-        switch_cutouts=sw_cuts,
-        stabilizer_cutouts=stab_cuts,
-        mounting_holes=all_holes,
-        metadata=KeyboardMetadata(
-            width=metadata.width, height=metadata.height,
-            plate_thickness=metadata.plate_thickness,
-            switch_centers=metadata.switch_centers,
-            mounting_points=[(h.x, h.y) for h in all_holes],
-            bounding_box=metadata.bounding_box,
-        ),
     )

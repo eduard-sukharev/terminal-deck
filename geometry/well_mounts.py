@@ -161,6 +161,10 @@ class Obstacle:
 class PlateFrame:
     """The plate in the chassis plan: centre plus size (mm).
 
+    The single source for both halves: the Deck (T3) positions the Well ring and
+    the insert bosses from it, and the plate (T4) builds its outline, ears and
+    notches in it, so the two cannot drift apart.
+
     ``to_local``/``to_plan`` convert between the chassis plan and the plate's
     own centred frame, which is what the keyboard's geometry model uses.
     """
@@ -692,7 +696,9 @@ def well_mounts(
         Extra chassis features to keep clear of, in plan coordinates.
     plate_origin : (x, y), optional
         The plate's centre in the chassis plan; defaults to the derived Well
-        position (the keyboard is the datum and sits on the X centreline).
+        position (the keyboard is the datum and sits on the X centreline). Pass
+        the keyboard's actual placement when it is offset, so the Well and the
+        plate stay concentric with the keys.
     seam_far : float, optional
         How far the plate's own Seam sweeps from the centreline, overriding the
         Section-split derivation.
@@ -727,7 +733,9 @@ def well_mounts(
     ear_overlap = ear_half - station_out
     corner_radius = _plate_corner_radius(config)
     ear_fillet = min(corner_radius, ear_half) if corner_radius > 0.0 else None
-    lip_required = bore_margin + hole + boss_margin
+    # The Well's own derivation of what a merged boss needs in a lip is the
+    # single source; re-deriving it here would let the two drift apart.
+    lip_required = well.boss_lip_required
 
     # The Seam runs between the Sections; no station, bore or ear may sit in it.
     seam = _seam_far(config, seam_far)
@@ -915,6 +923,13 @@ def well_mounts(
     failures: list[str] = []
     for mount in mounts:
         failures.extend(f"{mount.name}: {reason}" for reason in mount.reasons)
+    # The Well sized the lip for its own bore; if this module sizes a different
+    # bore for the same station, one of the two is wrong -- say so loudly.
+    if abs(lip_required - (bore_margin + hole + boss_margin)) > 1e-9:
+        failures.append(
+            f"lip: the Well requires {lip_required:.2f} mm of lip for its bore, "
+            f"this pattern needs {bore_margin + hole + boss_margin:.2f} mm"
+        )
     for notch in notches:
         if notch.intrusion >= wall - minimum + _EPS:
             failures.append(

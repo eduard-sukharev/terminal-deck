@@ -85,6 +85,42 @@ crosses the Parting plane.
 
 ## Open measurements
 
-- `wobble` (0.6 mm) is assumed from switch play; confirm on the assembled plate.
-- The front lip (≈7.6 mm) hosting a Ø6.5 boss: verify it keeps ≥ `boss_margin`
-  of material beside the boss.
+- **`wobble` (0.60 mm) — still open.** Assumed from switch play (0.5–0.7);
+  confirm on the assembled plate. It is one constant
+  (`keyboard.plate.wobble`) and it sets the Cutout, the plate, the derived front
+  margin and the travel, so a change rebuilds all four.
+- **The front lip hosting the M2 boss — confirmed (issue #10).** The shipped
+  front lip is **5.65 mm** for a **5.00 mm** requirement
+  (`merged_boss.bore_margin` 0.5 + insert hole Ø3.00 +
+  `chassis_joint.boss_margin` 1.5), leaving 0.65 mm of slack. The derived front
+  margin is **7.65 mm** (wall 2.00 + lip 5.65), the closed face **140.00 mm**
+  (at the 140.00 limit). `keyboard-mounts-fit` and `slide-budget` are the HARD
+  checks.
+- **Tracked deviation — `front-seam-right` sits 3.54 mm from the Seam, not
+  7.20 (issue #19).** The front wall's side band column is at world +40.19, so
+  the station is walked 3.66 mm inboard (world **+47.04**, plate-local
+  −47.04); its ear clears the column by exactly `clearance.shell` 0.35 and the
+  boss fuses to the band boss in print. `WellMount.adjustments` reports it. The
+  case is not widened to avoid it, and the band joint stays put.
+
+## Shipped values (issues #10–#19)
+
+| Item | Shipped |
+|---|---|
+| Well ring | 2.00 mm |
+| Cutout | 229.25 × 76.85 = keycap 228.05 × 75.65 + 2 × 0.60 |
+| Plate | 233.25 × 80.85 × 1.50 at z 16.30 (top 17.80) |
+| Well depth | 14.50 (Deck top 32.30) |
+| Parting plane | 16.15 (0.15 below the plate bottom) |
+| Derived front margin | 7.65 (front lip 5.65 for a 5.00 boss) |
+| Plate border | 4.05 left/right, 4.85 rear, 3.88 spacebar (min) |
+| Mounts | 8 × M2, 4 per Section; boss Ø6.00 z 17.80–22.30, insert Ø3.00 × 3.0, clearance Ø2.20 |
+| Ears | 5.20 × 5.20, r2.0 |
+| Notches | 4 × 5.30 × 1.45, 1.10 bite, at the front band columns |
+| Plate Seam | 4 bands; plate-local ends x 0.00 (rear edge) and −50.584 (spacebar edge) |
+| Case | width 241.17, face 140.00 / 140.00, thickness 57.75 |
+| Guide stance | `rod_x` ±94.98 (follows the width) |
+
+The plate is one wall wider than the Cutout per side. The switch-free border is
+derived per side from the real keycap/switch geometry, so there is no single
+`edge_margin` value: 4.05 across X, 4.85 at the rear, 3.88 at the spacebar.

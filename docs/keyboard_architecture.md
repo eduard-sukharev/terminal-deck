@@ -435,6 +435,10 @@ KeyboardMetadata
     bounding_box
 
     plate_thickness
+
+    cutout
+
+    edge_margins
 ```
 
 This information is used by the enclosure generator without re-measuring CAD geometry.
@@ -482,11 +486,11 @@ keyboard:
 
   plate:
 
-    thickness: 1.6
+    thickness: 1.5
 
-    edge_margin: 6.0
+    wobble: 0.6          # keycap wobble allowance each side of the Well Cutout
 
-    corner_radius: 8.0
+    corner_radius: 2.0
 
   mounting:
 
@@ -496,6 +500,14 @@ keyboard:
 ```
 
 Changing layouts or switch families should require only configuration changes.
+
+The plate's size is derived, not configured (ADR-0014): the Well **Cutout** is
+the keycap footprint + 2 × `wobble`, the **plate** is the Cutout + one wall on
+every side, and the switch-free border follows the real switch/stabilizer
+geometry. There is no `edge_margin` knob. The enclosure injects its mounting
+pattern — **Plate ears**, **Plate notches** and the eight M2 clearance holes —
+through the adapter's `set_well_mounts()`; the keyboard package receives plain
+rectangles and holes and still knows nothing about the chassis.
 
 ---
 

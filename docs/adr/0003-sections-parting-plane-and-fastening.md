@@ -1,7 +1,7 @@
 ---
 status: accepted
 supersedes: ADR-0001
-amended_by: ADR-0006, ADR-0012
+amended_by: ADR-0006, ADR-0012, ADR-0014
 ---
 
 # Split parts into Sections with symmetric Seams; horizontal Parting plane; Deck screwed from below

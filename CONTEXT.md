@@ -76,9 +76,10 @@ display**, held at both ends by two printed Rod clamps.
 _Avoid:_ "rail" (an Accessory rail is a different part), "shaft".
 
 **Guide stance** — The pair of X positions the Guide rods occupy
-(`rod_x = ±93.86`). Derived from the tightest of three bounds — the lid's band
+(`rod_x = ±94.98`). Derived from the tightest of three bounds — the lid's band
 corner post, the Deck seat against the chassis band's corner boss, and the
 moving clamp head staying under the display — less `slide.rod.side_margin`.
+The width drives it: ADR-0014's plate is what the case is sized to.
 _Avoid:_ "rail spacing", "track width".
 
 **FPC guard** — The printed 1.6 mm grille plate tape-bonded to the Display's
@@ -135,26 +136,39 @@ bearing-clamp seats. Holds the SBC and the drag-chain anchor; not used for the
 battery. It runs to the lid's rear edge — the chassis grows to the closed
 face — so the bearing-clamp seats sit slightly forward of the rear wall.
 
-**Well** — The walled recess in the Deck the keyboard fits in: a ring of walls
-around a Cutout, descending from the Deck top to the keyboard plate. The plate
-bears flat on the walls' lower faces from below; the keycaps rise through the
+**Well** — The walled recess in the Deck the keyboard fits in: a 2 mm ring of
+walls around a Cutout, descending from the Deck top to the keyboard plate's top
+face. The plate bears flat on the ring's lower faces from below and is screwed
+up into bosses on the ring's front and rear walls; the keycaps rise through the
 Cutout. The Well is owned by the Deck — the Parting plane never cuts its walls.
-_Avoid:_ "pocket", "basin".
+_Avoid:_ "pocket", "basin", "opening".
 
 **Well wall** — One wall of the Well's ring, 2 mm thick, descending from the
-Deck top to the plate. The plate is screwed against its lower face; the front
+Deck top to the plate. The plate is screwed up against its lower face; the front
 and rear walls carry the plate's fastening bosses, the X walls only locate the
 plate.
 _Avoid:_ "skirt", "rim".
 
 **Cutout** — The rectangular opening bounded by the Well walls. Sized to the
-keycap footprint plus a `wobble` allowance (0.6 mm), so a rocking keycap never
-strikes a wall — not to the plate, and not by `clearance.shell`.
+keycap footprint plus a `wobble` allowance (0.6 mm per side), so a rocking
+keycap never strikes a wall — not to the plate, and not by `clearance.shell`.
 
-**Plate ear** — A rectangular, filleted tab protruding past the keyboard
+**Plate ear** — A 5.20 × 5.20 mm, r2.0 filleted tab protruding past the keyboard
 plate's outline where its edge border cannot hold a fastening boss; it carries
-the screw up into the Well wall.
+the M2 screw up into the Well wall.
 _Avoid:_ "tab".
+
+**Plate notch** — A 5.30 × 1.45 mm rectangle (1.10 mm bite) the chassis forces
+the plate's front border to yield where a Tray/Deck band column reaches into it.
+A plain polygon subtraction, as the Plate ear is an addition.
+_Avoid:_ "Cutout" (that is the Well's opening).
+
+**Plate Seam** — The keyboard plate's split between key columns: a row-jogging
+path (four bands on the JD40) through the clear gap between rows, never the
+straight `x = 0` cut through switch cutouts. In the plate's own frame its ends
+are at x = 0 and x = −50.584 (the latter on the spacebar side); each Section
+carries four of the plate's eight M2 stations.
+_Avoid:_ "centre cut", "straight split".
 
 **Tray** — The Chassis's floor and walls (bosses, ribs, vents, cutouts) below
 the Parting plane: drafted from its base up to `band_z0`, then a prismatic
@@ -182,9 +196,10 @@ A visual/indexing notch, never a structural feature.
 thickness), the number the design minimises.
 
 **Section** — One of the printable pieces a part is split into to fit the
-build volume. Wide parts split into two along X; the keyboard plate splits at
-the central key-column gap. Sections of one part are joined by Seam lugs;
-thin plates are held by screws into the part behind them.
+build volume. Wide parts split into two along X; the keyboard plate splits
+along its Plate Seam. Sections of one part are joined by Seam lugs; thin
+plates are held by screws into the part they bear on (the keyboard plate up
+into the Deck's Well walls).
 _Avoid:_ "half" (a part has Sections, not halves).
 
 **Seam** — Where two Sections of one part meet. Seams are staggered between

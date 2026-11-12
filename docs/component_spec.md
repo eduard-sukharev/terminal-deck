@@ -43,7 +43,7 @@ class Component(ABC):
 | `heatset_insert.py`         | `utilities/fasteners.py`                        | real |
 | `slide.py`                  | `config/slide.yaml` (slide)                     | implemented (LM…LUU guide, ADR-0009) |
 | `battery.py`                | `config/hardware.yaml` (battery)                | external pack on the accessory rail |
-| `keyboard_plate.py`         | `config/keyboard.yaml` (calculated)             | implemented (split into Sections) |
+| `keyboard_plate.py`         | `config/keyboard.yaml` (calculated)             | implemented (Well-mounted; split at the Plate Seam) |
 
 ## Measurement rules
 

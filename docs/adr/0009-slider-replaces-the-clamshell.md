@@ -1,6 +1,7 @@
 ---
 status: accepted
 supersedes: ADR-0007
+amended_by: ADR-0013, ADR-0014
 ---
 
 # The slider replaces the clamshell as the project's form factor
@@ -30,7 +31,9 @@ Derived from the real components, not copied from the reference:
   passes under the panel, so the lid carries the head, the FPC guard and the
   display). Chassis (keyboard, SBC, bearing clamps) plus screen lid (panel,
   driver, guide rods). The clamshell closed at 57.
-- **Width 238.92 mm — derived** (revised by ADR-0013): the display (231) plus a
+- **Width 238.92 mm — derived** (revised by ADR-0013; **amended by ADR-0014**:
+  the keyboard plate now bears on the Well ring and is the width driver, so the
+  shipped width is **241.17 mm**): the display (231) plus a
   thin drafted side wall each side (2.0 wall + 0.35 shell + 1.61 draft). The
   guide hardware moved under the display, so no side pod is needed. It is not
   the reference's 335 mm, which is padded with decorative rails and an antenna.

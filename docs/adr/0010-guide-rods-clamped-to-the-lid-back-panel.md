@@ -1,6 +1,7 @@
 ---
 status: accepted
 amends: ADR-0009
+amended_by: ADR-0011, ADR-0013, ADR-0014
 ---
 
 # Guide rods are clamped to the lid's back panel, with the bearing clamps straddling the panel
@@ -29,7 +30,8 @@ The project adopts that arrangement. It is a better fit for the constraints:
   ADR-0013:** the rods and clamps sit **under the display**, not beside it —
   the reference's side-by-side arrangement cost 33.7 mm of dead bezel per side.
   The mechanism, the slot and the clamp decisions below stand; only the stance
-  moved (`rod_x` 125.25 → 93.86).
+  moved (`rod_x` 125.25 → 93.86). **Amended by ADR-0014:** the keyboard plate
+  grew the case to 241.17 mm, so the shipped stance is `rod_x` ±94.98.
 
 ## Consequences
 
@@ -66,7 +68,8 @@ The project adopts that arrangement. It is a better fit for the constraints:
   draft allowance, the derived width was **292.4 mm** (side pod 30.7 mm), not
   the ≈ 283 quoted below. **Superseded by ADR-0013**: the stance moved under
   the display and the width is **238.92 mm** with no side pod and no corner
-  post.
+  post; **amended by ADR-0014** to **241.17 mm** (the keyboard plate is the
+  width driver).
 - Width grows from ≈ 267 to ≈ 283 mm (then to 292.4; ADR-0013 takes it to
   238.92): the side pod now clears the 22 mm Rod
   clamp and a 1.5 mm gap to the display. Thickness grows by 2 mm because the

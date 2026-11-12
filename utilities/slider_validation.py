@@ -161,7 +161,8 @@ def _add_well_checks(report: ValidationReport, config: Any, budget: Any) -> None
     ``parting_z <= plate_bottom`` is the ADR's serviceability rule: the Tray /
     Deck Parting plane never cuts the Well. The Cutout is the keycap footprint
     plus ``wobble`` per side -- never the plate, and never
-    ``clearance.shell`` -- and the ring is one wall thick on all four sides.
+    ``clearance.shell`` -- and the ring is one wall thick on both axes (a ring
+    has one value per axis, reported as such, not four independent sides).
     """
     well = budget.well
     joint = budget.chassis_joint
@@ -187,6 +188,7 @@ def _add_well_checks(report: ValidationReport, config: Any, budget: Any) -> None
         f"{well.plate_width:.2f} x {well.plate_depth:.2f} around a Cutout "
         f"{well.cutout_width:.2f} x {well.cutout_depth:.2f})",
     )
+
     cutout_w = well.keycap_width + 2.0 * well.wobble
     cutout_d = well.keycap_depth + 2.0 * well.wobble
     report.add(
@@ -348,7 +350,6 @@ def _head_verdict(
     parting = joint.parting_z
     radius = mounts.head_diameter / 2.0
     head_z0 = mounts.plate_bottom - mounts.head_depth
-    head_z1 = mounts.plate_bottom
     crossing = parting - head_z0 if head_z0 < parting else 0.0
     if crossing <= 0.0:
         return True, (
@@ -401,8 +402,9 @@ def _add_mount_checks(
 
     The pattern itself is derived by :func:`geometry.well_mounts.well_mounts`
     (one source for the Deck's bosses and the plate's ears/notches). These
-    checks surface its verdict, plus the Parting-plane rule: no printed plate
-    fastener column crosses it.
+    checks surface its verdict, the derived stock screw and the Parting-plane
+    rule: no printed plate fastener column crosses the plane, and the screw
+    heads that do dip into the Tray are measured against it.
     """
     names = (
         "keyboard-mounts-stations",
@@ -488,7 +490,6 @@ def _add_mount_checks(
         "printed plate fastener column crosses the plane (only the screw "
         "heads dip into the Tray, checked by keyboard-mounts-head)",
     )
-
 
 
 def run_slider_checks(

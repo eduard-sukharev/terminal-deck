@@ -25,7 +25,7 @@ def parting_height(parting, front_deck_level: float) -> float:
 
 @dataclass(frozen=True)
 class DeckScrew:
-    """The Deck screw: stock length and how far it reaches into the insert (mm)."""
+    """A stock case screw: its length and how far it reaches into the insert (mm)."""
 
     size: str
     length: int
@@ -40,10 +40,11 @@ class DeckScrew:
 def deck_screw(size: str, grip: float) -> DeckScrew:
     """Longest stock screw that does not bottom out in the insert.
 
-    ``grip`` is the screw's run from its head seat to the Parting plane (mm).
-    The screw then threads into a heat-set insert of depth ``insert.depth``;
-    it must reach at least one thread diameter into it. Raises ``ValueError``
-    when no stock length does.
+    ``grip`` is the screw's run from its head seat to the joint face -- the
+    Parting plane for the Tray/Deck and lid joints, the plate's top face for
+    the Well mounts. The screw then threads into a heat-set insert of depth
+    ``insert.depth``; it must reach at least one thread diameter into it.
+    Raises ``ValueError`` when no stock length does.
     """
     insert = fasteners.heat_insert(size)
     nominal = float(size.lstrip("M"))

@@ -105,7 +105,9 @@ def _subtract_rect(
     return out
 
 
-def _footprint_material(placement: Any) -> list[tuple[float, float, float, float]] | None:
+def _footprint_material(
+    placement: Any,
+) -> list[tuple[float, float, float, float]] | None:
     """A placement's plan material as rectangles, or ``None`` for its bbox.
 
     A component that knows its real (notched or eared) plan footprint exposes

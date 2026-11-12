@@ -161,3 +161,16 @@ def test_generate_refuses_a_seam_that_crosses_a_cutout(monkeypatch):
     with pytest.raises(ValueError, match="Seam"):
         _model()
 
+
+def test_the_floor_standoff_machinery_is_retired():
+    """ADR-0014's Well mounts replaced the Tray-floor standoffs entirely."""
+    import importlib
+
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("keyboard.geometry.seam_holes")
+
+    from layouts.resolvers import default_resolver_registry
+
+    assert "keyboard_mounting_holes" not in default_resolver_registry()
+
+

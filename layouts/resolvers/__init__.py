@@ -19,7 +19,6 @@ from layouts.resolvers.clearance import ClearanceResolver
 from layouts.resolvers.edge_alignment import EdgeAlignmentResolver
 from layouts.resolvers.fixed_position import FixedPositionResolver
 from layouts.resolvers.footprint_match import FootprintMatchResolver
-from layouts.resolvers.keyboard_mounting_holes import KeyboardMountingHolesResolver
 from layouts.resolvers.port_access import PortAccessResolver
 from layouts.resolvers.region import RegionResolver
 from layouts.resolvers.relative_placement import RelativePlacementResolver
@@ -38,7 +37,6 @@ def default_resolver_registry() -> dict[str, ConstraintResolver]:
         "edge_alignment": EdgeAlignmentResolver(),
         "fixed_position": FixedPositionResolver(),
         "footprint_match": FootprintMatchResolver(),
-        "keyboard_mounting_holes": KeyboardMountingHolesResolver(),
         "port_access": PortAccessResolver(),
         "region": RegionResolver(),
         "relative_placement": RelativePlacementResolver(),

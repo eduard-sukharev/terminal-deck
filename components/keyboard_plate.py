@@ -6,9 +6,12 @@ via :mod:`utilities.cad_helpers`.
 
 The plate is **derived** from the Well (ADR-0014): the keyboard package sizes
 it as the Well Cutout plus one wall thickness of border on each side, so it
-bears on the Well walls' lower faces. There is no margin to tune, and the
-plate carries no floor-standoff holes of its own — the enclosure injects the
-Well-mount clearance holes via :meth:`set_mounting_holes`.
+bears on the Well walls' lower faces. There is no margin to tune. The enclosure
+also injects its Well-mount pattern (:meth:`set_well_mounts`): the plate merges
+that pattern's filleted **ears** into its outline, cuts its **notches** out of
+it, and drills the eight M2 **clearance holes** through plate and ear. The
+keyboard package stays CAD-free and enclosure-free -- it only receives
+rectangles.
 
 The plate is independent of the enclosure — it can be cut on FR4 or printed
 alone.
@@ -22,8 +25,54 @@ from typing import Any
 
 from components.base import BoundingBox, Component, Hole
 from keyboard import generate, parse_layout
+from keyboard.geometry.outline import PlateTab
 from keyboard.metadata import MountingHole
 from utilities import fasteners
+
+
+#: Geometry tolerance for the injected-pattern checks (mm).
+_EPS = 1e-9
+
+
+def _rects_overlap(
+    a: tuple[float, float, float, float],
+    b: tuple[float, float, float, float],
+) -> bool:
+    """True when two axis-aligned plan rectangles share area (mm)."""
+    return (
+        a[0] < b[2] - _EPS
+        and b[0] < a[2] - _EPS
+        and a[1] < b[3] - _EPS
+        and b[1] < a[3] - _EPS
+    )
+
+
+def _circle_inside_rect(
+    x: float,
+    y: float,
+    radius: float,
+    rect: tuple[float, float, float, float],
+    margin: float,
+) -> bool:
+    """True when the circle lies inside ``rect`` leaving ``margin`` all round."""
+    return (
+        x - radius - margin >= rect[0] - _EPS
+        and x + radius + margin <= rect[2] + _EPS
+        and y - radius - margin >= rect[1] - _EPS
+        and y + radius + margin <= rect[3] + _EPS
+    )
+
+
+def _circle_hits_rect(
+    x: float,
+    y: float,
+    radius: float,
+    rect: tuple[float, float, float, float],
+) -> bool:
+    """True when the circle shares area with the rectangle."""
+    dx = max(rect[0] - x, 0.0, x - rect[2])
+    dy = max(rect[1] - y, 0.0, y - rect[3])
+    return dx * dx + dy * dy < (radius - _EPS) ** 2
 
 
 class KeyboardPlate(Component):
@@ -35,8 +84,9 @@ class KeyboardPlate(Component):
 
     The plate's size, Cutout and switch-free border are derived by
     :func:`keyboard.generate` — ``keyboard.plate.edge_margin`` no longer exists.
-    Mounting hole positions are injected by the constraint system via
-    :meth:`set_mounting_holes`; with none injected the plate is a bare sheet.
+    The Well-mount pattern (ears, notches and M2 clearance holes) is injected
+    by the constraint system via :meth:`set_well_mounts`; with none injected
+    the plate is a bare sheet.
     """
 
     name = "Keyboard Plate"
@@ -65,6 +115,9 @@ class KeyboardPlate(Component):
         self._model = None
         self._layout = None
         self._mounting_holes: list[MountingHole] = []
+        self._well_mounts = None
+        self._ears: list[PlateTab] = []
+        self._notches: list[tuple[float, float, float, float]] = []
 
     def _ensure_model(self):
         if self._model is not None:
@@ -78,7 +131,7 @@ class KeyboardPlate(Component):
             with open(self._layout_source, "r", encoding="utf-8") as handle:
                 raw = json.load(handle)
             self._layout = parse_layout(raw, self._pitch)
-        self._model = generate(
+        model = generate(
             self._layout,
             switch_family=self._switch_family,
             stabilizer_family=self._stab_family,
@@ -88,7 +141,11 @@ class KeyboardPlate(Component):
             wobble=self._wobble,
             corner_radius=self._corner_radius,
             mounting_holes=self._mounting_holes,
+            ears=self._ears,
+            notches=self._notches,
         )
+        self._check_well_mounts(model)
+        self._model = model
 
     def validate(self) -> tuple[int, list[str]]:
         """Run the keyboard geometry validation checks.
@@ -151,10 +208,12 @@ class KeyboardPlate(Component):
         return self._model.metadata.edge_margins
 
     def set_mounting_holes(self, holes: list[tuple[float, float, float]]) -> None:
-        """Set the mounting holes the plate carries (ADR-0014 Well mounts).
+        """Set the mounting holes the plate carries (low-level, plate-local mm).
 
-        The plate has no holes of its own: the enclosure derives them (the
-        Well-mount stations) and injects them here, in plate-local mm.
+        Prefer :meth:`set_well_mounts` when the holes come from the Well: it
+        also merges the ears and cuts the notches the holes need, and checks
+        that no hole misses its ear. This setter stays for callers that only
+        want bare holes.
 
         Parameters
         ----------
@@ -165,6 +224,135 @@ class KeyboardPlate(Component):
             MountingHole(float(x), float(y), float(d)) for x, y, d in holes
         ]
         self._model = None  # regenerate with the new holes
+
+    def set_well_mounts(self, mounts: Any) -> None:
+        """Inject the Well-mount pattern (ADR-0014): ears, notches and holes.
+
+        The plate is the Well's bearer, so its mounting pattern is the Well's,
+        never the plate's own: the enclosure derives it with
+        :func:`geometry.well_mounts.well_mounts` and hands it over. This method
+        is the only place the keyboard model and the enclosure meet, and it
+        passes plain rectangles (the keyboard package stays enclosure-free).
+
+        Parameters
+        ----------
+        mounts : WellMounts-like
+            Anything with ``mounts`` (each carrying ``plate_xy``,
+            ``clearance_hole_diameter`` and an ``ear``) and ``notches`` (each
+            with a ``rect``); ``geometry.well_mounts.WellMounts`` is the real
+            implementation. The object is kept for :meth:`well_mounts`.
+        """
+        self._well_mounts = mounts
+        self._ears = [
+            PlateTab(
+                rect=(
+                    float(mount.ear.rect.x0),
+                    float(mount.ear.rect.y0),
+                    float(mount.ear.rect.x1),
+                    float(mount.ear.rect.y1),
+                ),
+                fillet=float(mount.ear.fillet or 0.0),
+            )
+            for mount in mounts.mounts
+            if mount.ear is not None
+        ]
+        self._notches = [
+            (
+                float(notch.rect.x0),
+                float(notch.rect.y0),
+                float(notch.rect.x1),
+                float(notch.rect.y1),
+            )
+            for notch in mounts.notches
+        ]
+        self._mounting_holes = [
+            MountingHole(
+                float(mount.plate_xy[0]),
+                float(mount.plate_xy[1]),
+                float(mount.clearance_hole_diameter),
+            )
+            for mount in mounts.mounts
+        ]
+        self._model = None  # regenerate with the injected pattern
+
+    @property
+    def well_mounts(self):
+        """The injected Well-mount pattern, or ``None`` (ADR-0014)."""
+        return self._well_mounts
+
+    def footprint_cutouts(self) -> list[tuple[float, float, float, float]]:
+        """The plan rectangles the chassis forces the plate to give up (mm).
+
+        Plate-local ``(x0, y0, x1, y1)``: the plate's *notched* footprint, so a
+        plan check can test the real sheet instead of its bounding box (the
+        front band columns bite into the border). Empty before the Well-mount
+        pattern is injected.
+        """
+        self._ensure_model()
+        return list(self._notches)
+
+    def footprint_outline(self) -> list[tuple[float, float]]:
+        """The plate's notched, eared plan polygon (plate-local mm)."""
+        self._ensure_model()
+        return list(self._model.plate_outline)
+
+    def _check_well_mounts(self, model) -> None:
+        """Fail HARD if the injected pattern does not fit the real plate.
+
+        The enclosure's own derivation checks the pattern too, but this is the
+        last place before solid geometry: a hole that misses its ear or a tab
+        that lands in a switch cutout would otherwise be modelled silently.
+        """
+        mounts = self._well_mounts
+        if mounts is None:
+            return
+        problems: list[str] = list(mounts.failures)
+        margin = float(getattr(mounts, "boss_margin", 0.0))
+        cutouts = list(model.switch_cutouts) + list(model.stabilizer_cutouts)
+        boxes = []
+        for cut in cutouts:
+            xs = [cut.x + vx for vx, _ in cut.vertices]
+            ys = [cut.y + vy for _, vy in cut.vertices]
+            boxes.append((min(xs), min(ys), max(xs), max(ys)))
+        ears: list[tuple[str, tuple[float, float, float, float]]] = []
+        for mount in mounts.mounts:
+            if mount.ear is None:
+                problems.append(f"{mount.name}: no ear for its clearance hole")
+                continue
+            rect = (
+                float(mount.ear.rect.x0),
+                float(mount.ear.rect.y0),
+                float(mount.ear.rect.x1),
+                float(mount.ear.rect.y1),
+            )
+            ears.append((mount.name, rect))
+            for index, box in enumerate(boxes):
+                if _rects_overlap(rect, box):
+                    problems.append(
+                        f"{mount.name}: its ear overlaps cutout-{index}"
+                    )
+            x, y = mount.plate_xy
+            radius = mount.clearance_hole_diameter / 2.0
+            if not _circle_inside_rect(x, y, radius, rect, margin):
+                problems.append(
+                    f"{mount.name}: its Ø{mount.clearance_hole_diameter:.2f} "
+                    f"clearance hole at ({x:.2f}, {y:.2f}) does not sit in its "
+                    f"ear with the {margin:.2f} mm edge margin"
+                )
+            for index, box in enumerate(boxes):
+                if _circle_hits_rect(x, y, radius, box):
+                    problems.append(
+                        f"{mount.name}: its clearance hole overlaps cutout-{index}"
+                    )
+        for index, (name, rect) in enumerate(ears):
+            for other_name, other in ears[index + 1 :]:
+                if _rects_overlap(rect, other):
+                    problems.append(f"{name}: its ear overlaps {other_name}'s")
+        if problems:
+            raise ValueError(
+                "the plate's Well-mount pattern does not fit the plate: "
+                + "; ".join(problems)
+            )
 
     def _get_mounting_holes(self) -> list[tuple[float, float, float]]:
         """Return ``(x, y, diameter)`` tuples the plate is cut with."""

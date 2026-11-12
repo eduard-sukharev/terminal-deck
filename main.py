@@ -182,6 +182,13 @@ class BuildPipeline:
         print("[pipeline] slide budget:")
         print(budget.summary())
 
+        # The plate carries the Well's mounting pattern (ears, notches, M2
+        # clearance holes) -- one source, derived from the same budget the Deck
+        # uses (ADR-0014).
+        from geometry.well_mounts import well_mounts
+
+        components["keyboard"].set_well_mounts(well_mounts(config, budget))
+
         report = run_slider_checks(budget, config, placements)
         print("[pipeline] slider validation:")
         print(report.summary())

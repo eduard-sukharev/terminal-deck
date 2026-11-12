@@ -277,10 +277,41 @@ class Rp2040Keyboard(Component):
 
         The plate's screws go **up** into the Well's insert bosses, so the
         keyboard contributes no Tray-floor bosses. The plate's own clearance
-        holes come from the injected Well-mount list
-        (``KeyboardPlate.set_mounting_holes``).
+        holes are carried by the plate itself: see
+        :meth:`plate_mounting_holes` and ``KeyboardPlate.mounting_holes()``.
         """
         return []
+
+    def set_well_mounts(self, mounts: Any) -> None:
+        """Inject the Well-mount pattern into the plate (ADR-0014).
+
+        Delegates to :meth:`KeyboardPlate.set_well_mounts`: the plate merges the
+        pattern's ears into its outline, cuts its notches and drills the M2
+        clearance holes.
+        """
+        self._plate.set_well_mounts(mounts)
+
+    @property
+    def well_mounts(self):
+        """The injected Well-mount pattern, or ``None`` (ADR-0014)."""
+        return self._plate.well_mounts
+
+    def plate_mounting_holes(self) -> list[Hole]:
+        """The plate's own M2 clearance holes (plate-local mm, ADR-0014).
+
+        These are clearance holes for the bottom-up screws that thread into the
+        Deck's Well bosses -- **not** floor standoffs, so they stay off
+        :meth:`mounting_holes` (which the boss builder consumes).
+        """
+        return self._plate.mounting_holes()
+
+    def footprint_cutouts(self) -> list[tuple[float, float, float, float]]:
+        """The plate's notched plan rectangles (plate-local mm, for #16)."""
+        return self._plate.footprint_cutouts()
+
+    def footprint_outline(self) -> list[tuple[float, float]]:
+        """The plate's notched, eared plan polygon (plate-local mm, for #16)."""
+        return self._plate.footprint_outline()
 
     def mounting_screw(self) -> str:
         """The plate's standoff screw size (from keyboard.mounting.screw)."""

@@ -17,11 +17,14 @@ from components.slide import (
     build_rod_clamp,
     compute_slide_budget,
 )
+from geometry.printability import PrintOrientation, check_bed_face
+from geometry.well_mounts import well_mounts
 from layouts import make_layout
 from main import BuildPipeline
 from utilities import cad_helpers as ch
 from utilities.fasteners import screw as screw_spec
 from utilities.slider_validation import BUILD_VOLUME
+from utilities.validation import ValidationReport
 
 
 @pytest.fixture(scope="module")
@@ -641,3 +644,296 @@ def test_fpc_guard_stays_clear_of_the_head_over_the_whole_travel(data, guard, be
         assert ch.volume_mm3(
             ch.intersect(ch.translate(world, 0.0, shift, 0.0), head)
         ) == pytest.approx(0, abs=1e-6)
+
+
+# -- the Well in the Deck (ADR-0014) -------------------------------------
+
+
+@pytest.fixture(scope="module")
+def deck(data):
+    config, _, _, frame = data
+    return Chassis(config, frame).build_deck()
+
+
+@pytest.fixture(scope="module")
+def mounts(data):
+    config, _, budget, _ = data
+    return well_mounts(config, budget)
+
+
+def _material_bounds(shape, x0, y0, x1, y1, z0, z1):
+    """Bounding box of the solid inside a probe box, or None when empty."""
+    probe = ch.box_centered(x1 - x0, y1 - y0, z1 - z0)
+    probe = ch.translate(
+        probe, (x0 + x1) / 2.0, (y0 + y1) / 2.0, (z0 + z1) / 2.0
+    )
+    hit = ch.intersect(shape, probe)
+    if ch.volume_mm3(hit) < 1e-9:
+        return None
+    return ch.bounding_box(hit)
+
+
+def _cylinder_faces(shape):
+    """Every cylindrical face as (radius, axis XY, axis direction, z-span).
+
+    Read from the solid's topology, not from a volume or a centre of mass: a
+    bore's own axis is what the screw has to follow.
+    """
+    from OCP.BRepAdaptor import BRepAdaptor_Surface
+
+    found = []
+    for face in ch.faces(shape):
+        if "CYLINDER" not in str(face.geom_type):
+            continue
+        cylinder = BRepAdaptor_Surface(face.wrapped).Cylinder()
+        axis = cylinder.Axis()
+        location = axis.Location()
+        direction = axis.Direction()
+        box = face.bounding_box()
+        found.append(
+            {
+                "radius": cylinder.Radius(),
+                "x": location.X(),
+                "y": location.Y(),
+                "z0": box.min.Z,
+                "z1": box.max.Z,
+                "axis": (direction.X(), direction.Y(), direction.Z()),
+            }
+        )
+    return found
+
+
+def _well_z_bands(data, deck, mounts):
+    """The four ring bands, measured on the real solid at mid-Well height."""
+    _, _, _, frame = data
+    cut = mounts.cutout_rect
+    z = (mounts.plate_top + frame.chassis_top) / 2.0
+    return {
+        "front": _material_bounds(
+            deck, -0.5, cut.y0 - 3.0, 0.5, cut.y0 + 3.0, z - 0.1, z + 0.1
+        ),
+        "rear": _material_bounds(
+            deck, -0.5, cut.y1 - 3.0, 0.5, cut.y1 + 3.0, z - 0.1, z + 0.1
+        ),
+        "left": _material_bounds(
+            deck, cut.x0 - 3.0, mounts.frame.cy - 0.5, cut.x0 + 3.0,
+            mounts.frame.cy + 0.5, z - 0.1, z + 0.1,
+        ),
+        "right": _material_bounds(
+            deck, cut.x1 - 3.0, mounts.frame.cy - 0.5, cut.x1 + 3.0,
+            mounts.frame.cy + 0.5, z - 0.1, z + 0.1,
+        ),
+    }
+
+
+def test_well_ring_is_one_wall_thick_on_all_four_sides(data, deck, mounts):
+    """The Well descends as a `wall.thickness` ring around the Cutout."""
+    config, _, _, _ = data
+    wall = config.wall.thickness
+    cut = mounts.cutout_rect
+    plate = mounts.frame.rect
+    bands = _well_z_bands(data, deck, mounts)
+
+    assert bands["front"] is not None, "no front Well wall"
+    assert bands["rear"] is not None, "no rear Well wall"
+    assert bands["left"] is not None, "no left Well wall"
+    assert bands["right"] is not None, "no right Well wall"
+
+    assert bands["front"].ymax - bands["front"].ymin == pytest.approx(wall, abs=1e-3)
+    assert bands["rear"].ymax - bands["rear"].ymin == pytest.approx(wall, abs=1e-3)
+    assert bands["left"].xmax - bands["left"].xmin == pytest.approx(wall, abs=1e-3)
+    assert bands["right"].xmax - bands["right"].xmin == pytest.approx(wall, abs=1e-3)
+
+    # Outer faces are the plate outline; inner faces are the Cutout.
+    assert bands["front"].ymin == pytest.approx(plate.y0, abs=1e-3)
+    assert bands["front"].ymax == pytest.approx(cut.y0, abs=1e-3)
+    assert bands["rear"].ymin == pytest.approx(cut.y1, abs=1e-3)
+    assert bands["rear"].ymax == pytest.approx(plate.y1, abs=1e-3)
+    assert bands["left"].xmin == pytest.approx(plate.x0, abs=1e-3)
+    assert bands["left"].xmax == pytest.approx(cut.x0, abs=1e-3)
+    assert bands["right"].xmin == pytest.approx(cut.x1, abs=1e-3)
+    assert bands["right"].xmax == pytest.approx(plate.x1, abs=1e-3)
+
+
+def test_well_ring_reaches_from_the_deck_top_to_the_plate_top(data, deck, mounts):
+    """The ring's lower faces are the plate's bearing: no ledge, no floor."""
+    _, _, _, frame = data
+    cut = mounts.cutout_rect
+    band = _material_bounds(
+        deck, -0.5, cut.y0 - 3.0, 0.5, cut.y0 + 3.0,
+        frame.parting_z - 2.0, frame.chassis_top + 2.0,
+    )
+    assert band is not None
+    assert band.zmin == pytest.approx(mounts.plate_top, abs=1e-3)
+    assert band.zmax == pytest.approx(frame.chassis_top, abs=1e-3)
+    # Nothing of the ring hangs below the plate's top face.
+    assert band.zmin > frame.parting_z
+
+
+def test_well_cutout_is_the_keycap_footprint_not_the_shell_clearance(data, deck, mounts):
+    """The opening is sized by the keycaps + wobble, not `clearance.shell`."""
+    _, _, _, frame = data
+    cut = mounts.cutout_rect
+    bands = _well_z_bands(data, deck, mounts)
+
+    width = bands["right"].xmin - bands["left"].xmax
+    depth = bands["rear"].ymin - bands["front"].ymax
+    assert width == pytest.approx(cut.width, abs=1e-3)
+    assert depth == pytest.approx(cut.depth, abs=1e-3)
+    assert width == pytest.approx(mounts.frame.width - 2.0 * mounts.ring, abs=1e-3)
+    assert depth == pytest.approx(mounts.frame.depth - 2.0 * mounts.ring, abs=1e-3)
+    assert width != pytest.approx(frame.keyboard_w + 2.0 * frame.clearance, abs=0.1)
+    assert depth != pytest.approx(frame.keyboard_d + 2.0 * frame.clearance, abs=0.1)
+
+
+def test_eight_insert_holes_at_the_well_stations(data, deck, mounts):
+    """Each T1b station carries an M2 insert bore, read from the topology."""
+    insert_radius = mounts.insert_hole_diameter / 2.0
+    boss_radius = mounts.boss_diameter / 2.0
+    cylinders = _cylinder_faces(deck)
+    holes = [
+        c
+        for c in cylinders
+        if abs(c["radius"] - insert_radius) < 1e-3
+        and abs(c["axis"][2] - 1.0) < 1e-6
+    ]
+    assert len(holes) == len(mounts.mounts) == 8
+
+    for mount in mounts.mounts:
+        matches = [
+            h
+            for h in holes
+            if abs(h["x"] - mount.x) < 1e-2 and abs(h["y"] - mount.y) < 1e-2
+        ]
+        assert len(matches) == 1, f"no insert bore at {mount.name}"
+        hole = matches[0]
+        assert hole["z0"] == pytest.approx(mounts.plate_top, abs=1e-3)
+        assert hole["z1"] == pytest.approx(
+            mounts.plate_top + mount.insert_depth, abs=1e-3
+        )
+
+        bosses = [
+            c
+            for c in cylinders
+            if abs(c["radius"] - boss_radius) < 1e-3
+            and abs(c["x"] - mount.x) < 1e-2
+            and abs(c["y"] - mount.y) < 1e-2
+        ]
+        assert bosses, f"no merged boss at {mount.name}"
+        assert min(b["z0"] for b in bosses) == pytest.approx(
+            mounts.plate_top, abs=1e-3
+        )
+        assert max(b["z1"] for b in bosses) == pytest.approx(
+            mount.boss_z1, abs=1e-3
+        )
+
+
+def test_no_insert_boss_or_ledge_enters_the_well_cutout(data, deck, mounts):
+    """The Cutout column is clear from below the plate to the Deck top."""
+    _, _, _, frame = data
+    cut = mounts.cutout_rect
+    column = ch.box_centered(cut.width, cut.depth, frame.chassis_top - frame.parting_z + 2.0)
+    column = ch.translate(
+        column, cut.cx, cut.cy,
+        (frame.chassis_top + frame.parting_z) / 2.0,
+    )
+    assert ch.volume_mm3(ch.intersect(deck, column)) == pytest.approx(0, abs=1e-6)
+
+
+def test_ring_is_interrupted_where_the_plate_is_notched(data, deck, mounts):
+    """A band column may not share volume with the ring (the plate's notch).
+
+    The notch removes the ring's outer reach only: the inner sliver of the
+    ring stays, so the Well remains sealed end to end.
+    """
+    assert mounts.notches, "the plate is not notched under the band columns"
+    for notch in mounts.notches:
+        plan = mounts.frame.to_plan_rect(notch.rect)
+        # Above the column's boss (21.65) and below the Deck's top slab (30.3)
+        # only the ring lives here; the notch must leave it empty.
+        probe = ch.box_centered(plan.width, plan.depth, 6.0)
+        probe = ch.translate(probe, plan.cx, plan.cy, 25.5)
+        assert ch.volume_mm3(ch.intersect(deck, probe)) == pytest.approx(
+            0, abs=1e-6
+        ), f"the ring fills the plate notch at {notch.source}"
+
+        # ... but the ring's inner sliver keeps the Well continuous.
+        sealed = _material_bounds(
+            deck,
+            plan.x0 + 0.65, plan.y1 + 0.1, plan.x1 - 0.65, plan.y1 + 0.7,
+            22.5, 28.5,
+        )
+        assert sealed is not None, f"the notch severed the ring at {notch.source}"
+
+
+def test_scallop_cannot_pierce_the_ring_or_a_boss(data, deck, mounts):
+    """The band's relief stops at the ring; the Well walls stay whole."""
+    _, _, _, frame = data
+    joint = frame.chassis_joint
+    z = frame.parting_z + joint.scallop_height / 2.0 + 0.35
+    cut = mounts.cutout_rect
+    for station in joint.stations:
+        if station.y < 0.0:
+            assert _material_at(deck, station.x, cut.y0 - 0.45, z) > 0
+        else:
+            assert _material_at(deck, station.x, cut.y1 + 0.45, z) > 0
+    for mount in mounts.mounts:
+        # The boss itself still stands proud of the ring, off the insert bore.
+        off = 1.5 if mount.is_front else -1.5
+        assert _material_at(deck, mount.x, mount.y + off, z + 0.5) > 0
+
+
+def test_a_scallop_that_would_reach_the_well_is_skipped(data):
+    """A relief whose plan reaches the ring is dropped, not cut into it."""
+    config, _, _, frame = data
+    joint = frame.chassis_joint
+    station = next(s for s in joint.stations if s.y < 0.0 and s.kind == "side")
+    chassis = Chassis(config, frame)
+
+    def cutter(avoid):
+        return chassis._scallop(
+            station,
+            z0=frame.parting_z,
+            distance=station.surface,
+            shift=0.0,
+            avoid=avoid,
+        )
+
+    # The cutter spans the station's wall band, outward of the station.
+    reach = [
+        (
+            station.x - 1.0,
+            station.y - 10.0,
+            station.x + 1.0,
+            station.y - 1.0,
+        )
+    ]
+    assert cutter(reach) is None
+    assert cutter([]) is not None
+
+
+def test_deck_sections_rejoin_and_print_closed_face_down(data, deck):
+    """The ring is part of the Deck: it splits at the Seam and prints flat."""
+    config, _, _, frame = data
+    split = config.slide.split.get("chassis")
+    left, right = ch.split_sections(deck, split)
+    assert ch.volume_mm3(left) + ch.volume_mm3(right) == pytest.approx(
+        ch.volume_mm3(deck), rel=1e-3
+    )
+    # Nothing new crosses the Parting plane: the Well stands on the Deck.
+    assert ch.bounding_box(deck).zmin == pytest.approx(frame.parting_z, abs=1e-3)
+
+    report = ValidationReport()
+    for name, section in (("chassis_deck_left", left), ("chassis_deck_right", right)):
+        x, y, z = ch.bounding_box_mm(section)
+        assert x <= BUILD_VOLUME[0] + 1e-6
+        assert y <= BUILD_VOLUME[1] + 1e-6
+        assert z <= BUILD_VOLUME[2] + 1e-6
+        check_bed_face(
+            name,
+            section,
+            PrintOrientation((0.0, 0.0, 1.0)),
+            config.material.min_bed_face_area,
+            report,
+        )
+    assert report.passed, report.summary()

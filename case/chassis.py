@@ -12,8 +12,10 @@ width and the closed face follow from that.
   from below through a countersink in the floor, up the column, and across the
   plane into a heat-set insert in the Deck.
 * The **Deck** is purely prismatic from the Parting plane to the closed face:
-  the keyboard Well, the two bearing-clamp seats and their pockets, and one
-  insert boss per station standing out of the band's cavity.
+  the keyboard Well (a wall-thick ring around the keycap Cutout, descending to
+  the plate's top face, with the plate's eight M2 insert bosses merged into its
+  front/rear lips), the two bearing-clamp seats and their pockets, and one
+  insert boss per band station standing out of the band's cavity.
 
 Both halves carry a shallow scallop at every station, straddling the seam.
 
@@ -134,7 +136,7 @@ class Chassis:
         return ch.clean(ch.cut(body, *scallops))
 
     def build_deck(self):
-        """The upper shell: a prismatic body with the Well, seats and bosses."""
+        """The upper shell: a prismatic body with the Well ring and seats."""
         from utilities import cad_helpers as ch
 
         ch.require_cad()
@@ -145,6 +147,20 @@ class Chassis:
         z0, top = f.parting_z, f.chassis_top
         band_w = f.chassis_band_width
         cavity_top = top - wall
+
+        # The plate's mounting pattern (ADR-0014) is the single source for the
+        # Well: its rectangular frame is the plate, its Cutout is the opening
+        # the ring surrounds, and its stations are the insert bosses.
+        mounts = self._well_mounts()
+        cut = mounts.cutout_rect
+        plate = mounts.frame.rect
+        plate_top = mounts.plate_top
+        ring_height = top - plate_top
+        if ring_height <= 0.0:
+            raise ValueError(
+                "the Well has no depth: the plate's top face is at or above the "
+                f"Deck's top ({plate_top:.2f} vs {top:.2f} mm)"
+            )
 
         # The whole Deck is prismatic at the closed-face width: no flare above
         # the band, so the upper silhouette stays straight to the face.
@@ -163,11 +179,62 @@ class Chassis:
         )
         body = ch.cut(outer, cavity)
 
-        # One insert boss per station, standing out of the band's cavity. The
-        # boss is taller than the Deck's half-band: the M3 heat-set insert is
-        # 4 mm deep and still needs a boss margin of material above it.
+        # The keyboard Well: a ring of Deck walls around the Cutout, from the
+        # Deck's top face down to the plate. Its lower faces are the plate's
+        # continuous bearing -- no ledge and no floor. It stands inside the
+        # cavity, so it is unioned back onto the shell.
+        ring = ch.box_centered(plate.width, plate.depth, ring_height)
+        ring = ch.translate(ring, plate.cx, plate.cy, plate_top + ring_height / 2.0)
+        opening = ch.box_centered(cut.width, cut.depth, ring_height + 2.0)
+        opening = ch.translate(opening, cut.cx, cut.cy, plate_top + ring_height / 2.0)
+        ring = ch.cut(ring, opening)
+        # Where a chassis band column reaches into the plate's border, the
+        # plate is notched; the ring's outer reach is interrupted there too so
+        # the column does not share volume with the Well wall. Only the outer
+        # sliver goes: the Well stays sealed along its inner face.
+        notches = []
+        for notch in mounts.notches:
+            centre = mounts.frame.to_plan(notch.rect.cx, notch.rect.cy)
+            notches.append(
+                ch.translate(
+                    ch.box_centered(
+                        notch.rect.width, notch.rect.depth, ring_height + 2.0
+                    ),
+                    centre[0],
+                    centre[1],
+                    plate_top + ring_height / 2.0,
+                )
+            )
+        if notches:
+            ring = ch.cut(ring, *notches)
+        body = ch.union(body, ring)
+
+        # The Cutout is open through the top slab: the keycaps pass through it
+        # and the ring surrounds it. It is sized by the keycaps plus wobble,
+        # never by `clearance.shell`.
+        well = ch.box_centered(cut.width, cut.depth, 3.0 * wall)
+        well = ch.translate(well, cut.cx, cut.cy, top)
+        body = ch.cut(body, well)
+
+        # One M2 insert boss per plate station, merged to the ring's outer face
+        # inside the front/rear lip. It stands on the plate's top face (the
+        # plate's ear is below it), so no boss can enter the Cutout.
+        well_bosses = [
+            ch.translate(
+                ch.cylinder_centered(m.boss_diameter, m.boss_z1 - m.boss_z0),
+                m.x,
+                m.y,
+                (m.boss_z0 + m.boss_z1) / 2.0,
+            )
+            for m in mounts.mounts
+        ]
+        body = ch.union(body, *well_bosses)
+
+        # One insert boss per chassis band station, standing out of the band's
+        # cavity. The boss is taller than the Deck's half-band: the M3 heat-set
+        # insert is 4 mm deep and still needs a boss margin of material above it.
         boss_height = joint.boss_height
-        bosses = [
+        band_bosses = [
             ch.translate(
                 ch.cylinder_centered(station.boss, boss_height),
                 station.x,
@@ -176,17 +243,7 @@ class Chassis:
             )
             for station in joint.stations
         ]
-        body = ch.union(body, *bosses)
-
-        # The keyboard Well: a through-opening in the top plate over the
-        # placed keyboard, one shell clearance larger than the plate.
-        well = ch.box_centered(
-            f.keyboard_w + 2.0 * f.clearance,
-            f.keyboard_d + 2.0 * f.clearance,
-            3.0 * wall,
-        )
-        well = ch.translate(well, f.keyboard_x, f.keyboard_y, top)
-        body = ch.cut(body, well)
+        body = ch.union(body, *band_bosses)
 
         body = ch.union(body, self._seat(-1), self._seat(1))
         body = ch.cut(body, self._seat_pocket(-1), self._seat_pocket(1))
@@ -206,15 +263,72 @@ class Chassis:
         ]
         body = ch.cut(body, *holes)
 
-        # Scallops: the upper half of every station's relief. Inside the band
-        # the wall is prismatic, so no shear.
-        scallops = [
-            self._scallop(
-                station, z0=z0, distance=station.surface, shift=0.0
+        # The plate's own M2 insert holes, drilled up from the plate's top
+        # face into the well bosses (ADR-0014).
+        plate_holes = [
+            ch.translate(
+                ch.cylinder_centered(
+                    m.insert_hole_diameter, m.insert_depth + 1.0
+                ),
+                m.x,
+                m.y,
+                m.boss_z0 + m.insert_depth / 2.0 - 0.5,
             )
-            for station in joint.stations
+            for m in mounts.mounts
+        ]
+        body = ch.cut(body, *plate_holes)
+
+        # Scallops: the upper half of every station's relief. Inside the band
+        # the wall is prismatic, so no shear. A station whose relief would
+        # reach the Well ring or one of its bosses is left uncut rather than
+        # breaking the Well.
+        avoid = [plate] + [m.plan_rect for m in mounts.mounts]
+        scallops = [
+            cutter
+            for cutter in (
+                self._scallop(
+                    station,
+                    z0=z0,
+                    distance=station.surface,
+                    shift=0.0,
+                    avoid=[(r.x0, r.y0, r.x1, r.y1) for r in avoid],
+                )
+                for station in joint.stations
+            )
+            if cutter is not None
         ]
         return ch.clean(ch.cut(body, *scallops))
+
+    def _well_mounts(self):
+        """The plate's mounting pattern, from the frame's derived dimensions.
+
+        ``well_mounts`` is duck-typed on the slide budget; the frame carries
+        the same derived numbers, so the adapter only renames them. This keeps
+        the Deck and the plate on one source without the chassis knowing the
+        whole budget.
+        """
+        from types import SimpleNamespace
+
+        from geometry.well_mounts import well_mounts
+
+        f = self.frame
+        budget = SimpleNamespace(
+            well=f.well,
+            chassis_joint=f.chassis_joint,
+            chassis_height=f.depth,
+            chassis_top=f.chassis_top,
+            clamp_width=f.clamp_width,
+            rod_x=f.rod_x,
+            clamp_center_y=f.clamp_center_y,
+        )
+        mounts = well_mounts(self.config, budget)
+        if not mounts.ok:
+            raise ValueError(
+                "the plate's Well mounts are invalid: "
+                + "; ".join(mounts.failures)
+            )
+        return mounts
+
 
     # -- joint features --------------------------------------------------
     def _column(self, station: Any):
@@ -233,6 +347,7 @@ class Chassis:
         z0: float,
         distance: float,
         shift: float,
+        avoid=(),
     ):
         """A shallow relief at one station, its floor following the wall.
 
@@ -241,6 +356,10 @@ class Chassis:
         (zero where the wall is prismatic). The cutter is a sheared prism: the
         top outline is the bottom one shifted outward, so the cut stays a
         constant ``scallop_depth`` deep.
+
+        ``avoid`` lists plan rectangles (``x0, y0, x1, y1``) the relief may not
+        reach -- the Well ring and its insert bosses. A relief that would cut
+        one is skipped (``None``): the relief is cosmetic, the Well is not.
         """
         from utilities import cad_helpers as ch
 
@@ -275,6 +394,14 @@ class Chassis:
             point(outer + shift, half),
             point(inner + shift, half),
         ]
+        if avoid:
+            xs = [p[0] for p in bottom + top]
+            ys = [p[1] for p in bottom + top]
+            x0, x1 = min(xs), max(xs)
+            y0, y1 = min(ys), max(ys)
+            for ax0, ay0, ax1, ay1 in avoid:
+                if x0 < ax1 and ax0 < x1 and y0 < ay1 and ay0 < y1:
+                    return None
         return ch.loft_between(bottom, top, height, z=z0)
 
     # -- Deck features ---------------------------------------------------

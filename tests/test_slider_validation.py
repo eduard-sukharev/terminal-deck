@@ -11,7 +11,7 @@ import dataclasses
 import pytest
 
 from components.slide import compute_slide_budget
-from geometry.well_mounts import well_mounts
+from geometry.well_mounts import plate_cutouts, well_mounts
 from layouts import make_layout
 from main import BuildPipeline
 from utilities.slider_validation import (
@@ -33,6 +33,8 @@ NEW_CHECKS = (
     "keyboard-plate-sections",
     "keyboard-mounts-stations",
     "keyboard-mounts-fit",
+    "keyboard-mounts-screw",
+    "keyboard-mounts-head",
     "keyboard-mounts-parting",
 )
 
@@ -47,7 +49,12 @@ def shipped():
     budget = compute_slide_budget(config, components)
     keyboard = components["keyboard"]
     placement = next(p for p in placements if p.component is keyboard)
-    mounts = well_mounts(config, budget, placement=placement)
+    mounts = well_mounts(
+        config,
+        budget,
+        placement=placement,
+        cutouts=plate_cutouts(keyboard.plate_model()),
+    )
     keyboard.set_well_mounts(mounts)
     report = run_slider_checks(budget, config, placements, mounts=mounts)
     return config, components, placements, budget, mounts, report
@@ -58,7 +65,14 @@ def _check(report, name):
 
 
 def _report_for(
-    check_name, config, budget, *, mounts=None, model=None, keyboard=None
+    check_name,
+    config,
+    budget,
+    *,
+    mounts=None,
+    model=None,
+    keyboard=None,
+    placements=(),
 ):
     """A report holding just the check under test, for a synthetic input."""
     report = ValidationReport()
@@ -67,7 +81,14 @@ def _report_for(
     elif check_name.startswith("keyboard-plate-"):
         _add_plate_checks(report, config, budget, model)
     else:
-        _add_mount_checks(report, config, budget, mounts, keyboard=keyboard)
+        _add_mount_checks(
+            report,
+            config,
+            budget,
+            mounts,
+            keyboard=keyboard,
+            placements=placements,
+        )
     return report
 
 
@@ -243,6 +264,57 @@ def test_mounts_fit_fails_when_the_pattern_reports_a_reason(shipped):
     check = _check(report, "keyboard-mounts-fit")
     assert not check.passed
     assert "synthetic clash" in check.message
+
+
+def test_mounts_screw_fails_when_the_stock_length_bottoms_out(shipped):
+    config, _, _, budget, mounts, _ = shipped
+    broken = dataclasses.replace(
+        mounts, screw_name="M2x8", screw_length=8, screw_engagement=6.5
+    )
+    report = _report_for("keyboard-mounts-screw", config, budget, mounts=broken)
+    check = _check(report, "keyboard-mounts-screw")
+    assert not check.passed
+    assert "M2x8" in check.message
+
+
+def test_mounts_screw_fails_when_the_screw_cannot_reach_the_insert(shipped):
+    config, _, _, budget, mounts, _ = shipped
+    broken = dataclasses.replace(mounts, screw_engagement=1.0)
+    report = _report_for("keyboard-mounts-screw", config, budget, mounts=broken)
+    check = _check(report, "keyboard-mounts-screw")
+    assert not check.passed
+    assert "1.00" in check.message
+
+
+def test_mounts_head_reports_the_parting_crossing_and_its_clearance(shipped):
+    *_, report = shipped
+    check = _check(report, "keyboard-mounts-head")
+    assert check.passed, check.message
+    # The head is deliberately not hidden: it crosses the plane and says so.
+    assert "cross the Parting plane" in check.message
+    assert "1.85" in check.message
+    assert "1.75" in check.message
+
+
+def test_mounts_head_fails_when_a_head_lands_in_the_tray_wall(shipped):
+    config, components, placements, budget, mounts, _ = shipped
+    outside = dataclasses.replace(
+        mounts.mounts[0], world_xy=(budget.well.plate_width / 2.0 + 2.0, 0.0)
+    )
+    broken = dataclasses.replace(
+        mounts, mounts=(outside,) + mounts.mounts[1:]
+    )
+    report = _report_for(
+        "keyboard-mounts-head",
+        config,
+        budget,
+        mounts=broken,
+        keyboard=components["keyboard"],
+        placements=placements,
+    )
+    check = _check(report, "keyboard-mounts-head")
+    assert not check.passed
+    assert "Tray walls" in check.message
 
 
 def test_mounts_parting_fails_when_a_boss_starts_below_the_plane(shipped):

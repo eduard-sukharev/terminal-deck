@@ -55,6 +55,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, replace
 
+from geometry.parting import deck_screw
 from utilities import fasteners
 
 #: The four stations per plate Section, in the ADR-0014 pattern.
@@ -350,8 +351,10 @@ class SeamPath:
 
     The Seam's ``x`` is where the split runs inside a row band; the jogs between
     bands are at the row boundaries. A station sits *outside* the plate in Y (in
-    the lip), so the ends are read as the first and last bands (:attr:`x_front`,
-    :attr:`x_rear`).
+    the lip), so the ends are read as the first and last bands
+    (:attr:`x_low_y`, :attr:`x_high_y`). Those two names say which edge of the
+    plate-local frame they mean -- the keyboard's own ``+Y`` is its front (the
+    spacebar row), and only the frame says whether that is the chassis' front.
     """
 
     bands: tuple[tuple[float, float, float], ...]
@@ -392,12 +395,12 @@ class SeamPath:
         return cls(tuple((float(y0), float(y1), float(x)) for y0, y1, x in bands))
 
     @property
-    def x_front(self) -> float:
+    def x_low_y(self) -> float:
         """Where the Seam leaves the plate's low-Y edge (in this frame's mm)."""
         return self.bands[0][2]
 
     @property
-    def x_rear(self) -> float:
+    def x_high_y(self) -> float:
         """Where the Seam leaves the plate's high-Y edge (in this frame's mm)."""
         return self.bands[-1][2]
 
@@ -425,11 +428,11 @@ class SeamPath:
     def x_at(self, y: float) -> float:
         """The Seam's X at plate-local ``y`` (clamped to the end bands)."""
         if y < self.bands[0][0] - _EPS:
-            return self.x_front
+            return self.x_low_y
         for y0, y1, x in self.bands:
             if y0 - _EPS <= y <= y1 + _EPS:
                 return x
-        return self.x_rear
+        return self.x_high_y
 
     def section_at(self, x: float, y: float) -> int:
         """``-1`` left of the Seam at ``y``, ``+1`` right of it (plate-local)."""
@@ -442,13 +445,12 @@ class Ear:
 
     ``rect`` is plate-local and includes the inboard ``overlap`` the union
     needs; ``world_rect`` is the same tab in the chassis plan (the frame the
-    Deck reads). ``protrusion`` is how far the tab reaches past the ring's
-    outer face (which is the plate's own edge).
+    Deck reads). The tab reaches past the ring's outer face, which is the
+    plate's own edge, by ``rect``'s own outboard extent.
     """
 
     rect: PlanRect
     world_rect: PlanRect
-    protrusion: float
     overlap: float
     fillet: float | None
     thickness: float
@@ -578,8 +580,6 @@ class PlateNotch:
     rect: PlanRect
     world_rect: PlanRect
     source: str
-    obstacle: PlanRect
-    clearance: float
     depth: float
     intrusion: float
 
@@ -595,6 +595,10 @@ class WellMounts:
     sheet_connected: bool
     # -- one source for the screw and the boss ---------------------------
     screw: str
+    screw_name: str
+    screw_length: int
+    screw_grip: float
+    screw_engagement: float
     boss_diameter: float
     boss_height: float
     insert_hole_diameter: float
@@ -606,7 +610,6 @@ class WellMounts:
     bore_margin: float
     boss_margin: float
     ear_half_width: float
-    ear_protrusion: float
     ear_fillet: float | None
     lip_required: float
     seam_far: float
@@ -648,22 +651,26 @@ class WellMounts:
     @property
     def seam_front(self) -> float:
         """Plan X where the plate Seam leaves the plate's world front edge."""
-        return self.seam_world.x_front
+        return self.seam_world.x_low_y
 
     @property
     def seam_rear(self) -> float:
         """Plan X where the plate Seam leaves the plate's world rear edge."""
-        return self.seam_world.x_rear
+        return self.seam_world.x_high_y
 
     @property
     def seam_local_front(self) -> float:
-        """Plate-local X where the Seam leaves the plate's -Y (local) edge."""
-        return self.seam_path.x_front
+        """Plate-local X where the Seam leaves the plate's front edge.
+
+        The keyboard's own ``+Y`` is its front (the spacebar row); the plate is
+        placed rotated, so that edge is the high-Y end of the plate-local Seam.
+        """
+        return self.seam_path.x_high_y
 
     @property
     def seam_local_rear(self) -> float:
-        """Plate-local X where the Seam leaves the plate's +Y (local) edge."""
-        return self.seam_path.x_rear
+        """Plate-local X where the Seam leaves the plate's rear edge (low Y)."""
+        return self.seam_path.x_low_y
 
     @property
     def front_lip_slack(self) -> float:
@@ -691,10 +698,12 @@ class WellMounts:
         state = "PASS" if self.ok else "FAIL"
         first = self.mounts[0]
         lines = [
-            f"plate mounts: {len(self.mounts)} x {self.screw} "
+            f"plate mounts: {len(self.mounts)} x {self.screw_name} "
             f"(boss Ø{self.boss_diameter:.2f}, "
             f"insert Ø{self.insert_hole_diameter:.2f} x {self.insert_depth:.1f} "
-            f"deep, z {first.boss_z0:.2f}-{first.boss_z1:.2f}) on a "
+            f"deep, z {first.boss_z0:.2f}-{first.boss_z1:.2f}; "
+            f"screw crosses {self.screw_grip:.2f} mm of plate and engages "
+            f"{self.screw_engagement:.2f} mm of the insert) on a "
             f"{self.plate_width:.2f} x {self.plate_depth:.2f} x "
             f"{self.plate_thickness:.1f} plate (ring {self.ring:.2f}, "
             f"front lip {self.front_lip:.2f}, rear lip {self.rear_lip:.2f})",
@@ -798,20 +807,20 @@ def _plate_corner_radius(config) -> float:
 
 
 def _seam_far(config) -> float:
-    """How far the configured stepped Seams jog from the centreline (mm).
+    """The stepped Section Seam's lateral jog, as build clearance (mm).
 
-    The plate now has a real Seam (:class:`SeamPath`), so this is no longer a
-    stand-in for the path: it is the lateral step the at-Seam stations keep as
-    slack on top of their ear and the printable minimum, so a station never sits
-    in a jog even if the Seam ships out by one configured step.
+    Every Sectioned part is printed against a stepped Seam (ADR-0003) whose
+    jog is configured once; the at-Seam stations keep that jog as slack on top
+    of their ear and the printable minimum, so a station never lands in a jog.
+    The plate's *split* is its own row-jogging path, not this Seam -- that path
+    reaches the stations through :class:`SeamPath` and their own clearance
+    check; this is the Section-level allowance shared by every printed part.
     """
     split = config.slide.split
-    far = 0.0
-    for name in ("chassis", "keyboard_plate"):
-        part = split.get(name)
-        if part is not None:
-            far = max(far, *(abs(v) for v in part.seams()[0].x_range))
-    return far
+    part = split.get("chassis")
+    if part is None:
+        return 0.0
+    return max(abs(v) for v in part.seams()[0].x_range)
 
 
 def _blocked_interval(
@@ -1026,6 +1035,26 @@ def _sheet_connected(positives, negatives, resolution: float) -> bool:
 # -- the entry point -----------------------------------------------------
 
 
+def plate_cutouts(model) -> tuple[PlanRect, ...]:
+    """The plate's switch and stabilizer openings as plate-local rectangles.
+
+    ``model`` is the keyboard's geometry model, duck-typed: anything exposing
+    ``switch_cutouts``/``stabilizer_cutouts`` lists of cutouts whose ``x``/``y``
+    offset a polygon of ``(vx, vy)`` vertices. This is the one conversion from
+    the keyboard's cutout polygons to the plan rectangles :func:`well_mounts`
+    checks, so the pipeline and the validation pass the same openings.
+    """
+    rects: list[PlanRect] = []
+    cutouts = tuple(getattr(model, "switch_cutouts", ())) + tuple(
+        getattr(model, "stabilizer_cutouts", ())
+    )
+    for cut in cutouts:
+        xs = [cut.x + vx for vx, _ in cut.vertices]
+        ys = [cut.y + vy for _, vy in cut.vertices]
+        rects.append(PlanRect(min(xs), min(ys), max(xs), max(ys)))
+    return tuple(rects)
+
+
 def _resolve_frame(budget, well, frame, placement) -> PlateFrame:
     """The plate frame from the caller, checked against the Well it bears on.
 
@@ -1068,9 +1097,10 @@ def _resolve_frame(budget, well, frame, placement) -> PlateFrame:
     ):
         raise ValueError(
             "the plate frame is not over the Well the budget derived: the "
-            f"keyboard is placed centred at x={frame.cx:.3f} with lips "
-            f"{front_lip:.3f}/{rear_lip:.3f} mm, the Well needs x=0 with "
-            f"{well.front_lip:.3f}/{well.rear_lip:.3f} mm"
+            f"frame at x={frame.cx:.3f}, y={frame.cy:.3f} leaves lips "
+            f"{front_lip:.3f}/{rear_lip:.3f} mm, the Well needs the frame on "
+            f"the chassis centreplane (x=0) with {well.front_lip:.3f}/"
+            f"{well.rear_lip:.3f} mm"
         )
     return frame
 
@@ -1138,6 +1168,11 @@ def well_mounts(
     bolt = fasteners.screw(screw_name)
     bore_margin = config.merged_boss.bore_margin
     boss_margin = config.chassis_joint.boss_margin
+    # The screw's head seats on the plate's underside and its shank crosses the
+    # plate into the insert above: the grip is the plate thickness, and the
+    # stock length is derived (never chosen) exactly like the chassis joints.
+    screw_grip = plate_thickness
+    screw = deck_screw(screw_name, screw_grip)
 
     # One source for the boss: the bore plus the print margin on both sides.
     hole = insert.printed_hole_diameter
@@ -1150,7 +1185,6 @@ def well_mounts(
     # hence the ear: the tab reaches one (hole radius + margin) past the station.
     clearance_hole = bolt.clearance
     ear_half = clearance_hole / 2.0 + boss_margin
-    ear_protrusion = station_out + ear_half
     ear_overlap = ear_half - station_out
     corner_radius = _plate_corner_radius(config)
     ear_fillet = min(corner_radius, ear_half) if corner_radius > 0.0 else None
@@ -1224,8 +1258,8 @@ def well_mounts(
     # `None`: they mirror about the centreplane, inboard of the band columns.
     placements = (
         ("front-outer", None, front_y),
-        ("front-seam", seam_world.x_front, front_y),
-        ("rear-seam", seam_world.x_rear, rear_y),
+        ("front-seam", seam_world.x_low_y, front_y),
+        ("rear-seam", seam_world.x_high_y, rear_y),
         ("rear-outer", None, rear_y),
     )
 
@@ -1373,7 +1407,6 @@ def well_mounts(
                     ear=Ear(
                         rect=ear_local,
                         world_rect=ear_rect,
-                        protrusion=ear_protrusion,
                         overlap=ear_overlap,
                         fillet=ear_fillet,
                         thickness=plate_thickness,
@@ -1422,8 +1455,6 @@ def well_mounts(
                 rect=local,
                 world_rect=world,
                 source=obstacle.name,
-                obstacle=frame.world_rect_to_local(obstacle.rect),
-                clearance=clearance,
                 depth=_notch_depth(local, frame),
                 # How deep the feature itself (no air gap) bites into the
                 # border: the reach that must not pierce the Well ring.
@@ -1488,6 +1519,10 @@ def well_mounts(
         failures=tuple(failures),
         sheet_connected=connected,
         screw=screw_name,
+        screw_name=screw.name,
+        screw_length=screw.length,
+        screw_grip=screw.grip,
+        screw_engagement=screw.engagement,
         boss_diameter=boss_diameter,
         boss_height=boss_height,
         insert_hole_diameter=hole,
@@ -1498,7 +1533,6 @@ def well_mounts(
         bore_margin=bore_margin,
         boss_margin=boss_margin,
         ear_half_width=ear_half,
-        ear_protrusion=ear_protrusion,
         ear_fillet=ear_fillet,
         lip_required=lip_required,
         seam_far=seam_far,
@@ -1527,5 +1561,6 @@ __all__ = [
     "WellMount",
     "WellMounts",
     "bearing_seat_obstacles",
+    "plate_cutouts",
     "well_mounts",
 ]

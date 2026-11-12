@@ -125,7 +125,9 @@ def _footprint_material(
         return None
     try:
         cutouts = list(getter())
-    except Exception:  # noqa: BLE001 - a broken component must not crash the report
+    except (ValueError, AttributeError):
+        # A component with a broken footprint must not crash the report; the
+        # caller falls back to the conservative bbox and says so.
         return None
     if not cutouts:
         return None
@@ -159,7 +161,8 @@ def _add_well_checks(report: ValidationReport, config: Any, budget: Any) -> None
     ``parting_z <= plate_bottom`` is the ADR's serviceability rule: the Tray /
     Deck Parting plane never cuts the Well. The Cutout is the keycap footprint
     plus ``wobble`` per side -- never the plate, and never
-    ``clearance.shell`` -- and the ring is one wall thick on all four sides.
+    ``clearance.shell`` -- and the ring is one wall thick on both axes (a ring
+    has one value per axis, reported as such, not four independent sides).
     """
     well = budget.well
     joint = budget.chassis_joint
@@ -173,18 +176,17 @@ def _add_well_checks(report: ValidationReport, config: Any, budget: Any) -> None
         f"{well.well_depth:.2f})",
     )
 
-    sides = {
-        "left": (well.plate_width - well.cutout_width) / 2.0,
-        "right": (well.plate_width - well.cutout_width) / 2.0,
-        "front": (well.plate_depth - well.cutout_depth) / 2.0,
-        "rear": (well.plate_depth - well.cutout_depth) / 2.0,
-    }
+    # The Well is a ring around a rectangular Cutout, so its border has two
+    # values, one per axis -- the per-side names are just their two ends.
+    inset_x = (well.plate_width - well.cutout_width) / 2.0
+    inset_y = (well.plate_depth - well.cutout_depth) / 2.0
     report.add(
         "keyboard-well-ring",
-        well.ring >= wall - _EPS and min(sides.values()) >= wall - _EPS,
-        f"Well ring {well.ring:.2f} (left/right/front/rear "
-        f"{sides['left']:.2f}/{sides['right']:.2f}/{sides['front']:.2f}/"
-        f"{sides['rear']:.2f}) >= wall.thickness {wall:.2f}",
+        well.ring >= wall - _EPS and min(inset_x, inset_y) >= well.ring - _EPS,
+        f"Well ring {well.ring:.2f} >= wall.thickness {wall:.2f}; border in "
+        f"the plate X {inset_x:.2f} / Y {inset_y:.2f} (plate "
+        f"{well.plate_width:.2f} x {well.plate_depth:.2f} around a Cutout "
+        f"{well.cutout_width:.2f} x {well.cutout_depth:.2f})",
     )
 
     cutout_w = well.keycap_width + 2.0 * well.wobble
@@ -229,8 +231,9 @@ def _add_plate_checks(
     overhang = {
         "left": cutout[0] + half_w,
         "right": half_w - cutout[2],
-        "front": cutout[1] + half_d,
-        "rear": half_d - cutout[3],
+        # Plate-local +Y is the keyboard's front (the spacebar row).
+        "front": half_d - cutout[3],
+        "rear": cutout[1] + half_d,
     }
     report.add(
         "keyboard-plate-overhang",
@@ -246,8 +249,8 @@ def _add_plate_checks(
     report.add(
         "keyboard-plate-border",
         min(margins) >= wall - _EPS,
-        f"switch-free border left/right/front/rear {margins[0]:.2f}/"
-        f"{margins[1]:.2f}/{margins[2]:.2f}/{margins[3]:.2f} >= wall "
+        f"switch-free border left/right/front(spacebar)/rear {margins[0]:.2f}/"
+        f"{margins[1]:.2f}/{margins[3]:.2f}/{margins[2]:.2f} >= wall "
         f"{wall:.2f} (no switch or stabilizer cutout in the bearing border)",
     )
 
@@ -309,6 +312,83 @@ def _add_plate_checks(
         )
 
 
+def _tray_cavity_half(config: Any, budget: Any, z: float) -> tuple[float, float]:
+    """The Tray's inner half-width and half-depth at height ``z`` (mm).
+
+    The Tray is drafted below ``band_z0`` and prismatic above it; the front and
+    rear end walls stay vertical. The narrowest cavity over a feature's Z span
+    is therefore at the span's lowest height.
+    """
+    from utilities.cad_helpers import draft_inset
+
+    joint = budget.chassis_joint
+    wall = config.wall_thickness
+    if z >= joint.band_z0:
+        outer = budget.width
+    else:
+        outer = joint.base_width + 2.0 * draft_inset(config.draft.angle, z)
+    return outer / 2.0 - wall, budget.chassis_height / 2.0 - wall
+
+
+def _head_verdict(
+    mounts: Any,
+    config: Any,
+    budget: Any,
+    keyboard: Any | None,
+    placements: list[Any],
+) -> tuple[bool, str]:
+    """HARD: the plate-screw heads may dip into the Tray, but land clear.
+
+    A 1.5 mm plate cannot recess an M2 head (Ø3.80 × 2.00): the head sits on the
+    plate's underside and crosses the Parting plane by the difference. That is
+    unavoidable and accepted (ADR-0014), so it is *measured*: every head's plan
+    disc must stay inside the Tray's inner walls at its lowest Z and clear every
+    placed part below the plane. The keyboard itself is excluded -- these are
+    the screws of its own plate.
+    """
+    joint = budget.chassis_joint
+    parting = joint.parting_z
+    radius = mounts.head_diameter / 2.0
+    head_z0 = mounts.plate_bottom - mounts.head_depth
+    crossing = parting - head_z0 if head_z0 < parting else 0.0
+    if crossing <= 0.0:
+        return True, (
+            f"{len(mounts.mounts)} x Ø{mounts.head_diameter:.2f} head ("
+            f"{mounts.head_depth:.2f} deep) sit above the Parting plane "
+            f"{parting:.2f} (plate bottom {mounts.plate_bottom:.2f})"
+        )
+
+    inside = min(head_z0, parting)
+    half_x, half_y = _tray_cavity_half(config, budget, max(inside, 0.0))
+    wall_gap = min(
+        min(
+            half_x - abs(mount.x) - radius,
+            half_y - abs(mount.y) - radius,
+        )
+        for mount in mounts.mounts
+    )
+    worst = wall_gap
+    culprit = "the Tray walls"
+    for mount in mounts.mounts:
+        for placement in placements:
+            if keyboard is not None and placement.component is keyboard:
+                continue
+            z0, z1 = placement.z_bounds()
+            if z1 <= head_z0 + _EPS or z0 >= inside - _EPS:
+                continue
+            gap = _circle_rect_gap(mount.x, mount.y, radius, placement.box)
+            if gap < worst:
+                worst, culprit = gap, placement.component.name
+    return worst > _EPS, (
+        f"{len(mounts.mounts)} x Ø{mounts.head_diameter:.2f} head ("
+        f"{mounts.head_depth:.2f} deep) sit on plate bottom "
+        f"{mounts.plate_bottom:.2f} -> {head_z0:.2f}: they cross the Parting "
+        f"plane {parting:.2f} by {crossing:.2f} mm; closest to {culprit} "
+        f"{worst:.2f} mm (Tray cavity {2.0 * half_x:.2f} x "
+        f"{2.0 * half_y:.2f})"
+    )
+
+
 def _add_mount_checks(
     report: ValidationReport,
     config: Any,
@@ -316,17 +396,21 @@ def _add_mount_checks(
     mounts: Any | None,
     *,
     keyboard: Any | None = None,
+    placements: list[Any] = (),
 ) -> None:
     """HARD: eight M2 stations, four per Section, clear of everything.
 
     The pattern itself is derived by :func:`geometry.well_mounts.well_mounts`
     (one source for the Deck's bosses and the plate's ears/notches). These
-    checks surface its verdict, plus the Parting-plane rule: no printed plate
-    fastener column crosses it.
+    checks surface its verdict, the derived stock screw and the Parting-plane
+    rule: no printed plate fastener column crosses the plane, and the screw
+    heads that do dip into the Tray are measured against it.
     """
     names = (
         "keyboard-mounts-stations",
         "keyboard-mounts-fit",
+        "keyboard-mounts-screw",
+        "keyboard-mounts-head",
         "keyboard-mounts-parting",
     )
     if mounts is None:
@@ -360,7 +444,7 @@ def _add_mount_checks(
     report.add(
         "keyboard-mounts-fit",
         mounts.ok,
-        f"{len(mounts.mounts)} x {mounts.screw} bosses "
+        f"{len(mounts.mounts)} x {mounts.screw_name} bosses "
         f"Ø{mounts.boss_diameter:.2f} (insert Ø"
         f"{mounts.insert_hole_diameter:.2f} x {mounts.insert_depth:.2f} deep, "
         f"clearance Ø{mounts.clearance_hole_diameter:.2f}); lip "
@@ -374,6 +458,24 @@ def _add_mount_checks(
         ),
     )
 
+    # The screw is a stock length derived from the grip (the plate thickness)
+    # and the insert depth, exactly like the chassis joints: it must reach one
+    # thread diameter into the insert without bottoming out.
+    nominal = float(mounts.screw.lstrip("M"))
+    report.add(
+        "keyboard-mounts-screw",
+        nominal <= mounts.screw_engagement <= mounts.insert_depth + _EPS,
+        f"{mounts.screw_name} engages {mounts.screw_engagement:.2f} mm of the "
+        f"{mounts.insert_depth:.2f} mm insert across the {mounts.screw_grip:.2f} "
+        f"mm plate (grip); needs {nominal:.1f} <= engagement <= "
+        f"{mounts.insert_depth:.2f}",
+    )
+
+    report.add(
+        "keyboard-mounts-head",
+        *_head_verdict(mounts, config, budget, keyboard, placements),
+    )
+
     joint = budget.chassis_joint
     bases = [m.boss_z0 for m in mounts.mounts]
     standoffs = len(keyboard.mounting_holes()) if keyboard is not None else 0
@@ -385,9 +487,9 @@ def _add_mount_checks(
         f"lowest plate boss base {min(bases) if bases else float('nan'):.2f} > "
         f"Parting plane {joint.parting_z:.2f} (plate bottom "
         f"{budget.well.plate_bottom:.2f}); {standoffs} floor standoffs -- no "
-        "printed plate fastener column crosses the plane",
+        "printed plate fastener column crosses the plane (only the screw "
+        "heads dip into the Tray, checked by keyboard-mounts-head)",
     )
-
 
 
 def run_slider_checks(
@@ -885,28 +987,25 @@ def run_slider_checks(
     joint_z1 = cj.band_z1
     tightest_clear = float("inf")
     culprit = ""
+    checked = 0
     for station in cj.stations:
         radius = max(station.boss, station.base_boss) / 2.0
         for placement in placements:
             z0, z1 = placement.z_bounds()
             if z1 <= 0.0 or z0 >= joint_z1:
                 continue
+            checked += 1
             # The real notched footprint when the component can describe it;
-            # otherwise its bounding box (conservative, and warned about when
-            # it is the reason the check cannot clear).
+            # otherwise its bounding box (conservative, and said out loud).
             material = _footprint_material(placement)
             if material is None:
                 material = [placement.box]
-                if _circle_rect_gap(
-                    station.x, station.y, radius, placement.box
-                ) <= _EPS:
-                    message = (
-                        f"{placement.component.name} has no notched plan "
-                        "footprint; slide-chassis-joint-clear used its bounding "
-                        "box"
-                    )
-                    if message not in report.warnings:
-                        report.warn(message)
+                message = (
+                    f"{placement.component.name} has no notched plan "
+                    "footprint; slide-chassis-joint-clear used its bounding box"
+                )
+                if message not in report.warnings:
+                    report.warn(message)
             gap = min(
                 (
                     _circle_rect_gap(station.x, station.y, radius, piece)
@@ -919,9 +1018,13 @@ def run_slider_checks(
                 culprit = placement.component.name
     report.add(
         "slide-chassis-joint-clear",
-        tightest_clear > 0.0,
-        f"closest joint station to {culprit or 'no component'}: "
-        f"{tightest_clear:.2f} mm",
+        checked > 0 and tightest_clear > 0.0,
+        (
+            f"closest joint station to {culprit}: {tightest_clear:.2f} mm"
+            if checked
+            else "no placement survived the Z filter below the band's top -- "
+            "the stations' clearance cannot be proven"
+        ),
     )
 
     # -- ADR-0014: the Well, the plate and its eight mounts ---------------
@@ -929,15 +1032,6 @@ def run_slider_checks(
     keyboard_component = (
         keyboard_placement.component if keyboard_placement is not None else None
     )
-    if mounts is None and keyboard_placement is not None:
-        try:
-            from geometry.well_mounts import well_mounts
-
-            mounts = well_mounts(config, budget, placement=keyboard_placement)
-        except (ValueError, KeyError):
-            # The plate/Well derivation is the one source for the pattern; if
-            # it cannot run, the mount checks below fail with that verdict.
-            mounts = None
     plate_model = None
     plate_model_error = ""
     getter = getattr(keyboard_component, "plate_model", None)
@@ -946,6 +1040,28 @@ def run_slider_checks(
             plate_model = getter()
         except (ValueError, KeyError) as exc:
             plate_model_error = str(exc)
+    # The plate's real openings are part of the mounting pattern: the ears must
+    # clear them and the sheet must stay connected around them, so the pattern
+    # is derived with them here exactly as the pipeline injects it.
+    from geometry.well_mounts import plate_cutouts
+
+    cutouts = (
+        plate_cutouts(plate_model) if plate_model is not None else ()
+    )
+    if mounts is None and keyboard_placement is not None:
+        try:
+            from geometry.well_mounts import well_mounts
+
+            mounts = well_mounts(
+                config,
+                budget,
+                placement=keyboard_placement,
+                cutouts=cutouts,
+            )
+        except (ValueError, KeyError):
+            # The plate/Well derivation is the one source for the pattern; if
+            # it cannot run, the mount checks below fail with that verdict.
+            mounts = None
     _add_well_checks(report, config, budget)
     _add_plate_checks(report, config, budget, plate_model)
     if plate_model is None and plate_model_error:
@@ -953,7 +1069,12 @@ def run_slider_checks(
             "the plate model could not be generated: " + plate_model_error
         )
     _add_mount_checks(
-        report, config, budget, mounts, keyboard=keyboard_component
+        report,
+        config,
+        budget,
+        mounts,
+        keyboard=keyboard_component,
+        placements=placements,
     )
 
     report.goals["closed-face-height"] = budget.closed_face_height

@@ -61,7 +61,6 @@ class WelledPlate:
     plate_top: float
     well_depth: float
     ring: float
-    edge_margin: float
     front_lip: float
     rear_lip: float
     boss_lip_required: float
@@ -441,7 +440,6 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
         plate_top=plate_z + plate_thickness,
         well_depth=chassis_thickness - (plate_z + plate_thickness),
         ring=wall,
-        edge_margin=wall + wobble,
         front_lip=well_front_margin - wall,
         rear_lip=rear_band,
         boss_lip_required=boss_lip_required,

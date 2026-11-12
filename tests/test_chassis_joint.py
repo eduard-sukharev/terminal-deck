@@ -138,35 +138,6 @@ def test_column_is_a_frustum_inside_the_floor_skin(data):
         )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="ADR-0014's 7.65 mm front margin puts the keyboard plate's front "
-    "border 0.75 mm inside the front band stations' Ø7.80 reach; the accepted "
-    "fix is plate-border notches + a ring-safe scallop (T1b/T3, #10)",
-)
-def test_stations_stay_clear_of_the_placed_components(data):
-    _, budget, _, placements = data
-    joint = budget.chassis_joint
-    worst = float("inf")
-    for station in joint.stations:
-        radius = max(station.boss, station.base_boss) / 2.0
-        rect = (
-            station.x - radius,
-            station.y - radius,
-            station.x + radius,
-            station.y + radius,
-        )
-        for placement in placements:
-            z0, z1 = placement.z_bounds()
-            if z1 <= 0.0 or z0 >= joint.band_z1:
-                continue
-            x0, y0, x1, y1 = placement.box
-            dx = max(rect[0] - x1, x0 - rect[2], 0.0)
-            dy = max(rect[1] - y1, y0 - rect[3], 0.0)
-            worst = min(worst, (dx * dx + dy * dy) ** 0.5)
-    assert worst > 0.0
-
-
 # -- geometry ------------------------------------------------------------
 def test_tray_and_deck_meet_at_the_parting_plane(data, solids):
     _, _, frame, _ = data

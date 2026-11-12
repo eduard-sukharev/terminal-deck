@@ -28,6 +28,7 @@ from geometry.well_mounts import (
     PlateNotch,
     SeamPath,
     bearing_seat_obstacles,
+    plate_cutouts,
     well_mounts,
 )
 from keyboard.geometry.seam import RowSeam
@@ -98,23 +99,11 @@ def _plate_rect(budget) -> PlanRect:
 def _switch_cutouts(components) -> tuple[PlanRect, ...]:
     """The real switch cutouts, as plate-local rectangles.
 
-    The keyboard geometry model is pure data (no CAD), so the clash check runs
-    against the actual switches rather than a placeholder.
+    Read through the same production helper the pipeline passes to
+    ``well_mounts``, so the test cannot disagree with the build about which
+    openings the pattern must clear.
     """
-    model = components["keyboard"].plate_model()
-    rects = []
-    for cut in model.switch_cutouts:
-        xs = [v[0] for v in cut.vertices]
-        ys = [v[1] for v in cut.vertices]
-        rects.append(
-            PlanRect(
-                cut.x + min(xs),
-                cut.y + min(ys),
-                cut.x + max(xs),
-                cut.y + max(ys),
-            )
-        )
-    return tuple(rects)
+    return plate_cutouts(components["keyboard"].plate_model())
 
 
 # -- the pattern ---------------------------------------------------------
@@ -212,6 +201,32 @@ def test_boss_stands_on_the_plate_top_and_holds_the_insert(mounts):
         assert mount.boss_z1 - mount.boss_z0 >= mounts.insert_depth
 
 
+def test_the_screw_is_a_derived_stock_length(data, mounts):
+    """The plate screw comes from the grip and the insert, like every joint."""
+    config, _, budget, _ = data
+    screw = fasteners.screw(_screw(config))
+    insert = fasteners.heat_insert(_screw(config))
+    # The head seats on the plate's underside, so the grip is the plate.
+    assert mounts.screw_grip == pytest.approx(budget.well.plate_thickness)
+    assert mounts.screw_name == f"{mounts.screw}x{mounts.screw_length}"
+    assert mounts.screw_engagement == pytest.approx(
+        mounts.screw_length - mounts.screw_grip
+    )
+    assert mounts.screw_engagement >= float(mounts.screw.lstrip("M"))
+    assert mounts.screw_engagement <= mounts.insert_depth
+    # Today: a 1.5 mm plate over a 3.0 mm insert leaves the stock M2x4.
+    assert mounts.screw_name == "M2x4"
+    assert mounts.screw_length == 4
+    assert mounts.screw_engagement == pytest.approx(2.5)
+    # The head is the library's, and a 1.5 mm plate cannot recess it.
+    assert mounts.head_diameter == pytest.approx(screw.head_diameter)
+    assert mounts.head_depth == pytest.approx(screw.head_depth)
+    assert (
+        mounts.plate_bottom - mounts.head_depth
+        < budget.chassis_joint.parting_z
+    )
+
+
 # -- the lips ------------------------------------------------------------
 
 
@@ -274,14 +289,18 @@ def test_every_station_has_an_ear_that_holds_the_clearance_hole(data, mounts):
         # The ear is an extension outboard of the ring under the station: the
         # hole's centre sits one (bore margin + hole radius) into the lip, and
         # the ear reaches one (hole radius + edge margin) past it.
-        assert ear.protrusion == pytest.approx(
+        protrusion = (
+            mounts.insert_hole_diameter / 2.0 + mounts.bore_margin
+            + ear.rect.width / 2.0
+        )
+        assert protrusion == pytest.approx(
             (mounts.insert_hole_diameter / 2.0 + mounts.bore_margin)
             + (screw.clearance / 2.0 + edge)
         )
         assert ear.fillet is not None and ear.fillet > 0.0
         assert ear.overlap >= config.material.minimum_feature
         # Today: a 4.6 mm ear around the Ø2.2 hole, r2.0 ends.
-        assert ear.protrusion == pytest.approx(4.6)
+        assert protrusion == pytest.approx(4.6)
         assert ear.fillet == pytest.approx(2.0)
 
 
@@ -349,21 +368,21 @@ def _jog_rear(seam, x: float) -> RowSeam:
 def test_at_seam_stations_straddle_each_end_of_the_real_seam(data, mounts):
     config, components, _, _ = data
     model = components["keyboard"].plate_model()
-    # The clearance is still the configured Seam step + ear + printable minimum.
-    far = max(abs(v) for v in config.slide.split["chassis"].seams()[0].x_range)
-    assert far == pytest.approx(4.0)
-    assert mounts.seam_far == pytest.approx(far)
+    # The pinned, intended pattern: the at-Seam station sits 7.20 mm off its
+    # Seam segment (ear 2.60 + printable minimum 0.60 + 4.00 Section slack).
+    assert mounts.seam_clearance == pytest.approx(7.20, abs=0.01)
     assert mounts.seam_clearance == pytest.approx(
-        far + mounts.ear_half_width + config.material.minimum_feature
+        mounts.seam_far + mounts.ear_half_width + config.material.minimum_feature
     )
-    # The real Seam's two ends in the *plate-local* frame (the keyboard model's).
-    assert mounts.seam_path.x_front == pytest.approx(_seam_x_at(model, -1000.0))
-    assert mounts.seam_path.x_rear == pytest.approx(_seam_x_at(model, 1000.0))
-    assert mounts.seam_local_front == pytest.approx(0.0, abs=1e-6)
-    assert mounts.seam_local_rear == pytest.approx(-50.584375, abs=1e-6)
+    # The real Seam's two ends in the *plate-local* frame (the keyboard model's
+    # own centred frame, where +Y is the spacebar/front edge).
+    assert mounts.seam_path.x_low_y == pytest.approx(_seam_x_at(model, -1000.0))
+    assert mounts.seam_path.x_high_y == pytest.approx(_seam_x_at(model, 1000.0))
+    assert mounts.seam_local_rear == pytest.approx(0.0, abs=1e-6)
+    assert mounts.seam_local_front == pytest.approx(-50.584375, abs=1e-6)
 
     # Placed on the chassis, the keyboard's 180 deg turn swaps the two ends:
-    # the spacebar row's jog (local rear) is the *world front* lip's Seam end.
+    # the spacebar row's jog (local front) is the *world front* lip's Seam end.
     assert mounts.seam_front == pytest.approx(50.584375, abs=1e-6)
     assert mounts.seam_rear == pytest.approx(0.0, abs=1e-6)
 
@@ -440,9 +459,7 @@ def test_a_front_at_seam_station_is_walked_inboard_of_the_band_column(
         mounts.insert_hole_diameter + budget.chassis_joint.insert_hole
     ) / 2.0 >= config.material.minimum_feature - 1e-9
     # And it is still the closest at-Seam station: it clamps the Seam's end.
-    assert mounts.seam_front - walked.x == pytest.approx(
-        50.584375 - walked.x
-    )
+    assert mounts.seam_front - walked.x == pytest.approx(3.54, abs=0.01)
     assert mounts.seam_front - walked.x < mounts.seam_clearance
 
 
@@ -498,9 +515,9 @@ def test_stations_follow_a_moved_seam_jog(data, seam, frame):
     config, _, budget, _ = data
     moved = _jog_rear(seam, -70.0)
     result = well_mounts(config, budget, seam=moved, frame=frame)
-    # The local jog is at -70; placed, the world's rear Seam end is 0 and the
-    # front end +70 (the 180 deg turn).
-    assert result.seam_local_rear == pytest.approx(-70.0)
+    # The moved jog is the plate-local *front* (high-Y) end; placed, the
+    # world's rear Seam end is 0 and the front end +70 (the 180 deg turn).
+    assert result.seam_local_front == pytest.approx(-70.0)
     assert result.seam_front == pytest.approx(70.0)
     assert result.seam_rear == pytest.approx(0.0)
     # The rear pair straddles the (world) rear end at x = 0 ...
@@ -539,8 +556,8 @@ def test_a_seam_jog_that_swallows_an_outer_station_fails_loudly(data, seam, fram
 
 def test_seam_path_reads_the_ends_and_the_side_of_a_band(seam):
     path = SeamPath.from_seam(seam, 80.85)
-    assert path.x_front == pytest.approx(0.0)
-    assert path.x_rear == pytest.approx(-50.584375)
+    assert path.x_low_y == pytest.approx(0.0)
+    assert path.x_high_y == pytest.approx(-50.584375)
     # Every band is addressed by plate-local Y ...
     for y0, y1, x in path.bands:
         assert path.x_at((y0 + y1) / 2.0) == pytest.approx(x)
@@ -595,8 +612,8 @@ def test_seam_path_accepts_bare_bands_and_rejects_broken_ones():
     plain = SeamPath.from_seam(((-10.0, 0.0, 2.0), (0.0, 10.0, -3.0)), 40.0)
     assert plain.bands[0][0] == pytest.approx(-20.0)  # stretched to the edge
     assert plain.bands[-1][1] == pytest.approx(20.0)
-    assert plain.x_front == pytest.approx(2.0)
-    assert plain.x_rear == pytest.approx(-3.0)
+    assert plain.x_low_y == pytest.approx(2.0)
+    assert plain.x_high_y == pytest.approx(-3.0)
     with pytest.raises(ValueError):
         SeamPath.from_seam((), 40.0)
     with pytest.raises(ValueError):
@@ -657,11 +674,10 @@ def test_plate_notches_are_cut_where_the_band_bosses_reach_the_border(data, moun
         # The notch is a plate-local rectangle the plate builder can cut.
         assert notch.rect.overlaps(mounts.frame.local_rect)
         assert notch.rect.x0 < notch.rect.x1
-        assert notch.rect.x0 >= mounts.frame.local_rect.x0 - notch.clearance - 1e-9
-        assert notch.rect.x1 <= mounts.frame.local_rect.x1 + notch.clearance + 1e-9
+        assert notch.rect.x0 >= mounts.frame.local_rect.x0 - config.clearance.shell - 1e-9
+        assert notch.rect.x1 <= mounts.frame.local_rect.x1 + config.clearance.shell + 1e-9
         # It cuts the front border only: the sheet survives across it.
         assert notch.depth < (plate.y1 - plate.y0) / 2.0
-        assert notch.clearance == pytest.approx(config.clearance.shell)
         # It really is driven by a band station.
         assert notch.source.startswith("chassis-joint:")
         # The boss may poke into the ring's plan, but never through it.

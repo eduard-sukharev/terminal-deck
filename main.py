@@ -186,14 +186,22 @@ class BuildPipeline:
         # clearance holes) -- one source, derived from the same budget the Deck
         # uses and the keyboard's own placement (its 180 deg turn is the plate's
         # frame, ADR-0014/issue #19).
-        from geometry.well_mounts import well_mounts
+        from geometry.well_mounts import plate_cutouts, well_mounts
 
         keyboard = components["keyboard"]
         keyboard_placement = next(
             p for p in placements if p.component is keyboard
         )
+        # The plate's switch/stabilizer openings are real areas the ears must
+        # clear and the sheet must stay connected around, so the production
+        # pattern gets them (ADR-0014 review).
         keyboard.set_well_mounts(
-            well_mounts(config, budget, placement=keyboard_placement)
+            well_mounts(
+                config,
+                budget,
+                placement=keyboard_placement,
+                cutouts=plate_cutouts(keyboard.plate_model()),
+            )
         )
 
         report = run_slider_checks(

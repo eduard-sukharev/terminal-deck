@@ -22,6 +22,9 @@ BUILD_VOLUME = (220.0, 220.0, 256.0)
 #: How many positions the slide sweep samples between closed and open.
 SWEEP_SAMPLES = 8
 
+#: Tolerance for "surfaces touch but do not overlap" (mm).
+_EPS = 1e-9
+
 
 def _is_lid(placement: Any) -> bool:
     name = placement.component.name.lower()
@@ -49,6 +52,20 @@ def _rect_gap(a: tuple[float, ...], b: tuple[float, ...]) -> float:
     return (dx * dx + dy * dy) ** 0.5
 
 
+def _circle_rect_gap(
+    cx: float, cy: float, radius: float, rect: tuple[float, ...]
+) -> float:
+    """Radial clearance between a circular column and an XY rectangle (mm).
+
+    The band joint's Tray columns and Deck bosses are round, so their real
+    footprint is the disc -- not its bounding square. A negative result means
+    the disc reaches into the material. Zero means it touches.
+    """
+    dx = max(rect[0] - cx, 0.0, cx - rect[2])
+    dy = max(rect[1] - cy, 0.0, cy - rect[3])
+    return (dx * dx + dy * dy) ** 0.5 - radius
+
+
 def _by_role(placements: list[Any], role_fragment: str) -> Any | None:
     return next(
         (p for p in placements if role_fragment in p.component.name.lower()),
@@ -56,10 +73,87 @@ def _by_role(placements: list[Any], role_fragment: str) -> Any | None:
     )
 
 
+# -- the plate's real plan footprint ------------------------------------
+
+
+def _subtract_rect(
+    rects: list[tuple[float, float, float, float]],
+    hole: tuple[float, float, float, float],
+) -> list[tuple[float, float, float, float]]:
+    """Remove an axis-aligned ``hole`` from a list of rectangles (plan, mm).
+
+    The leftover is split into at most four rectangles (above, below, left and
+    right of the hole), which is exact for an axis-aligned cut-out: the union
+    of the returned rectangles is the material that was there before.
+    """
+    hx0, hy0, hx1, hy1 = hole
+    out: list[tuple[float, float, float, float]] = []
+    for x0, y0, x1, y1 in rects:
+        ix0, iy0 = max(x0, hx0), max(y0, hy0)
+        ix1, iy1 = min(x1, hx1), min(y1, hy1)
+        if ix0 >= ix1 - _EPS or iy0 >= iy1 - _EPS:
+            out.append((x0, y0, x1, y1))
+            continue
+        if iy0 > y0 + _EPS:
+            out.append((x0, y0, x1, iy0))
+        if iy1 < y1 - _EPS:
+            out.append((x0, iy1, x1, y1))
+        if ix0 > x0 + _EPS:
+            out.append((x0, iy0, ix0, iy1))
+        if ix1 < x1 - _EPS:
+            out.append((ix1, iy0, x1, iy1))
+    return out
+
+
+def _footprint_material(placement: Any) -> list[tuple[float, float, float, float]] | None:
+    """A placement's plan material as rectangles, or ``None`` for its bbox.
+
+    A component that knows its real (notched or eared) plan footprint exposes
+    ``footprint_cutouts()`` -- the plate-local rectangles the chassis forces it
+    to give up (ADR-0014). Subtracting them from the placement's bounding
+    rectangle is the real sheet: a band station may sit in a notch, while the
+    bounding box can never say so.
+
+    ``None`` means no footprint is available (an empty pattern counts: before
+    the Well-mount pattern is injected the plate *will* be notched), so the
+    caller falls back to the bounding box and warns.
+    """
+    getter = getattr(placement.component, "footprint_cutouts", None)
+    if getter is None:
+        return None
+    try:
+        cutouts = list(getter())
+    except Exception:  # noqa: BLE001 - a broken component must not crash the report
+        return None
+    if not cutouts:
+        return None
+
+    from geometry.well_mounts import PlanRect, PlateFrame
+
+    size = placement.component.size()
+    try:
+        frame = PlateFrame.from_placement(
+            placement, width=size.width, depth=size.depth
+        )
+    except ValueError:
+        # A frame the plan cannot express (a non-axis-aligned turn) is not a
+        # licence to guess: fall back to the conservative bbox.
+        return None
+    material = [placement.box]
+    for cutout in cutouts:
+        world = frame.local_rect_to_world(PlanRect(*cutout))
+        material = _subtract_rect(
+            material, (world.x0, world.y0, world.x1, world.y1)
+        )
+    return material
+
+
 def run_slider_checks(
     budget: Any,
     config: Any,
     placements: list[Any],
+    *,
+    mounts: Any | None = None,
 ) -> ValidationReport:
     """Run the slider's HARD checks and report its GOAL metrics.
 
@@ -69,6 +163,11 @@ def run_slider_checks(
     from the resolved placements (the lid's open edge, the keycap gap, the
     clamp corridor, the sweep) so they can catch a layout regression that the
     budget alone would not see.
+
+    ``mounts`` is the Well-mount pattern (``geometry.well_mounts.WellMounts``)
+    the pipeline injected into the plate. When omitted it is derived here from
+    the keyboard's placement, so a caller that only has the budget still gets
+    the ADR-0014 mounts checks.
     """
     report = ValidationReport()
     slide = config.slide
@@ -546,17 +645,33 @@ def run_slider_checks(
     culprit = ""
     for station in cj.stations:
         radius = max(station.boss, station.base_boss) / 2.0
-        rect = (
-            station.x - radius,
-            station.y - radius,
-            station.x + radius,
-            station.y + radius,
-        )
         for placement in placements:
             z0, z1 = placement.z_bounds()
             if z1 <= 0.0 or z0 >= joint_z1:
                 continue
-            gap = _rect_gap(rect, placement.box)
+            # The real notched footprint when the component can describe it;
+            # otherwise its bounding box (conservative, and warned about when
+            # it is the reason the check cannot clear).
+            material = _footprint_material(placement)
+            if material is None:
+                material = [placement.box]
+                if _circle_rect_gap(
+                    station.x, station.y, radius, placement.box
+                ) <= _EPS:
+                    message = (
+                        f"{placement.component.name} has no notched plan "
+                        "footprint; slide-chassis-joint-clear used its bounding "
+                        "box"
+                    )
+                    if message not in report.warnings:
+                        report.warn(message)
+            gap = min(
+                (
+                    _circle_rect_gap(station.x, station.y, radius, piece)
+                    for piece in material
+                ),
+                default=0.0,
+            )
             if gap < tightest_clear:
                 tightest_clear = gap
                 culprit = placement.component.name

@@ -176,9 +176,9 @@ to tilt it.**
   user-supplied rail sections bolt on. No rail bars in the shell.
 * **Well contents** — the keyboard plate closes the Well from below; the
   **RP2040 controller** sits under the plate, in the chassis thickness. The
-  cavity there is clear end-to-end (nothing but the joint screws and the eight
-  plate-screw heads crosses the Parting plane). The SBC is in the Rear band, not
-  here. The externally
+  cavity there is clear end-to-end (the only things that cross the Parting
+  plane are the joint screws and the eight plate-screw heads). The SBC is in the
+  Rear band, not here. The externally
   reachable I/O is the accessory-rail USB-hub module, not a face cutout in the
   chassis.
 

@@ -18,8 +18,8 @@ flat against the **lower faces of the Well walls** from below. The Well walls (a
 2 mm ring around the Cutout, owned by the Deck) descend to the plate and are its
 continuous bearing; the plate carries the typing load by its own stiffness on
 the fastening bosses. No floor standoffs remain, so the cavity under the plate
-(the RP2040 controller) is clear end-to-end and nothing but the joint screws and
-the eight plate-screw heads crosses the Parting plane.
+(the RP2040 controller) is clear end-to-end and the only things that cross the
+Parting plane are the joint screws and the eight plate-screw heads.
 
 ## Decision
 

@@ -7,6 +7,7 @@ Checks per ``docs/keyboard_architecture.md``:
 * switch entirely inside outline
 * mounting holes inside plate
 * minimum edge distance
+* no switch/stabilizer cutout in the plate border (the Well Cutout, ADR-0014)
 * valid plate thickness
 * no duplicate keys
 * supported switch family

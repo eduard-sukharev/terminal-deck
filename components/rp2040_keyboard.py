@@ -69,10 +69,11 @@ class Rp2040Keyboard(Component):
         self._keycap_enabled = bool(keycap_cfg.get("enabled", True))
 
     def set_plate_raise(self, height: float) -> None:
-        """Override the plate standoff height (mm).
+        """Override the plate's height above the case floor (mm) — its Z.
 
-        The layout calls this when something buried under the raised plate
-        needs more clearance than the switch bodies alone.
+        The plate is the Deck Well's bearer (ADR-0014); the layout calls this
+        when something buried under it (the controller) needs more room than
+        the switch bodies alone, which deepens the Well through the Z stack.
         """
         self._plate_raise = height
 

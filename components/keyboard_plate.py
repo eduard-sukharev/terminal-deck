@@ -121,6 +121,24 @@ class KeyboardPlate(Component):
         return self._model.metadata.cutout
 
     @property
+    def seam(self):
+        """The plate Seam: the row-jogging path between key columns (ADR-0014)."""
+        self._ensure_model()
+        return self._model.seam
+
+    @property
+    def seam_depth(self) -> float:
+        """The plate's extent in Y (mm) — what the Seam's bands span."""
+        self._ensure_model()
+        return self._model.metadata.height
+
+    @property
+    def section_outlines(self) -> list[list[tuple[float, float]]]:
+        """The two Section outlines ``[left, right]`` (plate-local mm)."""
+        self._ensure_model()
+        return [list(poly) for poly in self._model.section_outlines]
+
+    @property
     def plate_outline(self) -> list[tuple[float, float]]:
         """The plate outline polygon (mm, plate-local)."""
         self._ensure_model()
@@ -201,3 +219,39 @@ class KeyboardPlate(Component):
             plate = cad_helpers.cut(plate, bore)
 
         return plate
+
+    def plate_sections(self):
+        """The plate cut into its two printable Sections along the Seam.
+
+        The Seam is the row-jogging path between key columns
+        (:func:`keyboard.geometry.seam.plate_seam`), never the straight
+        ``x=0`` cut through switch cutouts (issue #9). The split is a boolean
+        partition, so the Sections rejoin the whole losslessly; each must also
+        fit the printer's build volume. Either failure raises (HARD).
+
+        Returns
+        -------
+        list
+            ``[left, right]`` solids in the plate's local frame.
+        """
+        from geometry.split import (
+            check_build_volume,
+            check_sections,
+            split_sections,
+        )
+        from utilities import cad_helpers
+
+        cad_helpers.require_cad()
+        whole = self.build()
+        sections = split_sections(whole, [self.seam], self.seam_depth)
+        names = ("left", "right")
+        problems = check_sections(whole, sections) + check_build_volume(
+            dict(zip(names, sections))
+        )
+        if problems:
+            raise ValueError(
+                "the keyboard plate Sections are not printable: "
+                + "; ".join(problems)
+            )
+        return sections
+

@@ -299,6 +299,13 @@ class Rp2040Keyboard(Component):
         """The bare switch plate solid (no switches, keycaps or standoff raise)."""
         return self._plate.build()
 
+    def plate_sections(self):
+        """The plate split into left/right Sections along its key-avoiding Seam.
+
+        Delegates to :meth:`KeyboardPlate.plate_sections` (ADR-0014, issue #9).
+        """
+        return self._plate.plate_sections()
+
     def validate(self) -> tuple[int, list[str]]:
         """Run the keyboard plate geometry validation checks.
 

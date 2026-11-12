@@ -337,6 +337,12 @@ class BuildPipeline:
 
         plate = components["keyboard"].build_plate()
         split = config.slide.split
+        if "keyboard_plate" in split:
+            print(
+                "[pipeline] warning: slide.split.keyboard_plate is retired and "
+                "ignored; the plate splits between keys along the Seam its "
+                "layout derives (ADR-0014, #9)"
+            )
         chassis_left, chassis_right = ch.split_sections(
             chassis_shell, split.get("chassis")
         )
@@ -353,8 +359,14 @@ class BuildPipeline:
         back_left, back_right = ch.split_sections(
             lid_back, split.get("screen_lid_back")
         )
-        plate_left, plate_right = ch.split_sections(
-            plate, split.get("keyboard_plate")
+        plate_left, plate_right = components["keyboard"].plate_sections()
+        seam = components["keyboard"].plate_model().seam
+        print(
+            "[pipeline] keyboard plate Seam, front to back: "
+            + " -> ".join(
+                f"({x:.2f}, {y:.2f})"
+                for x, y in seam.polyline(components["keyboard"].plate_model().metadata.height)
+            )
         )
 
         parts = {

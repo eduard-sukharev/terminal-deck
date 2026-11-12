@@ -9,7 +9,10 @@ representation produced by :func:`keyboard.generate` and consumed by the
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from keyboard.geometry.seam import RowSeam
 
 
 @dataclass(frozen=True)
@@ -70,3 +73,10 @@ class KeyboardGeometryModel:
     stabilizer_cutouts: list[Cutout] = field(default_factory=list)
     mounting_holes: list[MountingHole] = field(default_factory=list)
     metadata: KeyboardMetadata | None = None
+    #: Where the plate splits into its two printable Sections: the row-jogging
+    #: Seam between key columns (ADR-0003, ADR-0014), never a straight cut
+    #: through switch cutouts.
+    seam: RowSeam | None = None
+    #: The two Section outlines ``(left, right)`` in plate-local mm, clipped
+    #: from ``plate_outline`` along :attr:`seam`.
+    section_outlines: list[list[tuple[float, float]]] = field(default_factory=list)

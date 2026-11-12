@@ -130,6 +130,41 @@ def chamfered_rect_vertices(
     ]
 
 
+def keycap_footprint(
+    switch_centers: list[tuple[float, float]],
+    specs: list[dict[str, float | int]],
+) -> tuple[float, float, float, float]:
+    """Union of the keycaps' base rectangles: ``(x0, y0, x1, y1)`` in mm.
+
+    Each cap's base rectangle is rotated about its own switch centre, exactly
+    as :func:`keyboard.geometry.keycaps.keycap_specs` and the keycap loft
+    place it. This is the *real* cap footprint — the Well Cutout is sized from
+    it (ADR-0014), not from the switch centres: a cap reaches half a base
+    beyond its switch, and a rotated cap's corners reach further still, which
+    is what a rocking keycap would strike.
+    """
+    if len(specs) != len(switch_centers):
+        raise ValueError(
+            f"{len(specs)} keycap specs for {len(switch_centers)} switch centers"
+        )
+    xs: list[float] = []
+    ys: list[float] = []
+    for (cx, cy), spec in zip(switch_centers, specs):
+        half_w = float(spec["base_w"]) / 2.0
+        half_d = float(spec["base_d"]) / 2.0
+        rad = math.radians(float(spec["rotation"]))
+        cos_r, sin_r = math.cos(rad), math.sin(rad)
+        for dx, dy in (
+            (half_w, half_d),
+            (-half_w, half_d),
+            (-half_w, -half_d),
+            (half_w, -half_d),
+        ):
+            xs.append(cx + dx * cos_r - dy * sin_r)
+            ys.append(cy + dx * sin_r + dy * cos_r)
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
 def keycap_specs(
     keys: list[Key],
     profile: Any,

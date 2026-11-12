@@ -13,13 +13,14 @@ Public API
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
 from keyboard.geometry.plate import generate as _generate
 from keyboard.layout.kle_parser import load_kle, parse_kle
 from keyboard.layout.layout import KeyboardLayout
-from keyboard.metadata import KeyboardGeometryModel, KeyboardMetadata
+from keyboard.metadata import KeyboardGeometryModel, KeyboardMetadata, MountingHole
 from keyboard.registry import (
     get_keycap,
     get_stabilizer,
@@ -63,12 +64,19 @@ def generate(
     switch_family: str = "mx_alps",
     stabilizer_family: str = "cherry",
     plate_thickness: float = 1.5,
-    edge_margin: float = 8.0,
-    corner_radius: float = 8.0,
-    screw_diameter: float = 2.0,
-    screw_edge_offset: float = 5.0,
+    *,
+    wall: float,
+    cutout: tuple[float, float, float, float] | None = None,
+    keycap_profile: str = "xda",
+    wobble: float = 0.0,
+    corner_radius: float = 2.0,
+    mounting_holes: Iterable[MountingHole] = (),
 ) -> KeyboardGeometryModel:
     """Generate the complete keyboard geometry model.
+
+    The plate is the Well Cutout plus one *wall* per side (ADR-0014); the
+    Cutout itself is the real keycap footprint plus *wobble*. The plate carries
+    only the *mounting_holes* passed in.
 
     Parameters
     ----------
@@ -80,14 +88,19 @@ def generate(
         Registered stabilizer family name (default ``"cherry"``).
     plate_thickness : float
         Plate thickness in mm.
-    edge_margin : float
-        Margin beyond outermost switch centers (mm).
+    wall : float
+        Well ring / plate border per side (mm), from ``config.wall.thickness``.
+    cutout : tuple[float, float, float, float] | None
+        The Well Cutout rect in plate-local mm; derived from the keycaps when
+        omitted.
+    keycap_profile : str
+        Keycap profile for the derived Cutout.
+    wobble : float
+        Keycap wobble allowance each side of the Cutout (mm).
     corner_radius : float
         Plate corner radius (mm).
-    screw_diameter : float
-        Mounting screw hole diameter (mm).
-    screw_edge_offset : float
-        Mounting hole inset from plate edge (mm).
+    mounting_holes : Iterable[MountingHole]
+        Holes the plate carries (injected by the enclosure; empty by default).
 
     Returns
     -------
@@ -98,10 +111,12 @@ def generate(
         switch_family=switch_family,
         stabilizer_family=stabilizer_family,
         plate_thickness=plate_thickness,
-        edge_margin=edge_margin,
+        wall=wall,
+        cutout=cutout,
+        keycap_profile=keycap_profile,
+        wobble=wobble,
         corner_radius=corner_radius,
-        screw_diameter=screw_diameter,
-        screw_edge_offset=screw_edge_offset,
+        mounting_holes=mounting_holes,
     )
 
 
@@ -110,10 +125,13 @@ def generate_from_file(
     switch_family: str = "mx_alps",
     stabilizer_family: str = "cherry",
     plate_thickness: float = 1.5,
-    edge_margin: float = 8.0,
-    corner_radius: float = 8.0,
-    screw_diameter: float = 2.0,
-    screw_edge_offset: float = 5.0,
+    *,
+    wall: float,
+    cutout: tuple[float, float, float, float] | None = None,
+    keycap_profile: str = "xda",
+    wobble: float = 0.0,
+    corner_radius: float = 2.0,
+    mounting_holes: Iterable[MountingHole] = (),
     pitch: float = 19.05,
 ) -> KeyboardGeometryModel:
     """Load a KLE JSON file and generate the geometry model.
@@ -128,10 +146,12 @@ def generate_from_file(
         switch_family=switch_family,
         stabilizer_family=stabilizer_family,
         plate_thickness=plate_thickness,
-        edge_margin=edge_margin,
+        wall=wall,
+        cutout=cutout,
+        keycap_profile=keycap_profile,
+        wobble=wobble,
         corner_radius=corner_radius,
-        screw_diameter=screw_diameter,
-        screw_edge_offset=screw_edge_offset,
+        mounting_holes=mounting_holes,
     )
 
 

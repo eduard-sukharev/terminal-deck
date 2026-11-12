@@ -11,15 +11,16 @@ layout), because it has to sit under the raised keyboard plate rather
 than hang from the tilted plate. See :attr:`switch_bottom_protrusion` for why
 it cannot live directly under the plate.
 
-The plate stands on standoffs high enough to keep the switch bodies clear of
-whatever is beneath them: the bare floor by default, or a board buried under
-the plate (the SBC) when the layout calls :meth:`set_plate_raise` with
-:meth:`plate_raise_for_buried`.
+The plate is the Well's bearer (ADR-0014): the Deck's Well walls descend to its
+top face and it is screwed to them from below, so it has no standoff bosses of
+its own (:meth:`mounting_holes` is empty). Its height above the case floor is
+still the plate's Z in the Well, raised by :meth:`set_plate_raise` /
+:meth:`plate_raise_for_buried` so the switch bodies and whatever is buried
+under them (the controller) clear the plate's underside.
 """
 
 from __future__ import annotations
 
-import math
 from typing import Any
 
 from components.base import BoundingBox, Component, Hole
@@ -55,12 +56,11 @@ class Rp2040Keyboard(Component):
         self._stab_family = str(data.get("stabilizer_family", "cherry"))
         plate_cfg = data.get("plate", {}) or {}
         self._plate_thickness = float(plate_cfg.get("thickness", 1.5))
-        self._plate_inset = float(plate_cfg.get("edge_margin", 6.0))
         self._pitch = float(data.get("pitch", 19.05))
 
-        # Default standoff: just enough to keep the switch bodies off the
-        # bare floor. The layout raises it further (set_plate_raise) when a
-        # board is buried underneath.
+        # Default raise: just enough to keep the switch bodies off the bare
+        # floor. The layout raises it further (set_plate_raise) when a board
+        # is buried underneath.
         self._floor_gap = float(plate_cfg.get("floor_gap", 1.0))
         self._plate_raise = self.switch_bottom_protrusion + self._floor_gap
 
@@ -69,10 +69,11 @@ class Rp2040Keyboard(Component):
         self._keycap_enabled = bool(keycap_cfg.get("enabled", True))
 
     def set_plate_raise(self, height: float) -> None:
-        """Override the plate standoff height (mm).
+        """Override the plate's height above the case floor (mm) — its Z.
 
-        The layout calls this when something buried under the raised plate
-        needs more clearance than the switch bodies alone.
+        The plate is the Deck Well's bearer (ADR-0014); the layout calls this
+        when something buried under it (the controller) needs more room than
+        the switch bodies alone, which deepens the Well through the Z stack.
         """
         self._plate_raise = height
 
@@ -147,7 +148,7 @@ class Rp2040Keyboard(Component):
         own centre, as the keys are); ``tallest`` is the profile's cap height,
         which is how far the Well has to descend.
         """
-        from keyboard.geometry.keycaps import keycap_specs
+        from keyboard.geometry.keycaps import keycap_footprint, keycap_specs
         from keyboard.registry import get_keycap
 
         self._plate._ensure_model()
@@ -158,23 +159,9 @@ class Rp2040Keyboard(Component):
             pitch=self._pitch,
             layout_centroid=layout._centroid(),
         )
-        xs: list[float] = []
-        ys: list[float] = []
-        for (cx, cy), spec in zip(self.switch_grid, specs):
-            half_w = float(spec["base_w"]) / 2.0
-            half_d = float(spec["base_d"]) / 2.0
-            rad = math.radians(float(spec["rotation"]))
-            cos_r, sin_r = math.cos(rad), math.sin(rad)
-            for dx, dy in (
-                (half_w, half_d),
-                (-half_w, half_d),
-                (-half_w, -half_d),
-                (half_w, -half_d),
-            ):
-                xs.append(cx + dx * cos_r - dy * sin_r)
-                ys.append(cy + dx * sin_r + dy * cos_r)
+        x0, y0, x1, y1 = keycap_footprint(self.switch_grid, specs)
         tallest = max(float(spec["height"]) for spec in specs)
-        return (max(xs) - min(xs), max(ys) - min(ys), tallest)
+        return (x1 - x0, y1 - y0, tallest)
 
     #: Y-slices the plate's occupied volume is reported in. Collision/
     #: clearance checks widen each sub-volume's Z-span by up to half its own
@@ -286,11 +273,14 @@ class Rp2040Keyboard(Component):
         )
 
     def mounting_holes(self) -> list[Hole]:
-        # The plate mounts on four standoff bosses (height = plate raise).
-        return [
-            Hole(h.x, h.y, h.diameter, height=self._plate_raise)
-            for h in self._plate.mounting_holes()
-        ]
+        """No floor standoffs (ADR-0014): the Deck's Well bears the plate.
+
+        The plate's screws go **up** into the Well's insert bosses, so the
+        keyboard contributes no Tray-floor bosses. The plate's own clearance
+        holes come from the injected Well-mount list
+        (``KeyboardPlate.set_mounting_holes``).
+        """
+        return []
 
     def mounting_screw(self) -> str:
         """The plate's standoff screw size (from keyboard.mounting.screw)."""

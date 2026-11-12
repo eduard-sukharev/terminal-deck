@@ -76,7 +76,15 @@ class BuildPipeline:
             "layout_source": cfg.keyboard.layout_source,
             "switch_family": cfg.keyboard.switch_family,
             "stabilizer_family": cfg.keyboard.stabilizer_family,
-            "plate": cfg.keyboard.plate or {},
+            # The plate is the Well Cutout + one wall per side (ADR-0014), so
+            # the keyboard model needs the resolved wall thickness and the
+            # config-derived wobble/thickness, not just the raw YAML section.
+            "wall_thickness": cfg.wall_thickness,
+            "plate": {
+                **(cfg.keyboard.plate or {}),
+                "thickness": cfg.keyboard.plate_thickness,
+                "wobble": cfg.keyboard.plate_wobble,
+            },
             "mounting": cfg.keyboard.mounting or {},
         }
         sbc = OrangePiZero2W(cfg.hardware)

@@ -119,24 +119,32 @@ def test_plate_sections_are_cut_on_the_seam_not_at_x0():
 def _well_plate():
     """The slider's plate with its Well-mount pattern injected."""
     from components.slide import compute_slide_budget
-    from geometry.well_mounts import well_mounts
+    from geometry.well_mounts import PlateFrame, well_mounts
     from main import BuildPipeline
 
     pipeline = BuildPipeline()
     config = pipeline.load_config()
     components = pipeline.load_components()
+    placements = pipeline.place_layout(components).placements()
+    keep = components["keyboard"]
+    placement = next(p for p in placements if p.component is keep)
     budget = compute_slide_budget(config, components)
-    mounts = well_mounts(config, budget)
+    frame = PlateFrame.from_placement(
+        placement,
+        width=budget.well.plate_width,
+        depth=budget.well.plate_depth,
+    )
+    mounts = well_mounts(config, budget, frame=frame)
     plate = components["keyboard"]._plate
     plate.set_well_mounts(mounts)
-    return plate, mounts
+    return plate, mounts, frame, budget
 
 
 @needs_cad
 def test_eared_plate_sections_rejoin_and_each_ear_lands_on_one_section():
     from keyboard.validation import _point_in_polygon
 
-    plate, mounts = _well_plate()
+    plate, mounts, frame, budget = _well_plate()
     whole = plate.build()
     left, right = plate.plate_sections()
     assert check_sections(whole, [left, right]) == []
@@ -162,3 +170,40 @@ def test_eared_plate_sections_rejoin_and_each_ear_lands_on_one_section():
         assert volumes[1 - expected] == pytest.approx(0.0, abs=1e-6), (
             f"{mount.name}: ear split across Sections"
         )
+
+
+@needs_cad
+def test_the_placed_plate_carries_material_and_a_hole_under_every_deck_boss():
+    """Assembly probe (issue #19): the plate, placed, under the Deck's bosses.
+
+    The bare plate is placed by the keyboard's own frame, then probed at each
+    Deck boss's plan point (the world frame the Deck builds in). A Ø1 probe at
+    the boss axis must pass through the plate's Ø2.20 clearance hole, and a
+    small probe in the ear ring around it must find plate material -- i.e. the
+    bottom-up screw has something to clamp.
+    """
+    plate, mounts, frame, budget = _well_plate()
+    whole = plate.build()
+    placed = cad_helpers.rotate_z(whole, frame.rotation)
+    placed = cad_helpers.translate(
+        placed, frame.cx, frame.cy, budget.well.plate_bottom
+    )
+    z = budget.well.plate_bottom + budget.well.plate_thickness / 2.0
+    through = cad_helpers.cylinder_centered(1.0, budget.well.plate_thickness + 2.0)
+    ring = cad_helpers.cylinder_centered(0.6, budget.well.plate_thickness + 2.0)
+    for mount in mounts.mounts:
+        # The clearance hole is clear right through the plate.
+        hole = cad_helpers.translate(
+            through, mount.world_xy[0], mount.world_xy[1], z + 1.0
+        )
+        assert cad_helpers.volume_mm3(
+            cad_helpers.intersect(placed, hole)
+        ) == pytest.approx(0.0, abs=1e-6), f"{mount.name}: no clearance hole"
+        # Plate material under the boss, in the ear around the hole.
+        for dx, dy in ((1.75, 0.0), (-1.75, 0.0), (0.0, 1.75), (0.0, -1.75)):
+            local = (mount.plate_xy[0] + dx, mount.plate_xy[1] + dy)
+            wx, wy = frame.local_to_world(*local)
+            probe = cad_helpers.translate(ring, wx, wy, z)
+            assert cad_helpers.volume_mm3(
+                cad_helpers.intersect(placed, probe)
+            ) > 0.0, f"{mount.name}: no plate material under the boss"

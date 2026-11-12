@@ -14,7 +14,9 @@ pattern in plan, as pure data:
   of ``keyboard.geometry.seam.plate_seam()``): each one sits
   ``seam_clearance`` to its own Section's side of the segment where that end of
   the Seam meets the plate's edge, so the rear pair follows the spacebar row's
-  jog instead of assuming the old straight ``x = 0`` cut;
+  jog instead of assuming the old straight ``x = 0`` cut. Where the chassis
+  forces a station inboard (the front lip's band column) it is walked toward
+  the Seam and reports the walk -- never silent;
 * **ears** -- the plate's ring-width border cannot hold the M2 clearance hole
   with its edge margin, so a filleted tab grows outboard of the ring under each
   station, one plate thickness thick;
@@ -24,22 +26,34 @@ pattern in plan, as pure data:
   the plate builder cuts out; the plate has to stay one connected sheet
   afterwards, which is checked by rasterising the sheet.
 
-Everything is derived from the configuration, the fastener library, the slide
-budget and the plate's Seam -- no dimension is chosen here. The module is pure
-data: no CAD import, and no import from the ``components`` or ``case`` packages
-(the budget and the Well are duck-typed parameters), so the data layer can size
-and check the mounts before any solid exists.
+**Two frames, one :class:`PlateFrame`.** The layout places the keyboard (and so
+the plate) *rotated* -- the spacebar faces the user, so the plate's own frame
+is the point reflection of the chassis plan. Every quantity here is derived in
+the chassis (world) plan and converted through the frame exactly once:
 
-Plan coordinates are the chassis frame (X right, Y along the slide, origin at
-the chassis footprint's centre). Plate-local coordinates are centred on the
-plate -- the same frame the keyboard's geometry model uses. The Seam arrives in
-the plate-local frame (any object with a ``bands`` tuple, e.g. ``RowSeam``).
+* the Well, the Cutout, the chassis obstacles, the band notches and each
+  station's ``world_xy`` are the **chassis plan** the Deck builds in;
+* the plate's outline, its ears, its notches copy and each station's
+  ``plate_xy`` are the **plate-local** frame the keyboard's geometry model
+  builds in (centred on the plate);
+* the Seam arrives plate-local (that is the keyboard model's frame) and is
+  converted into the chassis plan before the at-Seam stations are derived.
+
+Nothing else may compose the 180 deg turn by hand: ``PlateFrame`` is the only
+place the two frames meet.
+
+Everything is derived from the configuration, the fastener library, the slide
+budget, the plate's Seam and the keyboard's placement -- no dimension is
+chosen here. The module is pure data: no CAD import, and no import from the
+``components`` or ``case`` packages (the budget and the Well are duck-typed
+parameters), so the data layer can size and check the mounts before any solid
+exists.
 """
 
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from utilities import fasteners
 
@@ -48,6 +62,9 @@ STATIONS: tuple[str, ...] = ("front-outer", "front-seam", "rear-seam", "rear-out
 
 #: Tolerance for "surfaces touch but do not overlap" (mm).
 _EPS = 1e-9
+
+#: Tolerance for the frame's angle and the placement agreement (mm / deg).
+_FRAME_TOL = 1e-6
 
 
 # -- plan geometry -------------------------------------------------------
@@ -148,10 +165,13 @@ class Obstacle:
     ``rect`` is its plan footprint, ``z0``/``z1`` its vertical span. A round
     feature (a band column, a seat boss) also carries ``circle`` --
     ``(cx, cy, radius)`` -- so the notch it forces into the plate can be the
-    real chord of the disc instead of its bounding square. The chassis features
-    this module derives, and the ``obstacles`` argument, are in plan
-    coordinates; ``cutouts`` are plate-local, the frame the plate builder works
-    in.
+    real chord of the disc instead of its bounding square. ``insert_bore`` is
+    the diameter of the heat-set bore inside a *chassis insert boss*: the well
+    boss is Deck material above the plate and may fuse with such a boss, so
+    only the two bores have to keep printable material between them. The
+    chassis features this module derives, and the ``obstacles`` argument, are
+    in plan coordinates; ``cutouts`` are plate-local, the frame the plate
+    builder works in.
     """
 
     name: str
@@ -159,63 +179,162 @@ class Obstacle:
     z0: float
     z1: float
     circle: tuple[float, float, float] | None = None
+    insert_bore: float | None = None
 
     def overlaps_z(self, z0: float, z1: float) -> bool:
         return self.z0 < z1 - _EPS and self.z1 > z0 + _EPS
 
 
+def _axis_angle(rotation: float) -> tuple[float, float, float]:
+    """Snap a Z rotation to the axis-aligned angles, or raise (deg, cos, sin).
+
+    The plate's outline, ears and notches are axis-aligned rectangles and the
+    Seam's bands are vertical runs, so the plate may only be placed square to
+    the chassis (0/90/180/270 deg). Anything else would silently shear the
+    pattern; it is reported instead.
+    """
+    angle = float(rotation) % 360.0
+    for candidate in (0.0, 90.0, 180.0, 270.0, 360.0):
+        if abs(angle - candidate) <= _FRAME_TOL:
+            angle = candidate % 360.0
+            break
+    else:
+        raise ValueError(
+            "the plate frame needs a Z rotation that keeps the plate "
+            f"axis-aligned (a multiple of 90 deg), got {rotation!r}"
+        )
+    cos = math.cos(math.radians(angle))
+    sin = math.sin(math.radians(angle))
+    return (
+        angle,
+        0.0 if abs(cos) < _EPS else round(cos),
+        0.0 if abs(sin) < _EPS else round(sin),
+    )
+
+
 @dataclass(frozen=True)
 class PlateFrame:
-    """The plate in the chassis plan: centre plus size (mm).
+    """The plate in the chassis plan: centre, size and Z rotation (mm, deg).
 
     The single source for both halves: the Deck (T3) positions the Well ring and
     the insert bosses from it, and the plate (T4) builds its outline, ears and
     notches in it, so the two cannot drift apart.
 
-    ``to_local``/``to_plan`` convert between the chassis plan and the plate's
-    own centred frame, which is what the keyboard's geometry model uses.
+    ``rotation`` is the keyboard placement's Z rotation (local -> world). The
+    layout turns the keyboard so its spacebar faces the user, so the plate's own
+    centred frame is the point reflection of the chassis plan. Every conversion
+    between the two goes through :meth:`local_to_world` / :meth:`world_to_local`
+    (or the rectangle versions) -- nothing composes the turn by hand.
     """
 
     cx: float
     cy: float
     width: float
     depth: float
+    rotation: float = 0.0
+
+    def __post_init__(self) -> None:
+        if self.width <= 0.0 or self.depth <= 0.0:
+            raise ValueError(
+                f"the plate frame needs a positive size, got "
+                f"{self.width} x {self.depth}"
+            )
+        angle, cos, sin = _axis_angle(self.rotation)
+        object.__setattr__(self, "rotation", angle)
+        object.__setattr__(self, "_cos", cos)
+        object.__setattr__(self, "_sin", sin)
+
+    @classmethod
+    def from_placement(
+        cls,
+        placement,
+        *,
+        width: float,
+        depth: float,
+    ) -> "PlateFrame":
+        """The frame of a plate of this size carried by ``placement``.
+
+        ``placement`` is the keyboard's :class:`~layouts.base.Placement`: its
+        origin is the plate's centre and its Z rotation is the frame's. That is
+        the one fact this module cannot derive from the budget -- the budget
+        sizes the plate, the layout places it.
+        """
+        return cls(
+            cx=float(placement.x),
+            cy=float(placement.y),
+            width=float(width),
+            depth=float(depth),
+            rotation=float(placement.rotation),
+        )
 
     @property
     def x0(self) -> float:
-        return self.cx - self.width / 2.0
+        return self.rect.x0
 
     @property
     def x1(self) -> float:
-        return self.cx + self.width / 2.0
+        return self.rect.x1
 
     @property
     def y0(self) -> float:
-        return self.cy - self.depth / 2.0
+        return self.rect.y0
 
     @property
     def y1(self) -> float:
-        return self.cy + self.depth / 2.0
+        return self.rect.y1
 
     @property
     def rect(self) -> PlanRect:
-        return PlanRect(self.x0, self.y0, self.x1, self.y1)
+        """The plate's plan footprint (world axis-aligned bounding rectangle)."""
+        return self.local_rect_to_world(self.local_rect)
 
     @property
     def local_rect(self) -> PlanRect:
+        """The plate rectangle in its own centred frame."""
         return PlanRect.from_centre(0.0, 0.0, self.width, self.depth)
 
+    def local_to_world(self, x: float, y: float) -> tuple[float, float]:
+        """A plate-local point in the chassis plan."""
+        return (
+            self.cx + x * self._cos - y * self._sin,
+            self.cy + x * self._sin + y * self._cos,
+        )
+
+    def world_to_local(self, x: float, y: float) -> tuple[float, float]:
+        """A chassis-plan point in the plate's own centred frame."""
+        dx, dy = x - self.cx, y - self.cy
+        return (dx * self._cos + dy * self._sin, -dx * self._sin + dy * self._cos)
+
+    def local_rect_to_world(self, rect: PlanRect) -> PlanRect:
+        """A plate-local rectangle in the chassis plan (exact at 0/90/180/270)."""
+        corners = [
+            self.local_to_world(x, y)
+            for x in (rect.x0, rect.x1)
+            for y in (rect.y0, rect.y1)
+        ]
+        return PlanRect.from_points(corners)
+
+    def world_rect_to_local(self, rect: PlanRect) -> PlanRect:
+        """A chassis-plan rectangle in the plate's own centred frame."""
+        corners = [
+            self.world_to_local(x, y)
+            for x in (rect.x0, rect.x1)
+            for y in (rect.y0, rect.y1)
+        ]
+        return PlanRect.from_points(corners)
+
+    # -- the historical names, now the correct maps ----------------------
     def to_local(self, x: float, y: float) -> tuple[float, float]:
-        return (x - self.cx, y - self.cy)
+        return self.world_to_local(x, y)
 
     def to_plan(self, x: float, y: float) -> tuple[float, float]:
-        return (x + self.cx, y + self.cy)
+        return self.local_to_world(x, y)
 
     def to_local_rect(self, rect: PlanRect) -> PlanRect:
-        return rect.translated(-self.cx, -self.cy)
+        return self.world_rect_to_local(rect)
 
     def to_plan_rect(self, rect: PlanRect) -> PlanRect:
-        return rect.translated(self.cx, self.cy)
+        return self.local_rect_to_world(rect)
 
 
 @dataclass(frozen=True)
@@ -274,13 +393,34 @@ class SeamPath:
 
     @property
     def x_front(self) -> float:
-        """Where the Seam leaves the plate's front edge (plate-local mm)."""
+        """Where the Seam leaves the plate's low-Y edge (in this frame's mm)."""
         return self.bands[0][2]
 
     @property
     def x_rear(self) -> float:
-        """Where the Seam leaves the plate's rear edge (plate-local mm)."""
+        """Where the Seam leaves the plate's high-Y edge (in this frame's mm)."""
         return self.bands[-1][2]
+
+    def to_world(self, frame: PlateFrame) -> "SeamPath":
+        """This Seam converted into the chassis plan through ``frame``.
+
+        The Seam is a set of vertical runs (constant x, a Y band each), so it
+        converts band by band; a 180 deg turn reverses their order and mirrors
+        their x. A 90/270 deg frame would make the runs horizontal, which this
+        path cannot represent -- it raises rather than guessing.
+        """
+        if frame.rotation not in (0.0, 180.0):
+            raise ValueError(
+                "the plate Seam is a set of vertical bands; a "
+                f"{frame.rotation:g} deg plate frame would make it horizontal"
+            )
+        bands = []
+        for y0, y1, x in self.bands:
+            a = frame.local_to_world(x, y0)
+            b = frame.local_to_world(x, y1)
+            bands.append((min(a[1], b[1]), max(a[1], b[1]), a[0]))
+        bands.sort(key=lambda band: band[0])
+        return SeamPath(tuple(bands))
 
     def x_at(self, y: float) -> float:
         """The Seam's X at plate-local ``y`` (clamped to the end bands)."""
@@ -301,11 +441,13 @@ class Ear:
     """A filleted tab extending the plate outboard of the Well ring (mm).
 
     ``rect`` is plate-local and includes the inboard ``overlap`` the union
-    needs; ``protrusion`` is how far the tab reaches past the ring's outer face
-    (which is the plate's own edge).
+    needs; ``world_rect`` is the same tab in the chassis plan (the frame the
+    Deck reads). ``protrusion`` is how far the tab reaches past the ring's
+    outer face (which is the plate's own edge).
     """
 
     rect: PlanRect
+    world_rect: PlanRect
     protrusion: float
     overlap: float
     fillet: float | None
@@ -316,19 +458,23 @@ class Ear:
 class WellMount:
     """One M2 insert station under the Well's front or rear lip (mm).
 
-    ``x``/``y`` are chassis plan, ``plate_xy`` is the same point in the plate's
-    centred frame. ``side`` is the Section the station belongs to, decided by
-    the Seam (not by the sign of its X: the rear at-Seam pair straddles a Seam
-    that is well off the centreline). ``boss_z0``/``boss_z1`` is the boss's
+    ``world_xy`` is the station in the chassis plan (the frame the Deck's boss
+    is built in); ``plate_xy`` is the same point in the plate's own centred
+    frame (the frame the plate's clearance hole is drilled in). The two are one
+    point through the frame -- exposing both is what stops the Deck and the
+    plate disagreeing. ``side`` is the Section the station belongs to, decided
+    by the Seam in the plate's own frame (not by the sign of its X: the
+    at-Seam pair straddles a Seam well off the centreline, and the 180 deg
+    placement turns that frame over). ``boss_z0``/``boss_z1`` is the boss's
     vertical span: it stands on the plate's top face and merges into the ring's
-    outer face. ``reasons`` lists every check that failed -- a station is never
-    moved or dropped silently.
+    outer face. ``reasons`` lists every check that failed; ``adjustments``
+    records a station that had to move (and why) -- a station is never moved or
+    dropped silently.
     """
 
     station: str
     side: int
-    x: float
-    y: float
+    world_xy: tuple[float, float]
     plate_xy: tuple[float, float]
     boss_diameter: float
     insert_hole_diameter: float
@@ -338,6 +484,27 @@ class WellMount:
     clearance_hole_diameter: float
     ear: Ear | None
     reasons: tuple[str, ...]
+    adjustments: tuple[str, ...] = ()
+
+    @property
+    def x(self) -> float:
+        """The station's X in the chassis plan (mm)."""
+        return self.world_xy[0]
+
+    @property
+    def y(self) -> float:
+        """The station's Y in the chassis plan (mm)."""
+        return self.world_xy[1]
+
+    @property
+    def local_x(self) -> float:
+        """The clearance hole's X in the plate's own frame (mm)."""
+        return self.plate_xy[0]
+
+    @property
+    def local_y(self) -> float:
+        """The clearance hole's Y in the plate's own frame (mm)."""
+        return self.plate_xy[1]
 
     @property
     def section(self) -> str:
@@ -353,12 +520,27 @@ class WellMount:
 
     @property
     def is_front(self) -> bool:
-        return self.station.startswith("front")
+        """True for a station in the lip on the chassis plan's -Y side."""
+        return self.y < 0.0
 
     @property
     def plan_rect(self) -> PlanRect:
-        """The boss's plan footprint (its disc's bounding square)."""
+        """The boss's plan footprint (its disc's bounding square, world)."""
         return PlanRect.from_circle(self.x, self.y, self.boss_diameter)
+
+    @property
+    def local_rect(self) -> PlanRect:
+        """The boss's footprint in the plate's own frame (its bore's bbox)."""
+        return PlanRect.from_circle(
+            self.local_x, self.local_y, self.boss_diameter
+        )
+
+    @property
+    def local_bore_rect(self) -> PlanRect:
+        """The plate's M2 clearance bore in the plate's own frame (its bbox)."""
+        return PlanRect.from_circle(
+            self.local_x, self.local_y, self.clearance_hole_diameter
+        )
 
     @property
     def ear_half_width(self) -> float:
@@ -372,23 +554,29 @@ class WellMount:
             if self.ear is None
             else f"ear {self.ear.rect.width:.2f} x {self.ear.rect.depth:.2f}"
         )
-        return (
-            f"  {self.name:22s} x={self.x:8.2f} y={self.y:8.2f} "
+        text = (
+            f"  {self.name:22s} world=({self.x:8.2f}, {self.y:8.2f}) "
+            f"plate=({self.local_x:8.2f}, {self.local_y:8.2f}) "
             f"boss Ø{self.boss_diameter:.2f} {ear} [{state}]"
         )
+        for note in self.adjustments:
+            text += f"\n      walked: {note}"
+        return text
 
 
 @dataclass(frozen=True)
 class PlateNotch:
-    """A rectangle the chassis forces the plate to give up (plate-local mm).
+    """A rectangle the chassis forces the plate to give up (mm).
 
-    ``source`` names the chassis feature that produced it; ``depth`` is how far
-    it bites into the sheet from the nearest plate edge, ``intrusion`` how far
-    the feature itself reaches past the ring's outer face -- the reach that must
-    not pierce the ring.
+    ``rect`` is plate-local and ``world_rect`` the same rectangle in the chassis
+    plan; ``source`` names the chassis feature that produced it; ``depth`` is
+    how far it bites into the sheet from the nearest plate edge, ``intrusion``
+    how far the feature itself reaches past the ring's outer face -- the reach
+    that must not pierce the ring.
     """
 
     rect: PlanRect
+    world_rect: PlanRect
     source: str
     obstacle: PlanRect
     clearance: float
@@ -424,6 +612,7 @@ class WellMounts:
     seam_far: float
     seam_clearance: float
     seam_path: SeamPath
+    seam_world: SeamPath
     # -- the Well and the plate they were derived from --------------------
     plate_width: float
     plate_depth: float
@@ -458,13 +647,23 @@ class WellMounts:
 
     @property
     def seam_front(self) -> float:
-        """Plan X where the plate Seam leaves the plate's front edge."""
-        return self.seam_path.x_front + self.frame.cx
+        """Plan X where the plate Seam leaves the plate's world front edge."""
+        return self.seam_world.x_front
 
     @property
     def seam_rear(self) -> float:
-        """Plan X where the plate Seam leaves the plate's rear edge."""
-        return self.seam_path.x_rear + self.frame.cx
+        """Plan X where the plate Seam leaves the plate's world rear edge."""
+        return self.seam_world.x_rear
+
+    @property
+    def seam_local_front(self) -> float:
+        """Plate-local X where the Seam leaves the plate's -Y (local) edge."""
+        return self.seam_path.x_front
+
+    @property
+    def seam_local_rear(self) -> float:
+        """Plate-local X where the Seam leaves the plate's +Y (local) edge."""
+        return self.seam_path.x_rear
 
     @property
     def front_lip_slack(self) -> float:
@@ -474,11 +673,12 @@ class WellMounts:
     @property
     def cutout_rect(self) -> PlanRect:
         """The Well Cutout in plan: the plate inset by the ring on every side."""
+        rect = self.frame.rect
         return PlanRect(
-            self.frame.x0 + self.ring,
-            self.frame.y0 + self.ring,
-            self.frame.x1 - self.ring,
-            self.frame.y1 - self.ring,
+            rect.x0 + self.ring,
+            rect.y0 + self.ring,
+            rect.x1 - self.ring,
+            rect.y1 - self.ring,
         )
 
     def mount(self, name: str) -> WellMount:
@@ -498,8 +698,13 @@ class WellMounts:
             f"{self.plate_width:.2f} x {self.plate_depth:.2f} x "
             f"{self.plate_thickness:.1f} plate (ring {self.ring:.2f}, "
             f"front lip {self.front_lip:.2f}, rear lip {self.rear_lip:.2f})",
-            f"  seam: {len(self.seam_path.bands)} band(s) front x="
-            f"{self.seam_front:.2f} rear x={self.seam_rear:.2f}; at-Seam stations "
+            f"  plate frame: centre ({self.frame.cx:.2f}, {self.frame.cy:.2f}), "
+            f"{self.frame.rotation:g} deg in the chassis plan "
+            f"(the keyboard's placement)",
+            f"  seam (world): {len(self.seam_world.bands)} band(s) front x="
+            f"{self.seam_front:.2f} rear x={self.seam_rear:.2f}; "
+            f"seam (plate): front x={self.seam_local_front:.2f} "
+            f"rear x={self.seam_local_rear:.2f}; at-Seam stations "
             f"{self.seam_clearance:.2f} off their segment "
             f"(step {self.seam_far:.2f} + ear {self.ear_half_width:.2f} + "
             f"min feature)",
@@ -508,7 +713,7 @@ class WellMounts:
         counts = self.section_counts
         lines.append(
             f"  sections: left {counts['left']}, right {counts['right']} "
-            f"(the Seam decides membership)"
+            f"(the Seam decides membership, in the plate's frame)"
         )
         lines.append(
             f"  notches: {len(self.notches)}"
@@ -530,7 +735,12 @@ class WellMounts:
 
 
 def _band_station_obstacles(joint) -> tuple[Obstacle, ...]:
-    """The Tray columns / Deck bosses of the chassis band joint (ADR-0012)."""
+    """The Tray columns / Deck bosses of the chassis band joint (ADR-0012).
+
+    ``insert_bore`` marks them as chassis insert bosses: the well boss is Deck
+    material and may fuse with one, so only the two heat-set bores have to keep
+    printable material between them (the plate's *ear* still clears the boss).
+    """
     return tuple(
         Obstacle(
             name=f"chassis-joint:{station.kind}@{station.x:.2f},{station.y:.2f}",
@@ -538,6 +748,7 @@ def _band_station_obstacles(joint) -> tuple[Obstacle, ...]:
             z0=joint.band_z0,
             z1=joint.parting_z + joint.boss_height,
             circle=(station.x, station.y, station.boss / 2.0),
+            insert_bore=joint.insert_hole,
         )
         for station in joint.stations
     )
@@ -603,36 +814,74 @@ def _seam_far(config) -> float:
     return far
 
 
-def _inboard_x(
-    limit: float,
-    band: tuple[float, float],
-    obstacles,
-    clearance: float,
+def _blocked_interval(
+    obstacle: Obstacle,
+    y: float,
     half: float,
-) -> float:
-    """Walk ``limit`` inboard until a tab of ``half`` clears every obstacle.
+    clearance: float,
+) -> tuple[float, float] | None:
+    """The X range where a tab centred at ``(x, y)`` would touch ``obstacle``.
 
-    Only obstacles that can reach a tab on the +X side are considered: the
-    pattern mirrors, and the Seam keeps every tab out of the far half, so a
-    left-hand obstacle can never collide with a right-hand tab.
+    The tab is ``2 * half`` wide and ``2 * half`` deep (a square), the obstacle
+    is a disc when it carries ``circle`` and its rectangle otherwise. The
+    returned interval is where the tab's *centre* may not be: it is empty
+    (``None``) when the tab's Y band cannot reach the obstacle at all. Both
+    cases are exact -- a disc's chord is used, not its bounding square.
     """
-    x = limit
+    if obstacle.circle is not None:
+        cx, cy, radius = obstacle.circle
+        reach = radius + clearance
+        # Distance from the disc's centre to the tab's Y band.
+        dy = max(0.0, cy - (y + half), (y - half) - cy)
+        if dy >= reach - _EPS:
+            return None
+        half_chord = math.sqrt(max(0.0, reach * reach - dy * dy))
+        return (
+            cx - half_chord - half,
+            cx + half_chord + half,
+        )
+    rect = obstacle.rect
+    if y + half <= rect.y0 - clearance + _EPS or y - half >= rect.y1 + clearance - _EPS:
+        return None
+    return (
+        rect.x0 - clearance - half,
+        rect.x1 + clearance + half,
+    )
+
+
+def _walk_x(
+    x: float,
+    direction: float,
+    y: float,
+    obstacles,
+    half: float,
+    clearance: float,
+) -> tuple[float, tuple[str, ...]]:
+    """Walk ``x`` in ``direction`` until a ``2 * half`` tab at ``y`` is clear.
+
+    A tab that overlaps an obstacle is moved to that obstacle's blocking
+    interval in the walk's direction -- the nearest clear position on that
+    side, never a jump over a feature. Returns the cleared X and the name of
+    every obstacle it had to dodge, so a moved station can report why.
+    """
+    dodged: list[str] = []
     for _ in range(len(obstacles) + 2):
         hit = None
         for obstacle in obstacles:
-            rect = obstacle.rect
-            if rect.x1 <= 0.0:
+            interval = _blocked_interval(obstacle, y, half, clearance)
+            if interval is None:
                 continue
-            if rect.y1 + clearance <= band[0] or rect.y0 - clearance >= band[1]:
-                continue
-            if rect.x1 <= x - half - clearance or rect.x0 >= x + half + clearance:
-                continue
-            hit = obstacle
-            break
+            lo, hi = interval
+            if lo + _EPS < x < hi - _EPS:
+                hit = (obstacle, interval)
+                break
         if hit is None:
-            return x
-        x = min(x, hit.rect.x0 - clearance - half)
-    return x
+            return x, tuple(dodged)
+        obstacle, (lo, hi) = hit
+        x = hi if direction > 0.0 else lo
+        if obstacle.name not in dodged:
+            dodged.append(obstacle.name)
+    return x, tuple(dodged)
 
 
 def _footprint_bite(
@@ -777,6 +1026,55 @@ def _sheet_connected(positives, negatives, resolution: float) -> bool:
 # -- the entry point -----------------------------------------------------
 
 
+def _resolve_frame(budget, well, frame, placement) -> PlateFrame:
+    """The plate frame from the caller, checked against the Well it bears on.
+
+    The budget sizes the plate and derives where its Well must sit (the front
+    lip, the ring and the plate's depth from the chassis front); the layout
+    places the keyboard, which is the same plate. Passing the placement (or a
+    frame built from it) is how the 180 deg turn reaches this module -- the
+    frame is never assumed, and a frame that is not over the Well is an error,
+    not a silently shifted ring.
+    """
+    width = well.plate_width
+    depth = well.plate_depth
+    if frame is None:
+        if placement is None:
+            raise ValueError(
+                "well_mounts needs the plate frame: the keyboard (and its "
+                "plate) is placed rotated in the chassis, so pass the "
+                "keyboard's placement=<Placement> (or frame=<PlateFrame>); a "
+                "zero rotation is not assumed"
+            )
+        frame = PlateFrame.from_placement(placement, width=width, depth=depth)
+    if (
+        abs(frame.width - width) > _FRAME_TOL
+        or abs(frame.depth - depth) > _FRAME_TOL
+    ):
+        raise ValueError(
+            "the plate frame's size disagrees with the Well's plate: "
+            f"{frame.width:.3f} x {frame.depth:.3f} vs {width:.3f} x {depth:.3f}"
+        )
+
+    wall = well.ring
+    front_wall = -budget.chassis_height / 2.0 + wall
+    rear_wall = budget.chassis_height / 2.0 - wall
+    front_lip = frame.y0 - front_wall
+    rear_lip = rear_wall - frame.y1
+    if (
+        abs(front_lip - well.front_lip) > _FRAME_TOL
+        or abs(rear_lip - well.rear_lip) > _FRAME_TOL
+        or abs(frame.cx) > _FRAME_TOL
+    ):
+        raise ValueError(
+            "the plate frame is not over the Well the budget derived: the "
+            f"keyboard is placed centred at x={frame.cx:.3f} with lips "
+            f"{front_lip:.3f}/{rear_lip:.3f} mm, the Well needs x=0 with "
+            f"{well.front_lip:.3f}/{well.rear_lip:.3f} mm"
+        )
+    return frame
+
+
 def well_mounts(
     config,
     budget,
@@ -784,7 +1082,8 @@ def well_mounts(
     seam=None,
     cutouts=(),
     obstacles=(),
-    plate_origin: tuple[float, float] | None = None,
+    frame: PlateFrame | None = None,
+    placement=None,
 ) -> WellMounts:
     """Derive the plate's boss stations, ears and forced notches (mm).
 
@@ -803,23 +1102,27 @@ def well_mounts(
     seam : RowSeam-like, optional
         The plate's split Seam -- ``keyboard.geometry.seam.plate_seam()``'s
         ``RowSeam`` or any object with the same ``bands`` tuple
-        (``(y0, y1, x)``, plate-local). The at-Seam stations straddle the
-        segments where the Seam meets the plate's front and rear edges, and the
-        Section membership (four stations each) is read from the path. Defaults
-        to ``budget.well.seam``, which is how the Deck's adapter gets the same
-        path without knowing the keyboard; a Seam is never assumed, because the
-        straight ``x = 0`` cut this pattern used to assume is exactly the bug
-        this argument exists to prevent.
+        (``(y0, y1, x)``, plate-local). It is converted into the chassis plan
+        through the frame before the at-Seam stations are derived, so the
+        notches land on the world front lip and each pair straddles the world
+        Seam end. Defaults to ``budget.well.seam``, which is how the Deck's
+        adapter gets the same path without knowing the keyboard; a Seam is
+        never assumed, because the straight ``x = 0`` cut this pattern used to
+        assume is exactly the bug this argument exists to prevent.
     cutouts : sequence of PlanRect
         The plate's own openings (switch/stabilizer cutouts), plate-local. They
         are checked against the ears and kept out of the connectivity raster.
     obstacles : sequence of Obstacle
         Extra chassis features to keep clear of, in plan coordinates.
-    plate_origin : (x, y), optional
-        The plate's centre in the chassis plan; defaults to the derived Well
-        position (the keyboard is the datum and sits on the X centreline). Pass
-        the keyboard's actual placement when it is offset, so the Well and the
-        plate stay concentric with the keys.
+    frame : PlateFrame, optional
+        The plate in the chassis plan: its centre, size and Z rotation. This is
+        the one place the keyboard's rotation enters; build it with
+        :meth:`PlateFrame.from_placement` so the layout is the source.
+    placement : Placement-like, optional
+        The keyboard's placement, used to build ``frame`` when it is not given
+        (``frame`` wins). One of the two is required -- the plate is placed
+        rotated, so a default would be the point-reflection bug this module
+        had.
     """
     well = budget.well
     joint = budget.chassis_joint
@@ -857,15 +1160,7 @@ def well_mounts(
 
     width = well.plate_width
     depth = well.plate_depth
-    if plate_origin is None:
-        front = -budget.chassis_height / 2.0 + well.front_lip + wall
-        plate_origin = (0.0, front + depth / 2.0)
-    frame = PlateFrame(
-        cx=float(plate_origin[0]),
-        cy=float(plate_origin[1]),
-        width=width,
-        depth=depth,
-    )
+    frame = _resolve_frame(budget, well, frame, placement)
     plate_rect = frame.rect
     plate_half = width / 2.0
     ring_front, ring_rear = plate_rect.y0, plate_rect.y1
@@ -884,6 +1179,9 @@ def well_mounts(
             "the Well carry it (compute_slide_budget does)"
         )
     seam_path = SeamPath.from_seam(seam, depth)
+    # The Seam is plate-local (the keyboard model's frame); the stations are
+    # derived in the chassis plan, so convert it once through the same frame.
+    seam_world = seam_path.to_world(frame)
     seam_far = _seam_far(config)
     seam_clearance = seam_far + ear_half + minimum
 
@@ -902,56 +1200,74 @@ def well_mounts(
     # boss may be the one that reaches a band column first.
     station_half = max(boss_diameter / 2.0, ear_half)
 
-    def outer_limit(station_y: float) -> float:
-        band = (
-            station_y - station_half - clearance,
-            station_y + station_half + clearance,
-        )
-        return _inboard_x(
-            plate_half - station_half, band, sheet_obstacles, clearance, station_half
+    def outer_limit(station_y: float) -> tuple[float, tuple[str, ...]]:
+        return _walk_x(
+            plate_half - station_half,
+            -1.0,
+            station_y,
+            sheet_obstacles,
+            station_half,
+            clearance,
         )
 
     front_y = ring_front - station_out
     rear_y = ring_rear + station_out
-    outer_x = min(outer_limit(front_y), outer_limit(rear_y))
+    (front_outer, _), (rear_outer, _) = (
+        outer_limit(front_y),
+        outer_limit(rear_y),
+    )
+    outer_x = min(front_outer, rear_outer)
 
     # Each at-Seam station straddles the segment where its end of the Seam meets
-    # the plate's edge, `seam_clearance` from it on its own Section's side. The
-    # outer stations are `None`: they mirror about the centreplane, inboard of
-    # the band columns.
+    # the plate's edge, `seam_clearance` from it on its own Section's side (the
+    # world Seam ends -- the plate is placed rotated). The outer stations are
+    # `None`: they mirror about the centreplane, inboard of the band columns.
     placements = (
         ("front-outer", None, front_y),
-        ("front-seam", seam_path.x_front + frame.cx, front_y),
-        ("rear-seam", seam_path.x_rear + frame.cx, rear_y),
+        ("front-seam", seam_world.x_front, front_y),
+        ("rear-seam", seam_world.x_rear, rear_y),
         ("rear-outer", None, rear_y),
     )
 
     # -- the mounts ------------------------------------------------------
     mounts: list[WellMount] = []
-    for intended in (-1, 1):
+    for world_side in (-1, 1):
         for station, seam_x, y in placements:
             reasons: list[str] = []
-            sx = (
-                intended * outer_x
-                if seam_x is None
-                else seam_x + intended * seam_clearance
-            )
+            adjustments: list[str] = []
+            if seam_x is None:
+                sx = world_side * outer_x
+            else:
+                nominal = seam_x + world_side * seam_clearance
+                # A station the chassis forces inboard is walked *toward* its
+                # Seam end (never silently moved, never rebalanced by hand):
+                # the nearest clear position is what clamps the Seam end.
+                sx, dodged = _walk_x(
+                    nominal,
+                    1.0 if seam_x > nominal else -1.0,
+                    y,
+                    sheet_obstacles,
+                    ear_half,
+                    clearance,
+                )
+                if dodged:
+                    adjustments.append(
+                        f"{abs(sx - nominal):.2f} mm toward the Seam "
+                        f"(from the nominal {nominal:.2f} at "
+                        f"{seam_clearance:.2f} mm off it) to clear "
+                        + ", ".join(dodged)
+                    )
             forward = -1.0 if station.startswith("front") else 1.0
             lip = well.front_lip if forward < 0 else well.rear_lip
             ring_face = ring_front if forward < 0 else ring_rear
 
-            # Which Section the station actually lands in: the Seam decides, not
-            # the sign of x (the rear pair straddles a Seam well off the
-            # centreline). A station that ends up on the far side is reported,
-            # never quietly moved to restore the count.
-            seam_line = seam_path.x_at(y - frame.cy) + frame.cx
-            section = -1 if sx < seam_line else 1
-            if section != intended:
-                reasons.append(
-                    f"section: the station lands in the "
-                    f"{'left' if section < 0 else 'right'} Section -- the Seam "
-                    f"at y={y:.2f} is at x={seam_line:.2f}"
-                )
+            # Which Section the station lands in: the Seam decides, in the
+            # plate's own frame (the 180 deg turn swaps the world's sides). A
+            # pair that lands on one Section is reported below, never quietly
+            # moved to restore the count.
+            local_x, local_y = frame.world_to_local(sx, y)
+            seam_line = seam_path.x_at(local_y)
+            section = -1 if local_x < seam_line else 1
 
             # The lip has to host the boss, with its bore margin to the ring.
             if lip + _EPS < lip_required:
@@ -976,21 +1292,30 @@ def well_mounts(
                     f"{lip:.2f} mm lip"
                 )
 
-            # The Seam must not cut the station, its bore or its ear: both stay
-            # on the station's own side of the segment by the printable minimum.
+            # The Seam must not cut the plate's own geometry at the station: the
+            # ear and the clearance bore stay on their Section's side of the
+            # segment by the printable minimum. (The boss is Deck material above
+            # the plate -- the plate's Seam does not cut it -- so it is not
+            # checked against the split; its *bore* is what the screw follows.)
             ear_rect = PlanRect.from_centre(sx, y, 2.0 * ear_half, 2.0 * ear_half)
             boss_rect = PlanRect.from_circle(sx, y, boss_diameter)
-            for label, rect in (("ear", ear_rect), ("boss", boss_rect)):
-                gap = seam_line - rect.x1 if section < 0 else rect.x0 - seam_line
+            ear_local = frame.world_rect_to_local(ear_rect)
+            bore_local = frame.world_rect_to_local(
+                PlanRect.from_circle(sx, y, hole)
+            )
+            for label, rect in (("ear", ear_local), ("bore", bore_local)):
+                gap = (
+                    seam_line - rect.x1 if section < 0 else rect.x0 - seam_line
+                )
                 if gap < minimum - _EPS:
                     reasons.append(
                         f"seam: the {label} sits {gap:.2f} mm from the Seam at "
-                        f"x={seam_line:.2f} (needs {minimum:.2f} mm clear)"
+                        f"x={seam_line:.2f} (needs {minimum:.2f} mm clear, "
+                        f"plate frame)"
                     )
 
             # The ear has to stay inside the plate's X envelope and overlap the
             # plate by a printable ligature.
-            ear_local = frame.to_local_rect(ear_rect)
             if ear_local.x0 < -plate_half - _EPS or ear_local.x1 > plate_half + _EPS:
                 reasons.append(
                     f"plate: the ear {ear_local.x0:.2f}..{ear_local.x1:.2f} leaves "
@@ -1002,9 +1327,22 @@ def well_mounts(
                     f"the {minimum:.2f} mm printable feature"
                 )
 
-            # Nothing may share volume with the boss (it is Deck material) ...
+            # Nothing may share volume with the boss (it is Deck material). A
+            # chassis *insert* boss is the one exception: it is Deck material
+            # too, so the two may fuse -- only their heat-set bores have to keep
+            # printable material between them ...
             for obstacle in boss_obstacles:
-                if boss_rect.overlaps(obstacle.rect, clearance):
+                if obstacle.insert_bore is not None:
+                    distance = math.hypot(
+                        sx - obstacle.rect.cx, y - obstacle.rect.cy
+                    )
+                    bore_gap = distance - (obstacle.insert_bore + hole) / 2.0
+                    if bore_gap < minimum - _EPS:
+                        reasons.append(
+                            f"bore: {bore_gap:.2f} mm to the {obstacle.name} "
+                            f"insert bore (needs {minimum:.2f} mm of material)"
+                        )
+                elif boss_rect.overlaps(obstacle.rect, clearance):
                     reasons.append(
                         f"clash: boss vs {obstacle.name} "
                         f"(z {obstacle.z0:.2f}-{obstacle.z1:.2f})"
@@ -1021,9 +1359,8 @@ def well_mounts(
                 WellMount(
                     station=station,
                     side=section,
-                    x=sx,
-                    y=y,
-                    plate_xy=frame.to_local(sx, y),
+                    world_xy=(sx, y),
+                    plate_xy=(local_x, local_y),
                     boss_diameter=boss_diameter,
                     insert_hole_diameter=hole,
                     insert_depth=insert.depth,
@@ -1032,14 +1369,33 @@ def well_mounts(
                     clearance_hole_diameter=clearance_hole,
                     ear=Ear(
                         rect=ear_local,
+                        world_rect=ear_rect,
                         protrusion=ear_protrusion,
                         overlap=ear_overlap,
                         fillet=ear_fillet,
                         thickness=plate_thickness,
                     ),
                     reasons=tuple(reasons),
+                    adjustments=tuple(adjustments),
                 )
             )
+
+    # -- each pair clamps one Section on each side of its Seam end ----------
+    # A Seam that jogs over a station (or a walk that ran through the Seam)
+    # would put both members of a pair in one Section: the pattern no longer
+    # clamps the Seam there, so say so on both stations.
+    for station in STATIONS:
+        pair = [m for m in mounts if m.station == station]
+        if len(pair) != 2 or pair[0].section == pair[1].section:
+            message = (
+                f"section: the {station} pair lands in the same Section -- the "
+                "Seam does not separate it"
+            )
+            for index, mount in enumerate(mounts):
+                if mount.station == station:
+                    mounts[index] = replace(
+                        mount, reasons=mount.reasons + (message,)
+                    )
 
     # -- the notches the sheet has to give up ----------------------------
     notches: list[PlateNotch] = []
@@ -1047,7 +1403,7 @@ def well_mounts(
         bite = _footprint_bite(obstacle, plate_rect, minimum)
         if bite is None:
             continue
-        local_bite = frame.to_local_rect(bite)
+        local_bite = frame.world_rect_to_local(bite)
         under_an_ear = any(
             mount.ear is not None and mount.ear.rect.overlaps(local_bite, clearance)
             for mount in mounts
@@ -1056,12 +1412,14 @@ def well_mounts(
             # An ear is the whole point of the tab: losing it is a station
             # failure (reported above), never something to notch away.
             continue
-        local = frame.to_local_rect(bite.expanded(clearance))
+        world = bite.expanded(clearance)
+        local = frame.world_rect_to_local(world)
         notches.append(
             PlateNotch(
                 rect=local,
+                world_rect=world,
                 source=obstacle.name,
-                obstacle=frame.to_local_rect(obstacle.rect),
+                obstacle=frame.world_rect_to_local(obstacle.rect),
                 clearance=clearance,
                 depth=_notch_depth(local, frame),
                 # How deep the feature itself (no air gap) bites into the
@@ -1143,6 +1501,7 @@ def well_mounts(
         seam_far=seam_far,
         seam_clearance=seam_clearance,
         seam_path=seam_path,
+        seam_world=seam_world,
         plate_width=width,
         plate_depth=depth,
         plate_thickness=plate_thickness,

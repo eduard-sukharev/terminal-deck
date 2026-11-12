@@ -1,15 +1,17 @@
-"""Plate boss stations and ear outlines (ADR-0014, issue #11).
+"""Plate boss stations and ear outlines (ADR-0014, issues #11 and #18).
 
 Pure-data tests: the eight M2 insert bosses under the Deck's Well, the ears the
 plate grows to reach them, and the notches the existing chassis band joint
 forces into the plate border. The Deck (T3) cuts the bosses onto the Well
 ring's outer face; the plate (T4) cuts the clearance holes, the ears and the
-notches. Nothing here needs a CAD library.
+notches. The at-Seam pair straddles the plate's real Seam at each end, so each
+Section keeps four stations. Nothing here needs a CAD library.
 
-Every expected value is derived from the configuration, the fastener library
-and the slide budget. The few literal numbers stated (Ø6.0 boss, Ø3.0 bore,
-4.6 mm ear) are the arithmetic on those sources spelled out, so a parameter
-change moves the model and the test together.
+Every expected value is derived from the configuration, the fastener library,
+the slide budget and the keyboard's Seam. The few literal numbers stated
+(Ø6.0 boss, Ø3.0 bore, 4.6 mm ear, the -50.584 spacebar-row Seam end) are the
+arithmetic on those sources spelled out, so a parameter change moves the model
+and the test together.
 """
 
 import dataclasses
@@ -22,9 +24,11 @@ from geometry.well_mounts import (
     Obstacle,
     PlanRect,
     PlateNotch,
+    SeamPath,
     bearing_seat_obstacles,
     well_mounts,
 )
+from keyboard.geometry.seam import RowSeam
 from layouts import make_layout
 from main import BuildPipeline
 from utilities import fasteners
@@ -42,9 +46,16 @@ def data():
 
 
 @pytest.fixture(scope="module")
-def mounts(data):
+def seam(data):
+    """The plate's real split Seam -- the row-jogging path of #15."""
+    _, components, _, _ = data
+    return components["keyboard"].plate_model().seam
+
+
+@pytest.fixture(scope="module")
+def mounts(data, seam):
     config, _, budget, _ = data
-    return well_mounts(config, budget)
+    return well_mounts(config, budget, seam=seam)
 
 
 def _screw(config) -> str:
@@ -110,17 +121,37 @@ def test_mount_names_are_unique_and_say_which_section(mounts):
         assert mount.name.endswith(mount.section)
 
 
-def test_stations_mirror_about_the_centreplane(mounts):
-    for mount in mounts.mounts:
-        (mirror,) = [
-            m for m in mounts.mounts
-            if m.station == mount.station and m.side == -mount.side
-        ]
-        assert mirror.y == pytest.approx(mount.y)
-        assert mirror.x == pytest.approx(-mount.x)
-        assert mirror.ear is not None and mount.ear is not None
-        assert mirror.ear.rect.x0 == pytest.approx(-mount.ear.rect.x1)
-        assert mirror.ear.rect.x1 == pytest.approx(-mount.ear.rect.x0)
+def test_outer_stations_mirror_and_seam_pairs_straddle_the_seam(mounts):
+    """Only the outer pair mirrors about the centreplane now.
+
+    The at-Seam stations straddle the plate Seam where it *ends*, and the real
+    Seam is not centred (its rear segment is the spacebar row's gap), so those
+    pairs are symmetric about their own Seam segment, not about x=0.
+    """
+    for station in ("front-outer", "rear-outer"):
+        left = mounts.mount(f"{station}-left")
+        right = mounts.mount(f"{station}-right")
+        assert left.y == pytest.approx(right.y)
+        assert left.x == pytest.approx(-right.x)
+        assert left.ear is not None and right.ear is not None
+        assert right.ear.rect.x0 == pytest.approx(-left.ear.rect.x1)
+        assert right.ear.rect.x1 == pytest.approx(-left.ear.rect.x0)
+        assert right.ear.rect.y0 == pytest.approx(left.ear.rect.y0)
+
+    for station, seam_x in (
+        ("front-seam", mounts.seam_front),
+        ("rear-seam", mounts.seam_rear),
+    ):
+        left = mounts.mount(f"{station}-left")
+        right = mounts.mount(f"{station}-right")
+        assert left.y == pytest.approx(right.y)
+        # Equidistant on either side of that end's Seam segment ...
+        assert left.x + right.x == pytest.approx(2.0 * seam_x)
+        # ... and the two ears do not meet across it.
+        assert left.ear.rect.x1 < right.ear.rect.x0
+        # Same tab, just translated: an ear never changes size with the Seam.
+        assert left.ear.rect.width == pytest.approx(right.ear.rect.width)
+        assert left.ear.rect.depth == pytest.approx(right.ear.rect.depth)
 
 
 # -- one source for the boss ---------------------------------------------
@@ -266,23 +297,76 @@ def test_ears_stay_inside_their_lip_and_off_the_wall(data, mounts):
 # -- the Seam ------------------------------------------------------------
 
 
-def test_stations_and_ears_clear_the_stepped_seam(data, mounts):
-    config, _, _, _ = data
-    split = config.slide.split
-    # The plate has no config Split any more: it splits between keys along its
-    # own derived Seam (#15), so the stiffest *configured* step is the chassis's.
-    far = max(abs(v) for v in split["chassis"].seams()[0].x_range)
+def _seam_x_at(model, y: float) -> float:
+    """The plate Seam's X at plate-local ``y`` (the test's own reading)."""
+    bands = model.seam.segments(model.metadata.height)
+    for y0, y1, x in bands:
+        if y0 <= y <= y1:
+            return x
+    return bands[0][2] if y < bands[0][0] else bands[-1][2]
+
+
+def _jog_rear(seam, x: float) -> RowSeam:
+    """The real Seam with its rear (spacebar) segment moved to ``x``."""
+    bands = [list(band) for band in seam.bands]
+    bands[-1][2] = x
+    return RowSeam(tuple(tuple(band) for band in bands))
+
+
+def test_at_seam_stations_straddle_each_end_of_the_real_seam(data, mounts):
+    config, components, _, _ = data
+    model = components["keyboard"].plate_model()
+    # The clearance is still the configured Seam step + ear + printable minimum.
+    far = max(abs(v) for v in config.slide.split["chassis"].seams()[0].x_range)
+    assert far == pytest.approx(4.0)
     assert mounts.seam_far == pytest.approx(far)
     assert mounts.seam_clearance == pytest.approx(
         far + mounts.ear_half_width + config.material.minimum_feature
     )
-    for mount in mounts.mounts:
-        assert abs(mount.x) - mount.ear_half_width >= (
-            far + config.material.minimum_feature - 1e-9
+    # The real Seam's two ends are the stations' datums, in the chassis plan.
+    assert mounts.seam_front == pytest.approx(_seam_x_at(model, -1000.0))
+    assert mounts.seam_rear == pytest.approx(_seam_x_at(model, 1000.0))
+    for station, seam_x in (
+        ("front-seam", mounts.seam_front),
+        ("rear-seam", mounts.seam_rear),
+    ):
+        assert mounts.mount(f"{station}-left").x == pytest.approx(
+            seam_x - mounts.seam_clearance
         )
-    # The Seam stations are the tightest pair, one per Section.
-    seam = [abs(m.x) for m in mounts.mounts if m.station.endswith("seam")]
-    assert max(seam) == pytest.approx(mounts.seam_clearance)
+        assert mounts.mount(f"{station}-right").x == pytest.approx(
+            seam_x + mounts.seam_clearance
+        )
+    # Today: the Seam starts on the centreline and ends at the spacebar row's
+    # gap, so the rear pair sits at -50.584 - 7.2 and -50.584 + 7.2.
+    assert mounts.seam_front == pytest.approx(0.0, abs=1e-6)
+    assert mounts.seam_rear == pytest.approx(-50.584375, abs=1e-6)
+    assert mounts.mount("rear-seam-left").x == pytest.approx(-57.784375, abs=1e-6)
+    assert mounts.mount("rear-seam-right").x == pytest.approx(-43.384375, abs=1e-6)
+
+
+def test_each_section_gets_four_stations_on_its_side_of_the_seam(data, mounts):
+    """The Section count comes from the Seam, not from the sign of x."""
+    config, components, _, _ = data
+    model = components["keyboard"].plate_model()
+    minimum = config.material.minimum_feature
+    counts = {"left": 0, "right": 0}
+    for mount in mounts.mounts:
+        local_y = mount.y - mounts.frame.cy
+        seam_x = _seam_x_at(model, local_y) + mounts.frame.cx
+        if mount.section == "left":
+            assert mount.x < seam_x, mount.name
+            counts["left"] += 1
+        else:
+            assert mount.x > seam_x, mount.name
+            counts["right"] += 1
+        # The boss and the ear both stay clear of the segment by the printable
+        # minimum, on the station's own side (the boss is the wider of the two).
+        for rect in (mount.plan_rect, mounts.frame.to_plan_rect(mount.ear.rect)):
+            gap = seam_x - rect.x1 if mount.section == "left" else rect.x0 - seam_x
+            assert gap >= minimum - 1e-9, (mount.name, gap)
+    assert counts == {"left": 4, "right": 4}
+    assert mounts.section_counts == {"left": 4, "right": 4}
+    assert mounts.ok, mounts.summary()
 
 
 def test_the_real_plate_seam_crosses_no_station_ear(data, mounts):
@@ -297,13 +381,66 @@ def test_the_real_plate_seam_crosses_no_station_ear(data, mounts):
     bands = model.seam.segments(model.metadata.height)
     assert len(bands) > 1  # the row-jogging path, not a straight cut
     for mount in mounts.mounts:
-        ear = mount.ear.rect
-        for y0, y1, sx in bands:
-            if ear.y1 <= y0 or ear.y0 >= y1:
-                continue
-            assert ear.x1 <= sx - margin or ear.x0 >= sx + margin, (
-                f"{mount.station} ear {ear} straddles the plate Seam at x={sx:.2f}"
-            )
+        for rect in (mount.ear.rect, mounts.frame.to_local_rect(mount.plan_rect)):
+            for y0, y1, sx in bands:
+                if rect.y1 <= y0 or rect.y0 >= y1:
+                    continue
+                assert rect.x1 <= sx - margin or rect.x0 >= sx + margin, (
+                    f"{mount.name} reaches across the plate Seam at x={sx:.2f}"
+                )
+
+
+def test_stations_follow_a_moved_seam_jog(data, seam):
+    """The at-Seam stations are derived from the Seam, not pinned to numbers."""
+    config, _, budget, _ = data
+    moved = _jog_rear(seam, -70.0)
+    result = well_mounts(config, budget, seam=moved)
+    assert result.seam_rear == pytest.approx(-70.0)
+    assert result.mount("rear-seam-left").x == pytest.approx(
+        -70.0 - result.seam_clearance
+    )
+    assert result.mount("rear-seam-right").x == pytest.approx(
+        -70.0 + result.seam_clearance
+    )
+    # The front segment did not move, so neither do the front stations.
+    assert result.mount("front-seam-left").x == pytest.approx(-result.seam_clearance)
+    assert result.mount("front-seam-right").x == pytest.approx(result.seam_clearance)
+    assert result.ok, result.summary()
+    assert result.section_counts == {"left": 4, "right": 4}
+
+
+def test_a_seam_jog_that_swallows_an_outer_station_fails_loudly(data, seam):
+    """Never rebalance silently: a crossed station is a structured failure."""
+    config, _, budget, _ = data
+    result = well_mounts(config, budget, seam=_jog_rear(seam, -110.0))
+    # Nothing is dropped or NX-shuffled: the eight stations are still reported.
+    assert len(result.mounts) == 8
+    assert result.section_counts == {"left": 3, "right": 5}
+    assert not result.ok
+    assert any("Section" in reason for reason in result.failures)
+    # And the station that ended up over the Seam says so itself.
+    crossed = next(
+        m for m in result.mounts if m.station == "rear-outer" and m.x < 0.0
+    )
+    assert crossed.section == "right"
+    assert any("section" in reason for reason in crossed.reasons)
+
+
+def test_seam_path_reads_the_ends_and_the_side_of_a_band(seam):
+    path = SeamPath.from_seam(seam, 80.85)
+    assert path.x_front == pytest.approx(0.0)
+    assert path.x_rear == pytest.approx(-50.584375)
+    # Every band is addressed by plate-local Y ...
+    for y0, y1, x in path.bands:
+        assert path.x_at((y0 + y1) / 2.0) == pytest.approx(x)
+    # ... and the ends are stretched to the plate's own front/back edges.
+    assert path.bands[0][0] == pytest.approx(-80.85 / 2.0)
+    assert path.bands[-1][1] == pytest.approx(80.85 / 2.0)
+    # Section membership is the Seam's, not the centreplane's.
+    assert path.section_at(-60.0, 30.0) == -1
+    assert path.section_at(-40.0, 30.0) == 1
+    assert path.section_at(-1.0, -30.0) == -1
+    assert path.section_at(1.0, -30.0) == 1
 
 
 
@@ -368,20 +505,20 @@ def test_notches_keep_the_plate_one_connected_sheet(mounts):
     assert mounts.ok
 
 
-def test_the_notches_come_from_the_band_joint_not_a_list(data, mounts):
+def test_the_notches_come_from_the_band_joint_not_a_list(data, mounts, seam):
     config, _, budget, _ = data
     bare = dataclasses.replace(
         budget,
         chassis_joint=dataclasses.replace(budget.chassis_joint, stations=()),
     )
-    result = well_mounts(config, bare)
+    result = well_mounts(config, bare, seam=seam)
     assert result.notches == ()
     # Without the corner column the outer stations can sit at the plate's edge.
     for name in ("front-outer-left", "rear-outer-right"):
         assert abs(result.mount(name).x) > abs(mounts.mount(name).x)
 
 
-def test_a_feature_that_breaches_the_ring_fails(data, mounts):
+def test_a_feature_that_breaches_the_ring_fails(data, mounts, seam):
     config, _, budget, _ = data
     plate = _plate_rect(budget)
     reach = budget.well.ring - config.material.minimum_feature / 2.0
@@ -391,14 +528,14 @@ def test_a_feature_that_breaches_the_ring_fails(data, mounts):
         z0=mounts.plate_bottom,
         z1=mounts.plate_top,
     )
-    result = well_mounts(config, budget, obstacles=(blocker,))
+    result = well_mounts(config, budget, seam=seam, obstacles=(blocker,))
     assert not result.ok
     assert any("Well ring" in reason for reason in result.failures)
     # The mount pattern is still complete.
     assert len(result.mounts) == 8
 
 
-def test_a_severing_notch_is_a_structural_failure(data, mounts):
+def test_a_severing_notch_is_a_structural_failure(data, mounts, seam):
     """A notch that cuts the sheet in two must fail, never silently vanish."""
     config, _, budget, _ = data
     x = 50.0
@@ -408,7 +545,7 @@ def test_a_severing_notch_is_a_structural_failure(data, mounts):
         z0=mounts.plate_bottom,
         z1=mounts.plate_top,
     )
-    result = well_mounts(config, budget, obstacles=(cut,))
+    result = well_mounts(config, budget, seam=seam, obstacles=(cut,))
     assert not result.sheet_connected
     assert not result.ok
     assert any("sever" in reason for reason in result.failures)
@@ -419,23 +556,23 @@ def test_a_severing_notch_is_a_structural_failure(data, mounts):
 # -- switches ------------------------------------------------------------
 
 
-def test_ears_and_bosses_clear_the_real_switch_cutouts(data, mounts):
+def test_ears_and_bosses_clear_the_real_switch_cutouts(data, mounts, seam):
     config, components, budget, _ = data
     cutouts = _switch_cutouts(components)
     assert len(cutouts) > 30  # the real 40% keyboard
-    result = well_mounts(config, budget, cutouts=cutouts)
+    result = well_mounts(config, budget, seam=seam, cutouts=cutouts)
     assert result.ok, result.summary()
     for mount in result.mounts:
         for cut in cutouts:
             assert not mount.ear.rect.overlaps(cut), mount.name
 
 
-def test_a_cutout_under_an_ear_is_reported(data, mounts):
+def test_a_cutout_under_an_ear_is_reported(data, mounts, seam):
     config, _, budget, _ = data
     mount = mounts.mounts[0]
     x, y = mount.plate_xy
     cut = PlanRect(x - 8.0, y - 8.0, x + 8.0, y + 8.0)
-    result = well_mounts(config, budget, cutouts=(cut,))
+    result = well_mounts(config, budget, seam=seam, cutouts=(cut,))
     assert not result.ok
     assert len(result.mounts) == 8
     assert any("cutout" in reason for reason in result.failures)
@@ -444,13 +581,15 @@ def test_a_cutout_under_an_ear_is_reported(data, mounts):
 # -- parameterisation ----------------------------------------------------
 
 
-def test_stations_follow_the_well_sizing_chain(data, mounts):
+def test_stations_follow_the_well_sizing_chain(data, mounts, seam):
     """The stations are derived, not pinned: a different plate moves them."""
     config, components, _, _ = data
     wobblier = dataclasses.replace(
         config, keyboard=dataclasses.replace(config.keyboard, plate_wobble=1.2)
     )
-    other = well_mounts(wobblier, compute_slide_budget(wobblier, components))
+    other = well_mounts(
+        wobblier, compute_slide_budget(wobblier, components), seam=seam
+    )
     assert other.frame.depth > mounts.frame.depth
     assert other.mounts[0].y != pytest.approx(mounts.mounts[0].y)
     assert other.boss_diameter == pytest.approx(mounts.boss_diameter)
@@ -458,14 +597,16 @@ def test_stations_follow_the_well_sizing_chain(data, mounts):
     thinner = dataclasses.replace(
         config, wall=Wall(thickness=config.wall.thickness - 0.2)
     )
-    thin = well_mounts(thinner, compute_slide_budget(thinner, components))
+    thin = well_mounts(
+        thinner, compute_slide_budget(thinner, components), seam=seam
+    )
     # The plate is Cutout + one wall per side, so a thinner ring makes it
     # shallower -- and moves every station with it.
     assert thin.frame.depth < mounts.frame.depth
     assert thin.mounts[0].y != pytest.approx(mounts.mounts[0].y)
 
 
-def test_an_obstacle_over_a_boss_invalidates_that_station_only(data, mounts):
+def test_an_obstacle_over_a_boss_invalidates_that_station_only(data, mounts, seam):
     config, _, budget, _ = data
     target = next(m for m in mounts.mounts if m.station == "front-outer")
     blocker = Obstacle(
@@ -474,7 +615,7 @@ def test_an_obstacle_over_a_boss_invalidates_that_station_only(data, mounts):
         z0=mounts.plate_top,
         z1=mounts.plate_top + mounts.boss_height,
     )
-    result = well_mounts(config, budget, obstacles=(blocker,))
+    result = well_mounts(config, budget, seam=seam, obstacles=(blocker,))
     assert len(result.mounts) == 8
     hit = next(m for m in result.mounts if m.name == target.name)
     assert not hit.valid

@@ -604,39 +604,73 @@ def test_open_pose_adds_the_travel():
 
 # ── validation ─────────────────────────────────────────────────────────
 
+JOINT_CLEAR_CHECK = "slide-chassis-joint-clear"
 
-# The front long-wall band stations (geometry/chassis_joint.py) sit
-# `side_inset` (4.5 mm) from the front wall and grow to a Ø7.80 boss, so they
-# reach 8.4 mm inboard. ADR-0014 moves the keyboard 2.35 mm forward (the front
-# margin falls from 10.0 to 7.65), leaving the plate's front border 0.75 mm
-# inside that reach. The accepted fix -- notches in the plate border plus a
-# scallop that cannot pierce the Well ring -- is ticket T1b/T3, not this
-# derivation. The check stays in the report (and fails) until then.
-KNOWN_PLATE_BORDER_CLASH = "slide-chassis-joint-clear"
+
+def _inject_plate_mounts(config, components, placements):
+    """Inject the Well-mount pattern, as the data pipeline does (ADR-0014).
+
+    The plate's *notched* plan footprint only exists once the pattern is
+    injected, so the band-station check needs the real pipeline order:
+    budget -> mounts -> plate model -> validation.
+    """
+    from geometry.well_mounts import well_mounts
+
+    budget = _budget(config, components)
+    keyboard = components["keyboard"]
+    placement = next(p for p in placements if p.component is keyboard)
+    keyboard.set_well_mounts(well_mounts(config, budget, placement=placement))
+    return budget
 
 
 def test_slider_checks_pass_by_default():
     _, config, components, _, placements = _data()
-    report = run_slider_checks(_budget(config, components), config, placements)
-    # Every check passes except the known front band-station clash above; any
-    # other failure still fails this test.
-    failures = {check.name for check in report.failures}
-    assert failures <= {KNOWN_PLATE_BORDER_CLASH}, report.summary()
+    budget = _inject_plate_mounts(config, components, placements)
+    report = run_slider_checks(
+        budget, config, placements, mounts=components["keyboard"].well_mounts
+    )
+    assert report.passed, report.summary()
     assert report.goals["closed-face-height"] == pytest.approx(
         _budget(config, components).closed_face_height
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="front band stations reach 8.4 mm inboard; the plate border starts "
-    "at 7.65 (ADR-0014) -- notches/scallop are T1b/T3 (#10)",
-)
-def test_front_band_stations_clear_the_plate_border():
+def test_front_band_stations_clear_the_notched_plate_border():
+    """The check reads the plate's real (notched) footprint, not its bbox.
+
+    The front band columns reach into the plate's bounding rectangle; the
+    plate gives those bites up as notches, so the columns are clear of the
+    sheet. A bbox test can never see that -- this is the regression guard
+    (ADR-0014, issue #16).
+    """
     _, config, components, _, placements = _data()
-    report = run_slider_checks(_budget(config, components), config, placements)
-    check = next(c for c in report.checks if c.name == KNOWN_PLATE_BORDER_CLASH)
+    budget = _inject_plate_mounts(config, components, placements)
+    report = run_slider_checks(budget, config, placements)
+    check = next(c for c in report.checks if c.name == JOINT_CLEAR_CHECK)
     assert check.passed, check.message
+    assert "Keyboard" in check.message
+    assert "0.00 mm" not in check.message
+
+
+def test_a_plate_without_a_footprint_falls_back_to_the_bbox_with_a_warning():
+    """No notched-footprint API: the bbox is used, and the report says so."""
+    _, config, components, _, placements = _data()
+    budget = _inject_plate_mounts(config, components, placements)
+    keyboard = components["keyboard"]
+
+    def _no_footprint():
+        return []
+
+    original = keyboard.footprint_cutouts
+    keyboard.footprint_cutouts = _no_footprint
+    try:
+        report = run_slider_checks(budget, config, placements)
+    finally:
+        keyboard.footprint_cutouts = original
+
+    check = next(c for c in report.checks if c.name == JOINT_CLEAR_CHECK)
+    assert not check.passed, check.message
+    assert any("bounding box" in warning for warning in report.warnings)
 
 
 def test_slider_checks_fail_on_oversize_bearing():

@@ -196,7 +196,9 @@ class BuildPipeline:
             well_mounts(config, budget, placement=keyboard_placement)
         )
 
-        report = run_slider_checks(budget, config, placements)
+        report = run_slider_checks(
+            budget, config, placements, mounts=keyboard.well_mounts
+        )
         print("[pipeline] slider validation:")
         print(report.summary())
         if not report.passed and not ignore_validation:

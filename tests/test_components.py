@@ -85,3 +85,56 @@ def test_battery_rejects_unknown_arrangement():
 def test_battery_rejects_zero_count():
     with pytest.raises(ValueError, match="count"):
         Battery({"battery": {"count": 0}})
+
+
+# -- keyboard plate on the Well (ADR-0014) --------------------------------
+
+
+def _slider_data():
+    from components.slide import compute_slide_budget
+    from main import BuildPipeline
+
+    pipeline = BuildPipeline()
+    config = pipeline.load_config()
+    components = pipeline.load_components()
+    budget = compute_slide_budget(config, components)
+    return config, components, budget
+
+
+def test_keyboard_plate_matches_the_well_budget():
+    """One sizing chain: the plate the component builds equals the budget's."""
+    _, components, budget = _slider_data()
+    plate = components["keyboard"]._plate.size()
+    assert plate.width == pytest.approx(budget.well.plate_width)
+    assert plate.depth == pytest.approx(budget.well.plate_depth)
+    assert plate.height == pytest.approx(budget.well.plate_thickness)
+
+
+def test_keyboard_cutout_matches_the_well_cutout():
+    _, components, budget = _slider_data()
+    cutout = components["keyboard"]._plate.cutout
+    assert cutout[2] - cutout[0] == pytest.approx(budget.well.cutout_width)
+    assert cutout[3] - cutout[1] == pytest.approx(budget.well.cutout_depth)
+
+
+def test_keyboard_plate_sits_on_the_well():
+    """The keyboard's local plate raise is the Well's plate bottom (mm)."""
+    _, components, budget = _slider_data()
+    assert components["keyboard"]._plate_raise == pytest.approx(budget.well.plate_bottom)
+
+
+def test_keyboard_reports_no_floor_standoffs():
+    """ADR-0014 retires the Tray-floor standoffs: the Deck bears the plate."""
+    _, components, _ = _slider_data()
+    keyboard = components["keyboard"]
+    assert keyboard.mounting_holes() == []
+    assert keyboard._plate.mounting_holes() == []
+
+
+def test_keyboard_plate_takes_injected_mounting_holes():
+    _, components, _ = _slider_data()
+    keyboard = components["keyboard"]
+    keyboard._plate.set_mounting_holes([(10.0, 5.0, 2.2)])
+    holes = keyboard._plate.mounting_holes()
+    assert [(h.x, h.y, h.diameter) for h in holes] == [(10.0, 5.0, 2.2)]
+    assert holes[0].height == pytest.approx(keyboard._plate.size().height)

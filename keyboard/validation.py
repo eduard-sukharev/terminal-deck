@@ -137,6 +137,24 @@ def validate(
                 )
                 break
 
+    # The switch-free border: every cutout stays inside the Well Cutout, so
+    # the plate's border (which bears on the Well walls) is solid material
+    # (ADR-0014). A cutout crossing it means the Deck wall would sit over a
+    # switch hole.
+    checks += 1
+    if model.metadata and model.metadata.cutout[2] > model.metadata.cutout[0]:
+        cx0, cy0, cx1, cy1 = model.metadata.cutout
+        for cut in all_cuts:
+            xs = [cut.x + vx for vx, _ in cut.vertices]
+            ys = [cut.y + vy for _, vy in cut.vertices]
+            if min(xs) < cx0 or max(xs) > cx1 or min(ys) < cy0 or max(ys) > cy1:
+                errors.append(
+                    f"Cutout at ({cut.x:.1f}, {cut.y:.1f}) enters the plate "
+                    f"border: it is not inside the Well Cutout "
+                    f"({cx0:.2f}, {cy0:.2f})-({cx1:.2f}, {cy1:.2f})"
+                )
+                break
+
     # Valid plate thickness
     checks += 1
     if model.metadata and model.metadata.plate_thickness <= 0:

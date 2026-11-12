@@ -1,4 +1,8 @@
-"""Seam-adjacent plate mounting holes (ADR 0003)."""
+"""Seam-adjacent plate mounting holes (ADR 0003).
+
+The plate itself carries no holes any more (ADR-0014 retires the Tray-floor
+standoffs); this module stays as the Seam planner T5 wires into the split.
+"""
 
 import json
 import math
@@ -19,8 +23,8 @@ def _model():
     return generate(
         parse_layout(raw, pitch=UNIT),
         switch_family="mx_alps", stabilizer_family="cherry",
-        plate_thickness=1.5, edge_margin=2.0, corner_radius=8.0,
-        screw_diameter=SCREW_D, screw_edge_offset=5.0,
+        plate_thickness=1.5, wall=2.0, keycap_profile="xda", wobble=0.6,
+        corner_radius=8.0,
     )
 
 
@@ -79,5 +83,7 @@ def test_a_half_with_no_free_spot_gets_no_hole():
     assert ("left", "upper") in found
 
 
-def test_the_default_plate_carries_eight_mounting_holes():
-    assert len(_model().mounting_holes) == 8
+def test_the_default_plate_carries_no_mounting_holes():
+    # The Tray-floor standoffs (4 plate + 4 Seam) are retired (ADR-0014); the
+    # enclosure injects the Well-mount holes instead.
+    assert _model().mounting_holes == []

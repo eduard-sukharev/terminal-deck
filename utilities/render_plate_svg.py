@@ -39,10 +39,10 @@ def render_svg(
     switch_family: str = "mx_alps",
     stabilizer_family: str = "cherry",
     plate_thickness: float = 1.5,
-    edge_margin: float = 2.0,
-    corner_radius: float = 8.0,
-    screw_diameter: float = 2.0,
-    screw_edge_offset: float = 5.0,
+    wall: float = 2.0,
+    wobble: float = 0.6,
+    keycap_profile: str = "xda",
+    corner_radius: float = 2.0,
     plate_color: str = "#2B3A67",
     hole_color: str = "#FFFFFF",
     switch_color: str = "#FFFFFF",
@@ -58,10 +58,10 @@ def render_svg(
         switch_family=switch_family,
         stabilizer_family=stabilizer_family,
         plate_thickness=plate_thickness,
-        edge_margin=edge_margin,
+        wall=wall,
+        wobble=wobble,
+        keycap_profile=keycap_profile,
         corner_radius=corner_radius,
-        screw_diameter=screw_diameter,
-        screw_edge_offset=screw_edge_offset,
     )
 
     outline = model.plate_outline
@@ -128,13 +128,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("-o", "--out", default="generated/plate_top.svg")
     parser.add_argument("--png", action="store_true", help="also convert to PNG via inkscape")
     parser.add_argument("--pitch", type=float, default=19.05)
-    parser.add_argument("--edge-margin", type=float, default=2.0)
+    parser.add_argument("--wall", type=float, default=2.0,
+                        help="Well ring / plate border per side (config.wall.thickness)")
+    parser.add_argument("--wobble", type=float, default=0.6)
     parser.add_argument("--scale", type=float, default=1.0)
     args = parser.parse_args(argv)
 
     out = Path(args.out)
     xml = render_svg(
-        args.layout, out, pitch=args.pitch, edge_margin=args.edge_margin, scale=args.scale
+        args.layout, out, pitch=args.pitch, wall=args.wall,
+        wobble=args.wobble, scale=args.scale,
     )
     print(f"wrote {out}  ({len(xml)} bytes)")
     if args.png:

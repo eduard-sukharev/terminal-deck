@@ -13,8 +13,8 @@ def _model():
     return generate(
         parse_layout(raw, pitch=19.05),
         switch_family="mx_alps", stabilizer_family="cherry",
-        plate_thickness=1.5, edge_margin=2.0, corner_radius=8.0,
-        screw_diameter=2.2, screw_edge_offset=5.0,
+        plate_thickness=1.5, wall=2.0, keycap_profile="xda", wobble=0.6,
+        corner_radius=8.0,
     )
 
 

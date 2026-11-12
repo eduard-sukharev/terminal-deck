@@ -24,6 +24,10 @@ than stiffened: the keyboard plate gets 8 M2 screws on Tray-floor standoffs
 countersunk M2 screws (4 corners, one above and one below the glass on each
 side of the Seam).
 
+Revised by ADR-0014: the keyboard plate no longer mounts on Tray-floor
+standoffs — it is a flat sheet bearing on the Well walls' lower faces, screwed
+up from below into bosses on the front/rear walls.
+
 The Tray/Deck joint moves down from the Deck's edge to a horizontal Parting
 plane at a configured fraction of the front wall height (clamped to min/max
 mm), so the Deck has a flat print face and a wall skirt. The Deck is held by

@@ -135,10 +135,26 @@ bearing-clamp seats. Holds the SBC and the drag-chain anchor; not used for the
 battery. It runs to the lid's rear edge — the chassis grows to the closed
 face — so the bearing-clamp seats sit slightly forward of the rear wall.
 
-**Well** — The recess in the Deck the keyboard sits in. In the slider it sets
-the clearance under the Screen lid's flat back; the keycaps sit flush with, or
-just below, the Deck's top surface.
-_Avoid:_ "pocket".
+**Well** — The walled recess in the Deck the keyboard fits in: a ring of walls
+around a Cutout, descending from the Deck top to the keyboard plate. The plate
+bears flat on the walls' lower faces from below; the keycaps rise through the
+Cutout. The Well is owned by the Deck — the Parting plane never cuts its walls.
+_Avoid:_ "pocket", "basin".
+
+**Well wall** — One wall of the Well's ring, 2 mm thick, descending from the
+Deck top to the plate. The plate is screwed against its lower face; the front
+and rear walls carry the plate's fastening bosses, the X walls only locate the
+plate.
+_Avoid:_ "skirt", "rim".
+
+**Cutout** — The rectangular opening bounded by the Well walls. Sized to the
+keycap footprint plus a `wobble` allowance (0.6 mm), so a rocking keycap never
+strikes a wall — not to the plate, and not by `clearance.shell`.
+
+**Plate ear** — A rectangular, filleted tab protruding past the keyboard
+plate's outline where its edge border cannot hold a fastening boss; it carries
+the screw up into the Well wall.
+_Avoid:_ "tab".
 
 **Tray** — The Chassis's floor and walls (bosses, ribs, vents, cutouts) below
 the Parting plane: drafted from its base up to `band_z0`, then a prismatic

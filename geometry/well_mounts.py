@@ -255,13 +255,19 @@ class SeamPath:
     def from_seam(cls, seam, depth: float) -> "SeamPath":
         """Normalise a Seam for a plate ``depth`` mm deep.
 
-        The keyboard's Seam stops at the key rows' extent; the plate is deeper,
-        so the first and last bands are stretched to the plate's own edges --
-        the split runs to the edge, exactly as ``RowSeam.segments`` does.
+        Accepts a ``RowSeam`` (or anything with a ``bands`` tuple) and a bare
+        sequence of ``(y0, y1, x)`` bands. The keyboard's Seam stops at the key
+        rows' extent; the plate is deeper, so the first and last bands are
+        stretched to the plate's own edges -- the split runs to the edge,
+        exactly as ``RowSeam.segments`` does.
         """
-        bands = [list(band) for band in seam.bands]
+        bands_in = getattr(seam, "bands", seam)
+        bands = [list(band) for band in bands_in]
         if not bands:
             raise ValueError("the Seam needs at least one band")
+        for band in bands:
+            if len(band) != 3:
+                raise ValueError(f"a Seam band is (y0, y1, x), not {band!r}")
         bands[0][0] = min(bands[0][0], -depth / 2.0)
         bands[-1][1] = max(bands[-1][1], depth / 2.0)
         return cls(tuple((float(y0), float(y1), float(x)) for y0, y1, x in bands))

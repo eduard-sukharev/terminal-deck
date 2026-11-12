@@ -443,6 +443,22 @@ def test_seam_path_reads_the_ends_and_the_side_of_a_band(seam):
     assert path.section_at(1.0, -30.0) == 1
 
 
+def test_seam_path_accepts_bare_bands_and_rejects_broken_ones():
+    plain = SeamPath.from_seam(((-10.0, 0.0, 2.0), (0.0, 10.0, -3.0)), 40.0)
+    assert plain.bands[0][0] == pytest.approx(-20.0)  # stretched to the edge
+    assert plain.bands[-1][1] == pytest.approx(20.0)
+    assert plain.x_front == pytest.approx(2.0)
+    assert plain.x_rear == pytest.approx(-3.0)
+    with pytest.raises(ValueError):
+        SeamPath.from_seam((), 40.0)
+    with pytest.raises(ValueError):
+        SeamPath.from_seam(((0.0, 5.0),), 40.0)  # not a (y0, y1, x) band
+    with pytest.raises(ValueError):
+        SeamPath.from_seam(((0.0, 5.0, 0.0), (10.0, 9.0, 0.0)), 40.0)  # inside out
+    with pytest.raises(ValueError):
+        SeamPath.from_seam(((0.0, 5.0, 0.0), (6.0, 9.0, 0.0)), 40.0)  # a gap
+
+
 
 # -- the existing chassis features ---------------------------------------
 
@@ -654,6 +670,11 @@ def test_summary_reports_stations_bosses_ears_and_notches(mounts):
     assert "6.00" in text  # the boss diameter
     assert "front-outer" in text
     assert "notch" in text
+    # The report names the Seam's two ends and the per-Section counts, so a
+    # reader can see the four-per-Section pattern without re-deriving it.
+    assert "front x=" in text and "rear x=" in text
+    assert "sections: left 4, right 4" in text
+    assert mounts.section_counts == {"left": 4, "right": 4}
 
 
 def test_module_is_pure_data():

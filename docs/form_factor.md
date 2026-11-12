@@ -24,13 +24,16 @@ interface is functional (accessories) and is not part of the printed shell.
 
 | Dimension | Target | Driver |
 |---|---|---|
-| Face height (closed) | **140 mm, HARD** | travel + bearing + rod clamps + lid bezel |
+| Face height (closed) | **140.00 mm, HARD** | travel + bearing + rod clamps + lid bezel |
 | Thickness | **57.75 mm, derived** | keyboard/SBC chassis + lid (head + guard + panel + driver) |
-| Width | **238.92 mm, derived** | panel 231 + a drafted side wall each side (nothing else) |
+| Width | **241.17 mm, derived** | keyboard plate 233.25 + a drafted side wall each side |
 
 The thickness and width were revised by ADR-0013: the guide rods moved under the
 display, which removed the side pods (292.39 → 238.92) and added the moving
-head and its FPC guard to the lid (50.15 → 57.75). Face height did not move.
+head and its FPC guard to the lid (50.15 → 57.75). ADR-0014 then grew the
+keyboard plate to bear on the Well ring (230.15 → 233.25 wide), so the plate —
+not the 231 mm panel — is the width driver and the case is 238.92 → 241.17 mm.
+Face height did not move.
 
 The face is the plane carrying the keyboard and the screen. **Face height** is
 the extent along the slide; **thickness** is the extent normal to the face.
@@ -39,13 +42,24 @@ In the model, the device lies face-up: face height is Y, thickness is Z.
 The 140 mm budget, in the order the build computes it:
 
 ```
-travel           = keyboard front offset + keyboard.depth + open clearance  (≈ 93)
-rod span         = travel + bearing.length + 2 * (rod clamp + clearance)
-guide span       = rod span + end supports
-closed face      = guide span + lid top bezel                               (≈ 139)
-chassis height   = max(keyboard front offset + keyboard.depth + rear band,
-                       closed face)
+plate depth      = keycap footprint + 2 * (wobble + wall)                 (80.85)
+lid stack        = open clearance + bearing + 2 * (Rod clamp + gap)
+                   + 2 * end support + lid top bezel                      (51.50)
+front margin     = face limit − lid stack − plate depth                    (7.65)
+                   floored by wall + the front lip an M2 boss needs (7.00)
+keycap top       = front margin + plate depth                              (88.50)
+travel           = keycap top + open clearance                             (93.50)
+rod span         = travel + bearing.length + 2 * (Rod clamp + clearance)
+guide span       = rod span + end supports                                 (137.50)
+closed face      = guide span + lid top bezel                              (140.00)
+chassis height   = max(keycap top + rear band, closed face)                (140.00)
 ```
+
+The front margin is a **derived remainder**, not a configured value: ADR-0014's
+plate (80.85 mm deep, against the keyboard's 77.75) is what the limit has left
+after the lid stack. With the old 77.75 mm plate and a 139.25 face it was
+10.00 mm; the plate took 3.10 and the face gave back 0.75, so it is 7.65 mm
+(and must stay ≥ 7.00 to host the plate's front M2 boss).
 
 The lid's guide span is fixed by the purchased bearing and the end clamps; it
 is the larger half, so the chassis grows to the closed face instead of the lid
@@ -53,9 +67,9 @@ overhanging the chassis at the rear. The extra rear band is empty behind the
 Bearing-clamp seat (which stays slightly forward of the rear wall), leaving
 room for the drag chain.
 
-With the JD40 keyboard at 77.75 mm deep, one short LM6UU (19 mm) and two 9 mm
-Rod clamps per rod, the closed face lands at ≈ 139.3 mm and both halves are
-that deep. The long LM6LUU
+With the JD40 keyboard on its 80.85 mm plate, one short LM6UU (19 mm) and two
+9 mm Rod clamps per rod, the closed face lands at exactly **140.00 mm** — the
+limit — and both halves are that deep. The long LM6LUU
 (35 mm) does not fit together with the end clamps: the bearing would run under
 them at the two extreme poses. A second bearing per rod (≈ 160) does not fit
 either. The build fails if the chosen bearing, rod clamps, travel and margins
@@ -116,10 +130,32 @@ to tilt it.**
   above them toward the face panel, so the two halves meet at the closed face
   at the full width. The front/rear end walls stay vertical: the guide span
   and rod end clamps are pinned to the 140 mm face budget.
-* **Keyboard Well** — a recess in the Deck. The keycaps sit flush with, or
-  just below, the Deck's top surface, so the lid's flat back can slide over
-  them with a 1 mm-class clearance. The Well no longer serves the clamshell's
-  "rim adds no closed thickness" trick; it sets the slide clearance.
+* **Keyboard Well** — a walled recess in the Deck: a 2.0 mm-thick ring of
+  walls around a rectangular **Cutout**, descending from the Deck's top face
+  (32.30) to the plate's top face (17.80), a 14.50 mm-deep Well. The keycaps
+  rise through the Cutout and sit flush with the Deck top; the lid's flat back
+  slides 1.00 mm above them. The Cutout is sized by the **keycap footprint
+  plus a `wobble` allowance** (0.60 per side): 228.05 × 75.65 → 229.25 ×
+  76.85 mm. It is not sized by the plate, and `clearance.shell` no longer
+  enters it (ADR-0014).
+* **Keyboard plate** — a flat 233.25 × 80.85 × 1.5 mm sheet at z 16.30 (top
+  17.80), i.e. the Cutout plus one wall on every side. It **bears on the ring's
+  lower faces from below**; there is no floor under it and no floor standoff.
+  Its switch-free border is derived, not chosen: 4.05 mm left/right, 4.85 mm
+  at the rear edge and 3.88 mm at the spacebar (front) edge, the minimum.
+* **Plate fastening** — eight M2 screws come up **from below** through Ø2.20
+  clearance holes into heat-set inserts (Ø3.00 × 3.0 deep) in Ø6.00 bosses
+  (z 17.80–22.30) merged to the ring's outer face on the **front and rear
+  lips** — four per Section: front-outer, front-at-Seam, rear-at-Seam,
+  rear-outer. The front lip is 5.65 mm for a 5.00 mm boss requirement. The X
+  sides have only ~2 mm of Deck rim, so a station that cannot fit the border
+  gets a 5.20 × 5.20 mm, r2.0 filleted **Plate ear** protruding past the
+  outline; four **Plate notches** (5.30 × 1.45, 1.10 mm bite) yield the front
+  border where a Tray/Deck band column reaches into it.
+* **Plate assembly order** — the plate is screwed to the Deck **before** the
+  Tray/Deck join and stays captive after it. Servicing the plate or the
+  controller under it means splitting the Tray/Deck joint. The Parting plane
+  (16.15) stays below the plate, so it never cuts the Well.
 * **Bearing-clamp seats** — a merged seat block with a pocket in the Deck
   behind the keyboard, at each guide-rod X position. The Bearing clamp's foot
   is located in the pocket and bolted from inside the chassis; the clamp's
@@ -135,10 +171,12 @@ to tilt it.**
 * **Accessory rails** — picatinny interface, **not modelled**: the side walls
   get square-nut pockets printed in (nuts inserted during a print pause), so
   user-supplied rail sections bolt on. No rail bars in the shell.
-* **Well contents** — the keyboard plate and the **RP2040 controller** sit in
-  the Well; the controller is under the plate, in the chassis thickness. The
-  SBC is in the Rear band, not here. The externally reachable I/O is the
-  accessory-rail USB-hub module, not a face cutout in the chassis.
+* **Well contents** — the keyboard plate closes the Well from below; the
+  **RP2040 controller** sits under the plate, in the chassis thickness. The
+  cavity there is clear end-to-end (nothing but the joint screws crosses the
+  Parting plane). The SBC is in the Rear band, not here. The externally
+  reachable I/O is the accessory-rail USB-hub module, not a face cutout in the
+  chassis.
 
 ## Screen lid
 
@@ -159,7 +197,7 @@ to tilt it.**
   FPC guard (1.6): 24.45 mm, leaving the device 57.75 mm thick. It is not set
   by the Rod clamp (ADR-0013).
 * **Guide rods** run in the open cavity along the back panel's inner face,
-  **under the display**, at `x = ±93.86`. Two Rod clamps hold each rod to the
+  **under the display**, at `x = ±94.98`. Two Rod clamps hold each rod to the
   panel; the panel's long through-slot between them is the Bearing clamp's
   track. The stance is derived from the lid's band post, the Deck seat and the
   head staying under the panel.
@@ -179,9 +217,12 @@ to tilt it.**
 ## Sections and fastening
 
 * Sections (ADR-0003, ADR-0006) stay: Tray, Deck and screen lid split into two
-  along X with stepped Seams; the keyboard plate splits in two at the central
-  key-column gap. Every Section must fit the **220 × 220 × 256 mm** build
-  volume, rejoin losslessly, have a flat bed face, and be joined by Seam lugs
+  along X with stepped Seams; the keyboard plate splits in two along its
+  **Plate Seam** — the row-jogging path between key columns (four bands, ends
+  at plate-local x = 0 and x = −50.584, the latter on the spacebar side), not
+  the straight x=0 cut that passed through switch cutouts. Every Section must
+  fit the **220 × 220 × 256 mm** build volume, rejoin losslessly, have a flat
+  bed face, and be joined by Seam lugs
   (1.75 mm filament) or screws into bosses.
 * The lid's Back plate is screwed into the Bezel's band (eight countersunk
   M3 from the Back's outer face into heat-set inserts). The chassis splits the
@@ -222,6 +263,20 @@ HARD (the build fails):
 * `section-fits-volume`, `section-rejoins`, `section-bed-face` — unchanged.
 * `keys-clear-lid` — keycaps clear the lid's flat back with the configured
   clearance.
+* `keyboard-well-parting`, `keyboard-well-ring`, `keyboard-well-cutout` — the
+  Parting plane stays below the plate (it never cuts the Well), the ring is one
+  wall thick on all four sides, and the Cutout is the keycap footprint plus
+  2 × wobble.
+* `keyboard-plate-overhang`, `keyboard-plate-border` — the plate reaches one
+  wall past the Cutout on every side, and no switch or stabilizer cutout enters
+  that bearing border.
+* `keyboard-plate-seam`, `keyboard-plate-sections` — the Plate Seam crosses no
+  switch/stabilizer cutout and splits the plate into two build-volume Sections.
+* `keyboard-mounts-stations`, `keyboard-mounts-fit`, `keyboard-mounts-parting` —
+  eight M2 stations, four per Section; they fit the lips, the Seam clearance
+  and the ears/notches; and no printed plate fastener crosses the Parting
+  plane (zero floor standoffs). `slide-chassis-joint-clear` measures the joint
+  stations against the plate's **notched** footprint, not its bounding box.
 
 GOAL (reported, not fatal): closed face height, thickness, mass, open pose
 height.

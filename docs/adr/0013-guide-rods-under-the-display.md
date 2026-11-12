@@ -1,6 +1,7 @@
 ---
 status: accepted
 amends: ADR-0009, ADR-0010, ADR-0011, ADR-0012
+amended_by: ADR-0014
 ---
 
 # The guide rods move under the display, guarded by a printed FPC plate
@@ -31,6 +32,13 @@ sweeps the ribbon.
 - Thickness **50.15 → 57.75 mm** (lid **16.85 → 24.45 mm**), because the moving
   head now has to pass under the panel, and the panel carries the guard.
 - `rod_x` **125.25 → 93.86 mm**; the rails are 187.7 mm apart instead of 250.5.
+
+**Amended by ADR-0014.** The keyboard plate grew to bear on the Well ring
+(230.15 → 233.25 wide) and overtook the panel as the width driver: the shipped
+width is **241.17 mm**, `rod_x` is **±94.98** (bounds post 99.68, seat 97.48,
+head 107.50), the derived front margin is 7.65 mm and the closed face is
+**140.00 mm** (the 140 limit). The side pod (3.96 mm) and the lid thickness
+(57.75) stand.
 
 ### The stance is derived from three bounds, not chosen
 

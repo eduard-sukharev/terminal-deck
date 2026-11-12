@@ -11,12 +11,14 @@ decorative elements. Priorities: robustness, serviceability, printability,
 parametricity, reusability.
 
 > **Status.** `docs/form_factor.md`, `CONTEXT.md` and ADR-0009/0010/0011/0012
-> plus ADR-0013 (rods under the display) define the slider. The data skeleton
+> plus ADR-0013 (rods under the display) and ADR-0014 (the walled Well and the
+> plate mounted to its lower faces) define the slider. The data skeleton
 > and the CAD shell are implemented: `--layout slider` (the only layout) derives
 > the budget and builds/exports the chassis (Tray + Deck, split at the band
 > joint), screen lid (Bezel + Back plate, split at the band joint), the printed
-> FPC guard, guide rods, the printed Rod clamps and Bearing clamps, and the
-> closed/open assembly, with stepped Seams at x=0. The retired clamshell code,
+> FPC guard, guide rods, the printed Rod clamps and Bearing clamps, the
+> keyboard plate with the Well's ears, notches and M2 clearance holes, and the
+> closed/open assembly. The retired clamshell code,
 > config, recipe and tests have been removed. Still next: Seam lugs, the
 > drag-chain channel, the aux buttons above/below the display (their space and
 > depth are reserved) and the redesigned vents (they must stay out of both joint
@@ -81,23 +83,24 @@ segfault on a chamfer, so `cad_helpers` runs each attempt in a child process
 - `chassis_left` / `chassis_right` — whole-chassis Sections (reference only; the
   printable chassis parts are the Tray and Deck Sections below)
 - `chassis_tray` — the lower bowl with the ten screw columns; `chassis_tray_left/right` — its printable Sections
-- `chassis_deck` — the purely prismatic Deck with the Well, seats and insert bosses; `chassis_deck_left/right` — its printable Sections
+- `chassis_deck` — the purely prismatic Deck with the Well ring, its eight M2 insert bosses, the seats and the band insert bosses; `chassis_deck_left/right` — its printable Sections
 - `screen_lid` — lid shell + display + driver + guide rods + Rod clamps
 - `screen_lid_left` / `screen_lid_right` — printable lid Sections
 - `slide` — guide rods + Rod clamps + LM…LUU bearings + Bearing clamps
 - `rod_clamp` — one printable Rod clamp
 - `bearing_clamp` — one printable Bearing clamp
 - `fpc_guard` — the printable FPC grille plate (bonded to the display's back)
-- `keyboard_plate` — the switch plate; `keyboard_plate_left/right` — its Sections
+- `keyboard_plate` — the switch plate with the Well's ears, notches and M2 clearance holes; `keyboard_plate_left/right` — its Sections, split along the Plate Seam
 - `display` — LCD panel + HDMI driver combined
 - `components` — all per-component debug STLs
 - `comp:<role>` — a single component's raw STL (e.g. `comp:driver`)
 - `all` — every target above (default)
 
 Every wide part is exported whole for reference and split into **two**
-Sections at x=0 for printing (ADR 0003): the Sections must fit
-220 × 220 × 256 mm or the build fails. Stepped Seams and Seam lugs are the
-next refinement.
+Sections at x=0 for printing (ADR 0003) — except the keyboard plate, which
+splits along its row-jogging Plate Seam between keys (ADR 0014). The Sections
+must fit 220 × 220 × 256 mm or the build fails. Stepped Seams and Seam lugs are
+the next refinement.
 
 ## Architecture
 
@@ -133,8 +136,16 @@ intuition. Wire-up lives in `main.py` (`BuildPipeline`, `run()`).
   `build_linear_bearing()` solids and the printed `build_rod_clamp()` /
   `build_bearing_clamp()` parts (its data model and the budget stay CAD-free);
   `geometry/*` hold the primitives (the two band joints live in
-  `geometry/joint.py` and `geometry/chassis_joint.py`). Stepped Seams/lugs,
+  `geometry/joint.py` and `geometry/chassis_joint.py`, the Well/plate pattern in
+  `geometry/well_mounts.py`). Stepped Seams/lugs,
   the drag-chain channel, vents and connector cutouts are the next refinement.
+- `geometry/well_mounts.py` is the single source for the Well and the plate's
+  mounting pattern (ADR-0014): the plate frame (the keyboard's 180° placement),
+  the eight M2 stations, the ears, the notches and the plate Seam, all as pure
+  data. `Chassis.build_deck()` builds the ring and the bosses from it and
+  `components/keyboard_plate.py` injects the same pattern into the plate; the
+  keyboard package itself receives only rectangles and never imports the
+  enclosure.
 - `utilities/cad_helpers.py` is the **only** CAD adapter (build123d); it imports
   lazily so the data layer stays importable without a CAD library. Geometry
   modules must go through it, not `import build123d` directly.
@@ -229,47 +240,57 @@ linear guide (rod diameter/length, bearing model, clamp, travel margin, chain
 pitch/width/bend radius); the build checks the chosen combination against the
 140 mm face-height budget. `config.chassis_joint` holds the Tray/Deck band
 (band height, boss cap, per-wall station insets, scallop size, screw size);
-`config.parting` sets the plane it sits on.
+`config.parting` sets the plane it sits on. `config.keyboard.plate` holds the
+plate thickness, the `wobble` allowance and the corner radius: there is no
+`edge_margin` knob (the plate is the Cutout + one wall per side) and
+`well_front_margin` is not configured either — both are derived (ADR-0014).
 
 Gotchas:
 
 - **The face-height budget is the binding constraint.** `travel + bearing
   length + 2 * (Rod clamp + clearance) + end supports + lid bezel ≤ 140`.
-  Travel is the keyboard's front offset + depth + open clearance (≈ 93), not
-  the keyboard depth (77.75). One bearing per rod; the default is the short
-  LM6UU (19 mm) because the 35 mm LM6LUU plus the end clamps does not fit. A
-  second bearing per rod breaks the budget.
+  The front margin is the budget's **remainder**, not a knob:
+  `well_front_margin = 140.00 − 51.50 lid stack − 80.85 plate depth = 7.65`
+  (floored at 7.00 = wall 2.00 + the 5.00 front lip an M2 boss needs). Travel
+  is `7.65 + 80.85 + 5.0 clearance = 93.50`, not the keyboard depth (77.75);
+  ADR-0014's plate is what sets it. One bearing per rod; the default is the
+  short LM6UU (19 mm) because the 35 mm LM6LUU plus the end clamps does not
+  fit. A second bearing per rod breaks the budget.
 - **The lid is the larger half; the chassis grows to it.** The guide span is
   fixed by the purchased bearing and the end clamps, so `chassis height =
-  max(keyboard + front offset + rear band, guide span + top bezel)` and the
-  two halves share the closed face (≈ 139.3). Do not shrink the lid to the
+  max(keycap top + rear band, guide span + top bezel)` and the
+  two halves share the closed face (140.00). Do not shrink the lid to the
   keyboard-driven chassis depth: the lid would no longer clear the bearing at
   the open pose. The added rear band is empty behind the bearing-clamp seat.
 - **The guide stance is under the display and is derived, not chosen.** The
-  rods sit at `rod_x = ±93.86` (ADR-0013): `min(post, seat, head) −
-  rod.side_margin`, where the bounds are the lid's band corner post, the Deck
-  seat against the chassis band's corner boss, and the head staying under the
-  panel. The seat bound is the tightest. Change a clamp wall, a seat wall or a
-  station inset and `rod_x` follows — do not pin it. The slot, the Deck seats,
-  the pockets, the Rod clamps and the lid band post all read `rod_x`.
-- **The width is the content plus the drafted side wall, nothing else.** A
-  238.92 mm case has ~4 mm beside the keyboard, so neither the lid band post
-  nor a chassis band station can live there: the post is inboard of the cavity
-  wall (`rod_x + rod_clamp.width/2 + corner_clearance`) and `slide.joint.corner_post`
+  rods sit at `rod_x = ±94.98` (ADR-0013): `min(post 99.68, seat 97.48, head
+  107.50) − rod.side_margin 2.50`. The seat bound is the tightest and it grows
+  with the width (ADR-0014 made the plate the width driver). Change a clamp
+  wall, a seat wall or a station inset and `rod_x` follows — do not pin it. The
+  slot, the Deck seats, the pockets, the Rod clamps and the lid band post all
+  read `rod_x`.
+- **The width is the content plus the drafted side wall, nothing else.** The
+  content is now the **keyboard plate (233.25)**, not the 231 mm panel: it
+  bears on the Well ring, so it sets the case at **241.17 mm** =
+  233.25 + 2 × 3.96 side pod (wall 2.00 + shell 0.35 + draft 1.61). Nothing
+  lives beside the keyboard: the lid band post is inboard of the cavity wall
+  (`rod_x + rod_clamp.width/2 + corner_clearance`) and `slide.joint.corner_post`
   is retired. The draft inset is measured over the display's height, not the
-  hardware envelope — the panel is what the width has to clear.
+  hardware envelope.
 - **The lid's thickness is the Z stack under the panel.** `head crown 9.0 +
   component gap 1.5 + sag 0.5 + FPC guard 1.6 = 12.6` cavity, so lid 24.45 and
   device 57.75. The display is placed at `panel_inner + budget.display_cavity`
   by the layout; the frame raises if the placement disagrees. The guard is a
   separate printed target (`fpc_guard`), tape-bonded to the display's back; its
   underside is what the head must clear.
-- **The band is prismatic and solid** — vents stay out of it. With the stance
-  under the display the band joint keeps its ten stations, but the corner and
-  long-wall stations sit `side_inset` (4.5) from the vertical walls (boss capped
-  at 7.80) and the two short-side stations sit in the free band **behind the
-  keyboard**: at this width a Tray column at mid-side would run through the
-  keyboard plate.
+- **The band is prismatic and solid** — vents stay out of it. The band joint
+  keeps its ten stations, but the corner and long-wall stations sit `side_inset`
+  (4.5) from the vertical walls (boss capped at 7.80); the four **front-wall**
+  stations (two corners, two side) reach into the keyboard plate's front border,
+  so the plate is notched at each (5.30 × 1.45, 1.10 bite) and the Well ring's
+  outer reach is interrupted there — the ring stays sealed on its inner face.
+  The rear-wall stations sit in the free band behind the keyboard. At this
+  width a Tray column at mid-side would run through the plate.
 - **The chassis splits at the Parting plane, band-only (ADR-0012).** The 6 mm
   band is split 3 mm each side of `parting_z`: the Tray is drafted from its
   base up to `band_z0` and prismatic from there to the plane, the Deck is
@@ -288,11 +309,34 @@ Gotchas:
   (10 × 0.8, 3 mm per half) leaves 1.5 mm to the insert at the long sides.
   Do not widen the insets: the 1.5 mm scallop margin and the 1.4 mm countersink
   skin are the binding constraints.
-- The keyboard is the tallest content along the face: its Well position sets
-  the travel. The RP2040 controller sits under the keyboard plate; the SBC
-  sits in the Rear band behind the keyboard. Neither adds face height beyond
-  the band. The USB hub is external (an accessory-rail module), not a chassis
-  placement.
+- **The Well and the plate are one derived pattern (ADR-0014).** The Deck's
+  Well is a 2.00 mm ring around the Cutout from the Deck top (32.30) down to
+  the plate top (17.80); the Cutout is the keycap footprint + 2 × wobble
+  (`keyboard.plate.wobble` 0.60): 228.05 × 75.65 → 229.25 × 76.85. The plate is
+  the Cutout + one wall per side (233.25 × 80.85 × 1.5 at z 16.30) and **bears
+  on the ring's lower faces**: there is no Well floor and **no floor
+  standoff**. Eight M2 screws come up from below through Ø2.20 holes into
+  Ø3.00 × 3.0 inserts in Ø6.00 bosses (z 17.80–22.30) on the front/rear lips,
+  four per Section. `parting_z` (16.15) ≤ plate bottom (16.30) is HARD. Do not
+  give the plate a zero-rotation frame: the pattern is read through the
+  keyboard's 180° placement (`well_mounts(..., placement=...)`), from one
+  `well_mounts` call for the Deck and the plate. Plate thickness or keycap
+  height moves `plate_z`, the Well depth and the derived front margin.
+- The keyboard is the tallest content along the face (32.30, keycaps flush with
+  the Deck top): the plate's depth and the derived front margin set the travel.
+  The RP2040 controller sits under the plate — the cavity there is clear
+  end-to-end. The SBC sits in the Rear band behind the keyboard. Neither adds
+  face height beyond the band. The USB hub is external (an accessory-rail
+  module), not a chassis placement.
+- **The Well/plate invariants are HARD checks** (`--steps data`): the ten
+  `keyboard-*` checks — `keyboard-well-parting`, `-ring`, `-cutout`,
+  `keyboard-plate-overhang`, `-border`, `-seam`, `-sections`,
+  `keyboard-mounts-stations`, `-fit`, `-parting` (0 floor standoffs) — plus
+  `slide-chassis-joint-clear`, which measures the joint stations against the
+  plate's **notched** footprint rather than its bounding box. The plate border
+  is derived, not chosen (L/R 4.05, rear 4.85, spacebar 3.88 mm), and the
+  `front-seam-right` station is walked 3.54 mm off the Seam by the front band
+  column (`WellMount.adjustments`; do not "fix" it by moving the band joint).
 - **The X side walls are drafted** (`draft.angle`, 5–10°): the Tray widens
   from its base up to its band, and the lid widens from its face panel down to
   the back panel; the Deck is prismatic, so both halves are widest at the

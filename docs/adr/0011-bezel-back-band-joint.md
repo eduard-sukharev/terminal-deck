@@ -1,6 +1,7 @@
 ---
 status: accepted
 amends: ADR-0010
+amended_by: ADR-0013, ADR-0014
 ---
 
 # The screen lid splits into a Bezel and a Back plate, joined by a prismatic band
@@ -60,7 +61,9 @@ widening the case: `post_inner = rod_x + rod_clamp.width/2 + corner_clearance`
 enough for the Ø4.4 insert plus the 1.5 mm boss margin. `slide.joint.corner_post`
 is retired; the eight stations keep their derivation from the lid plan, and the
 width is 238.92 mm. The station-clearance check now measures the post inboard of
-the clamp.
+the clamp. **Amended by ADR-0014:** the keyboard plate is the width driver, so
+the shipped width is 241.17 mm, `rod_x` is ±94.98 and the corner post spans
+106.48–118.58 mm.
 
 ## Consequences
 

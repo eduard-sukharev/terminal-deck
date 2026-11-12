@@ -109,11 +109,27 @@ def render_svg(
     stab_group = fill_group(stab_paths, stabilizer_color)
     body_path = f'<path d="{body}" fill="{plate_color}" stroke="#10182F" stroke-width="1.2"/>'
 
+    # The plate splits between keys along this Seam (ADR-0014, #9).
+    seam_path = ""
+    if model.seam is not None:
+        seam_points = " L ".join(
+            f"{x:.2f},{y:.2f}"
+            for x, y in (
+                world(sx, sy)
+                for sx, sy in model.seam.polyline(model.metadata.height)
+            )
+        )
+        seam_path = (
+            f'<path d="M {seam_points}" fill="none" stroke="#E74C3C" '
+            'stroke-width="1.6" stroke-dasharray="6 3"/>'
+        )
+
     xml = f"""<svg xmlns="http://www.w3.org/2000/svg" width="{width:.1f}" height="{height:.1f}" viewBox="0 0 {width:.1f} {height:.1f}">
   <rect x="0" y="0" width="{width:.1f}" height="{height:.1f}" fill="#E8EAF0"/>
   {body_path}
   {switch_group}
   {stab_group}
+  {seam_path}
   {'\n  '.join(hole_elems)}
 </svg>
 """

@@ -103,12 +103,14 @@ slide:
     pocket_depth: 5.0
     pitch: 10.0
 
-  # Sectioning (ADR 0003): chassis and lid use stepped Seams at x=0; the thin
-  # keyboard plate keeps a straight Seam at the central key-column gap.
+  # Sectioning (ADR 0003): chassis and lid use stepped Seams at x=0. The
+  # keyboard plate takes no Split here: it splits **between keys** along the
+  # row-jogging Seam its layout derives (keyboard.geometry.seam.plate_seam,
+  # ADR-0014 / issue #9), so a straight x=0 cut through a switch cutout cannot
+  # be configured back in. The retired `keyboard_plate` key is ignored.
   split:
     chassis:        {sections: 2, x: 0.0, style: stepped, step: 4.0, steps: 6}
     screen_lid:     {sections: 2, x: 0.0, style: stepped, step: 4.0, steps: 6}
-    keyboard_plate: {sections: 2, x: 0.0, style: straight}
 
   # Vent slots: deferred (ADR-0011). The rear wall's joint band has to stay
   # solid and the old row would pierce it; the pattern is redesigned together

@@ -2,7 +2,21 @@
 
 import pytest
 
+from components.keyboard_plate import KeyboardPlate
+from geometry.split import check_build_volume, check_sections, split_sections
+from utilities import cad_helpers
 from utilities.config_loader import Split, load_config
+
+PLATE = KeyboardPlate({
+    "layout_source": "keyboard/layouts/jd40.json",
+    "pitch": 19.05,
+    "switch_family": "mx_alps",
+    "stabilizer_family": "cherry",
+    "wall_thickness": 2.0,
+    "plate": {"thickness": 1.5, "wobble": 0.6, "corner_radius": 2.0},
+    "keycap": {"profile": "xda"},
+    "mounting": {"screw": "M2"},
+})
 
 
 def test_two_section_straight_split_has_one_seam():
@@ -45,5 +59,55 @@ def test_slider_config_declares_section_splits():
     assert cfg.slide.split["chassis"].sections == 2
     assert cfg.slide.split["chassis"].style == "stepped"
     assert cfg.slide.split["screen_lid"].style == "stepped"
-    assert cfg.slide.split["keyboard_plate"].style == "straight"
     assert cfg.slide.split["chassis"].step > 0
+
+
+def test_the_keyboard_plate_split_knob_is_retired():
+    """The plate splits between keys along its own Seam (ADR-0014, #9).
+
+    A config ``keyboard_plate`` Split would be the straight ``x=0`` cut that
+    passes through switch cutouts, so the knob does not exist any more.
+    """
+    cfg = load_config("config/default.yaml")
+    assert "keyboard_plate" not in cfg.slide.split
+
+
+# -- the plate Sections (ADR-0014, #9) ------------------------------------
+
+needs_cad = pytest.mark.skipif(
+    not cad_helpers.cad_available(), reason="build123d not available"
+)
+BUILD_VOLUME = (220.0, 220.0, 256.0)
+
+
+@needs_cad
+def test_plate_sections_split_the_whole_plate_losslessly():
+    whole = PLATE.build()
+    left, right = PLATE.plate_sections()
+    assert check_sections(whole, [left, right]) == []
+    assert cad_helpers.volume_mm3(left) + cad_helpers.volume_mm3(right) == (
+        pytest.approx(cad_helpers.volume_mm3(whole))
+    )
+
+
+@needs_cad
+def test_plate_sections_fit_the_build_volume():
+    assert check_build_volume(
+        dict(zip(("left", "right"), PLATE.plate_sections())), BUILD_VOLUME,
+    ) == []
+
+
+@needs_cad
+def test_plate_sections_are_cut_on_the_seam_not_at_x0():
+    """The stepped Seam reaches past x=0; the retired straight cut cannot."""
+    left, right = PLATE.plate_sections()
+    assert cad_helpers.bounding_box(left).xmax > 1.0
+    assert cad_helpers.bounding_box(right).xmin < -1.0
+    # And the Sections are the split of the Seam the model exposes.
+    whole = PLATE.build()
+    expected = split_sections(whole, [PLATE.seam], PLATE.seam_depth)
+    for got, want in zip((left, right), expected):
+        assert cad_helpers.volume_mm3(got) == pytest.approx(
+            cad_helpers.volume_mm3(want)
+        )
+

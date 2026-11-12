@@ -269,10 +269,9 @@ def test_ears_stay_inside_their_lip_and_off_the_wall(data, mounts):
 def test_stations_and_ears_clear_the_stepped_seam(data, mounts):
     config, _, _, _ = data
     split = config.slide.split
-    far = max(
-        max(abs(v) for v in split[name].seams()[0].x_range)
-        for name in ("chassis", "keyboard_plate")
-    )
+    # The plate has no config Split any more: it splits between keys along its
+    # own derived Seam (#15), so the stiffest *configured* step is the chassis's.
+    far = max(abs(v) for v in split["chassis"].seams()[0].x_range)
     assert mounts.seam_far == pytest.approx(far)
     assert mounts.seam_clearance == pytest.approx(
         far + mounts.ear_half_width + config.material.minimum_feature
@@ -284,6 +283,28 @@ def test_stations_and_ears_clear_the_stepped_seam(data, mounts):
     # The Seam stations are the tightest pair, one per Section.
     seam = [abs(m.x) for m in mounts.mounts if m.station.endswith("seam")]
     assert max(seam) == pytest.approx(mounts.seam_clearance)
+
+
+def test_the_real_plate_seam_crosses_no_station_ear(data, mounts):
+    """No boss ear straddles the plate Seam the keyboard model derives (#15).
+
+    The Seam jogs between key rows, so its X differs per band; an ear is only
+    in trouble where the two overlap in Y.
+    """
+    config, components, _, _ = data
+    model = components["keyboard"].plate_model()
+    margin = config.material.minimum_feature
+    bands = model.seam.segments(model.metadata.height)
+    assert len(bands) > 1  # the row-jogging path, not a straight cut
+    for mount in mounts.mounts:
+        ear = mount.ear.rect
+        for y0, y1, sx in bands:
+            if ear.y1 <= y0 or ear.y0 >= y1:
+                continue
+            assert ear.x1 <= sx - margin or ear.x0 >= sx + margin, (
+                f"{mount.station} ear {ear} straddles the plate Seam at x={sx:.2f}"
+            )
+
 
 
 # -- the existing chassis features ---------------------------------------

@@ -1,11 +1,11 @@
-"""Mounting hole generation — **deprecated for the plate** (ADR-0014).
+"""Mounting hole generation — **retired for the plate** (ADR-0014).
 
 Formerly placed four holes between rows for the Tray-floor standoffs. ADR-0014
 retires those standoffs: the plate is screwed **up** into the Well's insert
 bosses and gets its clearance holes injected by the enclosure
-(``KeyboardPlate.set_mounting_holes``). :func:`generate_mounting_holes` is kept
-only for the legacy ``keyboard_mounting_holes`` layout resolver, which the
-Well-mount work replaces; the plate generator no longer calls it.
+(``KeyboardPlate.set_mounting_holes``). No build path calls
+:func:`generate_mounting_holes` any more; it stays as a pure-data helper (no
+CAD, no cyberdeck imports) for a layout that wants holes between rows.
 """
 
 from __future__ import annotations

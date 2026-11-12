@@ -15,10 +15,16 @@ enclosure injects the Well-mount holes it needs.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import replace
 
 from keyboard.geometry.cutouts import stabilizer_cutouts, switch_cutouts
 from keyboard.geometry.keycaps import keycap_footprint, keycap_specs
 from keyboard.geometry.outline import generate_outline
+from keyboard.geometry.seam import (
+    plate_seam,
+    seam_conflicts,
+    section_outlines,
+)
 from keyboard.layout.layout import KeyboardLayout
 from keyboard.metadata import Cutout, KeyboardGeometryModel, KeyboardMetadata, MountingHole
 from keyboard.registry import get_keycap, get_switch
@@ -169,10 +175,28 @@ def generate(
         edge_margins=_border(sw_cuts + stab_cuts, plate),
     )
 
-    return KeyboardGeometryModel(
+    model = KeyboardGeometryModel(
         plate_outline=outline,
         switch_cutouts=sw_cuts,
         stabilizer_cutouts=stab_cuts,
         mounting_holes=holes,
         metadata=metadata,
+    )
+
+    # The plate splits **between keys** (ADR-0003, ADR-0014). Compute the Seam
+    # here so every consumer gets it, and fail HARD if it would cut a switch or
+    # stabilizer cutout: a layout change must never silently bring back the
+    # straight x=0 cut through the keys (issue #9).
+    seam = plate_seam(model)
+    conflicts = seam_conflicts(model, seam)
+    if conflicts:
+        raise ValueError(
+            "the keyboard plate Seam crosses a cutout, so the Sections cannot "
+            "rejoin cleanly: " + "; ".join(conflicts)
+        )
+
+    return replace(
+        model,
+        seam=seam,
+        section_outlines=list(section_outlines(outline, seam, height)),
     )

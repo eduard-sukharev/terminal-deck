@@ -119,6 +119,11 @@ class Bezel:
     recess: float = 0.0
 
 
+#: The keycap wobble allowance each side of the Well Cutout (mm, ADR-0014):
+#: one source for the config default and the parsed ``keyboard.plate.wobble``.
+DEFAULT_PLATE_WOBBLE: float = 0.6
+
+
 @dataclass(frozen=True)
 class Keyboard:
     columns: int = 12
@@ -135,7 +140,7 @@ class Keyboard:
     #: Keycap wobble allowance each side of the Well Cutout (mm, ADR-0014):
     #: a keycap rocking under switch play must never strike a Well wall.
     #: Single source: ``keyboard.plate.wobble``.
-    plate_wobble: float = 0.6
+    plate_wobble: float = DEFAULT_PLATE_WOBBLE
     #: Switch plate thickness (mm): ``keyboard.plate.thickness``. The Well's
     #: depth and the plate's Z are measured from it, so it is exposed here
     #: instead of being read out of the raw plate dict by every consumer.
@@ -856,7 +861,9 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
             mounting=keyboard.get("mounting"),
             keycap=keyboard.get("keycap"),
             controller=keyboard.get("controller"),
-            plate_wobble=float((keyboard.get("plate") or {}).get("wobble", 0.6)),
+            plate_wobble=float(
+                (keyboard.get("plate") or {}).get("wobble", DEFAULT_PLATE_WOBBLE)
+            ),
             plate_thickness=float(
                 (keyboard.get("plate") or {}).get("thickness", 1.5)
             ),

@@ -315,9 +315,13 @@ Gotchas:
   (`keyboard.plate.wobble` 0.60): 228.05 × 75.65 → 229.25 × 76.85. The plate is
   the Cutout + one wall per side (233.25 × 80.85 × 1.5 at z 16.30) and **bears
   on the ring's lower faces**: there is no Well floor and **no floor
-  standoff**. Eight M2 screws come up from below through Ø2.20 holes into
+  standoff**. Eight **M2×4** screws come up from below through Ø2.20 holes into
   Ø3.00 × 3.0 inserts in Ø6.00 bosses (z 17.80–22.30) on the front/rear lips,
-  four per Section. `parting_z` (16.15) ≤ plate bottom (16.30) is HARD. Do not
+  four per Section. The stock length is derived from the 1.5 mm grip; the M2
+  head (Ø3.80 × 2.00) cannot be recessed, so it spans 14.30–16.30 and **dips
+  1.85 mm into the Tray**, 1.75 mm clear of the Tray's inner walls —
+  `keyboard-mounts-head` reports it. `parting_z` (16.15) ≤ plate bottom (16.30)
+  is HARD. Do not
   give the plate a zero-rotation frame: the pattern is read through the
   keyboard's 180° placement (`well_mounts(..., placement=...)`), from one
   `well_mounts` call for the Deck and the plate. Plate thickness or keycap

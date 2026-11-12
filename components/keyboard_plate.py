@@ -98,7 +98,13 @@ class KeyboardPlate(Component):
         self._stab_family = str(data.get("stabilizer_family", "cherry"))
         plate = data.get("plate", {}) or {}
         self._plate_thickness = float(plate.get("thickness", 1.5))
-        self._wobble = float(plate.get("wobble", 0.6))
+        if "wobble" not in plate:
+            raise ValueError(
+                "KeyboardPlate needs 'plate.wobble' (ADR-0014): the Well Cutout "
+                "is the keycap footprint plus the wobble allowance per side, "
+                "and keyboard.plate.wobble is its single source"
+            )
+        self._wobble = float(plate["wobble"])
         self._corner_radius = float(plate.get("corner_radius", 2.0))
         if "wall_thickness" not in data:
             raise ValueError(

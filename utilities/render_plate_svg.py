@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from keyboard import generate, parse_layout  # noqa: E402
 from keyboard.metadata import Cutout  # noqa: E402
+from utilities.config_loader import load_config  # noqa: E402
 
 
 def _svg_points(vertices: list[tuple[float, float]]) -> str:
@@ -35,12 +36,13 @@ def _polygon_path(vertices: list[tuple[float, float]]) -> str:
 def render_svg(
     layout_source: str,
     out_path: Path,
+    *,
+    wobble: float,
+    wall: float,
+    plate_thickness: float,
     pitch: float = 19.05,
     switch_family: str = "mx_alps",
     stabilizer_family: str = "cherry",
-    plate_thickness: float = 1.5,
-    wall: float = 2.0,
-    wobble: float = 0.6,
     keycap_profile: str = "xda",
     corner_radius: float = 2.0,
     plate_color: str = "#2B3A67",
@@ -49,7 +51,13 @@ def render_svg(
     stabilizer_color: str = "#F4C430",
     scale: float = 1.0,
 ) -> str:
-    """Write the plate SVG and return its XML string."""
+    """Write the plate SVG and return its XML string.
+
+    ``wobble``, ``wall`` and ``plate_thickness`` have no defaults on purpose:
+    they come from the config (``keyboard.plate.wobble``,
+    ``wall.thickness``, ``keyboard.plate.thickness``), the one source the
+    build derives the Well and the plate from.
+    """
     with open(layout_source, encoding="utf-8") as handle:
         raw = json.load(handle)
     layout = parse_layout(raw, pitch)
@@ -143,17 +151,27 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--layout", default="keyboard/layouts/jd40.json")
     parser.add_argument("-o", "--out", default="generated/plate_top.svg")
     parser.add_argument("--png", action="store_true", help="also convert to PNG via inkscape")
-    parser.add_argument("--pitch", type=float, default=19.05)
-    parser.add_argument("--wall", type=float, default=2.0,
-                        help="Well ring / plate border per side (config.wall.thickness)")
-    parser.add_argument("--wobble", type=float, default=0.6)
+    parser.add_argument("--pitch", type=float, default=None,
+                        help="switch pitch (default: config.keyboard.pitch)")
+    parser.add_argument("--wall", type=float, default=None,
+                        help="Well ring / plate border per side (default: config.wall.thickness)")
+    parser.add_argument("--wobble", type=float, default=None,
+                        help="keycap wobble per side (default: keyboard.plate.wobble)")
     parser.add_argument("--scale", type=float, default=1.0)
     args = parser.parse_args(argv)
 
+    # The Well and the plate are derived from the config; the tool reads the
+    # same values instead of carrying its own 0.6 / 2.0 defaults.
+    config = load_config()
     out = Path(args.out)
     xml = render_svg(
-        args.layout, out, pitch=args.pitch, wall=args.wall,
-        wobble=args.wobble, scale=args.scale,
+        args.layout,
+        out,
+        wobble=config.keyboard.plate_wobble if args.wobble is None else args.wobble,
+        wall=config.wall_thickness if args.wall is None else args.wall,
+        plate_thickness=config.keyboard.plate_thickness,
+        pitch=config.keyboard.pitch if args.pitch is None else args.pitch,
+        scale=args.scale,
     )
     print(f"wrote {out}  ({len(xml)} bytes)")
     if args.png:

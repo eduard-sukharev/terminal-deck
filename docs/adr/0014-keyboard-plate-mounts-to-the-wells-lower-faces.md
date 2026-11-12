@@ -18,8 +18,8 @@ flat against the **lower faces of the Well walls** from below. The Well walls (a
 2 mm ring around the Cutout, owned by the Deck) descend to the plate and are its
 continuous bearing; the plate carries the typing load by its own stiffness on
 the fastening bosses. No floor standoffs remain, so the cavity under the plate
-(the RP2040 controller) is clear end-to-end and nothing but the joint screws
-crosses the Parting plane.
+(the RP2040 controller) is clear end-to-end and nothing but the joint screws and
+the eight plate-screw heads crosses the Parting plane.
 
 ## Decision
 
@@ -36,11 +36,14 @@ crosses the Parting plane.
   `clearance.shell` no longer enters its size.
 - **Plate.** A flat sheet, `plate = cutout + 2·wall` wide, so it extends one
   wall thickness under each Well wall and bears on the walls' lower faces. The
-  switch-free border is derived, not chosen:
-  `edge_margin = wall + wobble + (keycap/2 − cutout/2) ≈ 4.85 mm` (was 2.5 mm).
-- **Fasteners.** Eight M2 screws, bottom-up, into heat-set inserts in bosses
-  merged to the Well walls **on the front and rear lips only** — the X sides
-  have ~2 mm of deck rim, nowhere near the ~6.5 mm an M2 boss needs. Four
+  switch-free border between the plate's edge and the nearest switch/stabilizer
+  cutout is derived per side from the real keycap/switch geometry — there is no
+  single `edge_margin` value: 4.05 mm left/right, 4.85 mm at the rear edge,
+  3.88 mm at the spacebar edge (the minimum).
+- **Fasteners.** Eight **M2 × 4** screws (the stock length is derived from the
+  1.5 mm plate grip and the 3.0 mm insert), bottom-up, into heat-set inserts in
+  bosses merged to the Well walls **on the front and rear lips only** — the X
+  sides have ~2 mm of deck rim, nowhere near the ~6.5 mm an M2 boss needs. Four
   bosses per plate Section: front-outer, front-at-Seam, rear-at-Seam,
   rear-outer. Rectangular, filleted **ears** extend the plate past the Cutout
   where the edge border cannot hold a boss. Each screw passes through a
@@ -51,12 +54,14 @@ crosses the Parting plane.
 
 ## Consequences
 
-- `edge_margin` 2.5 → ≈4.85 grows the plate ≈4.7 mm across, so the keyboard
-  (≈234.9 mm) overtakes the display (231 mm) as the width driver and the closed
-  case grows **238.9 → ≈242.8 mm**. Each Section is ≈121.4 × 139.25 mm, still
-  inside 220 × 220 × 256. The side bezel grows ≈2 mm per side — part of what
-  ADR-0013 bought back. Along Y the growth is absorbed by the front margin
-  (10 → ≈7.6 mm) and the Rear band (49.5 → ≈47 mm); face height is unchanged.
+- The plate is derived: `plate = cutout + 2·wall`, so one wall thickness of
+  bearing border on each side (`edge_margin` as a single knob is gone). The
+  keyboard plate (233.25 mm) overtakes the display (231 mm) as the width driver
+  and the closed case settles at **241.17 mm**. Each Section is
+  **121.39 × 90.05 mm** (the spacebar-side Section 167.21 × 90.05), still inside
+  220 × 220 × 256. The side bezel grows ≈2 mm per side — part of what ADR-0013
+  bought back. Along Y the growth is absorbed by the front margin
+  (10 → **7.65 mm**) and the Rear band; face height stays 140.00 mm.
 - The plate Seam follows ADR-0003's original intent — a split **between keys** —
   via `plate_seam()` (the row-jogging path), not the straight `x=0` cut that
   passes through switch cutouts (tracked as a bug, not a decision). The
@@ -64,7 +69,8 @@ crosses the Parting plane.
   and the Well walls' bearing between them. The Seam is now clamped at its two
   ends (front/rear Seam bosses) rather than along its length.
 - The cavity under the plate is clear end-to-end — no columns cross the
-  Parting plane, and the controller sits free on the floor.
+  Parting plane, and the controller sits free on the floor. The only things that
+  dip below the plate into the Tray are the eight M2 screw heads (see below).
 - `build_deck` re-derives the Cutout and walls from the keycap footprint +
   wobble, instead of `keyboard_w + 2·clearance.shell`.
 
@@ -96,6 +102,14 @@ crosses the Parting plane.
   margin is **7.65 mm** (wall 2.00 + lip 5.65), the closed face **140.00 mm**
   (at the 140.00 limit). `keyboard-mounts-fit` and `slide-budget` are the HARD
   checks.
+- **The eight M2 screw heads dip into the Tray — accepted and checked.** The
+  plate is 1.50 mm thick, so an M2 head (Ø3.80 × 2.00) cannot be recessed: it
+  seats on the plate's underside and spans **14.30–16.30 mm**, crossing the
+  Parting plane (16.15) by **1.85 mm**. It stays clear of the Tray's inner walls
+  by **1.75 mm** (the front lip is the closest; the Tray cavity there is
+  237.17 × 136.00) and of every placed part below the plane (the controller and
+  SBC roofs are at 7.30/8.70, well below). `keyboard-mounts-head` reports the
+  crossing and the measured clearance; do not claim a clean cavity.
 - **Tracked deviation — `front-seam-right` sits 3.54 mm from the Seam, not
   7.20 (issue #19).** The front wall's side band column is at world +40.19, so
   the station is walked 3.66 mm inboard (world **+47.04**, plate-local
@@ -114,7 +128,7 @@ crosses the Parting plane.
 | Parting plane | 16.15 (0.15 below the plate bottom) |
 | Derived front margin | 7.65 (front lip 5.65 for a 5.00 boss) |
 | Plate border | 4.05 left/right, 4.85 rear, 3.88 spacebar (min) |
-| Mounts | 8 × M2, 4 per Section; boss Ø6.00 z 17.80–22.30, insert Ø3.00 × 3.0, clearance Ø2.20 |
+| Mounts | 8 × M2×4, 4 per Section; boss Ø6.00 z 17.80–22.30, insert Ø3.00 × 3.0, clearance Ø2.20, head Ø3.80 × 2.00 (14.30–16.30, crossing the Parting plane by 1.85, 1.75 clear of the Tray wall) |
 | Ears | 5.20 × 5.20, r2.0 |
 | Notches | 4 × 5.30 × 1.45, 1.10 bite, at the front band columns |
 | Plate Seam | 4 bands; plate-local ends x 0.00 (rear edge) and −50.584 (spacebar edge) |

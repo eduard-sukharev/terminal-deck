@@ -143,11 +143,14 @@ to tilt it.**
   lower faces from below**; there is no floor under it and no floor standoff.
   Its switch-free border is derived, not chosen: 4.05 mm left/right, 4.85 mm
   at the rear edge and 3.88 mm at the spacebar (front) edge, the minimum.
-* **Plate fastening** — eight M2 screws come up **from below** through Ø2.20
-  clearance holes into heat-set inserts (Ø3.00 × 3.0 deep) in Ø6.00 bosses
+* **Plate fastening** — eight **M2 × 4** screws come up **from below** through
+  Ø2.20 clearance holes into heat-set inserts (Ø3.00 × 3.0 deep) in Ø6.00 bosses
   (z 17.80–22.30) merged to the ring's outer face on the **front and rear
   lips** — four per Section: front-outer, front-at-Seam, rear-at-Seam,
-  rear-outer. The front lip is 5.65 mm for a 5.00 mm boss requirement. The X
+  rear-outer. The length is derived from the 1.5 mm plate grip and the insert;
+  the M2 head (Ø3.80 × 2.00) cannot be recessed, so it spans 14.30–16.30 and
+  dips 1.85 mm into the Tray, 1.75 mm clear of its inner walls. The front lip is
+  5.65 mm for a 5.00 mm boss requirement. The X
   sides have only ~2 mm of Deck rim, so a station that cannot fit the border
   gets a 5.20 × 5.20 mm, r2.0 filleted **Plate ear** protruding past the
   outline; four **Plate notches** (5.30 × 1.45, 1.10 mm bite) yield the front
@@ -173,8 +176,9 @@ to tilt it.**
   user-supplied rail sections bolt on. No rail bars in the shell.
 * **Well contents** — the keyboard plate closes the Well from below; the
   **RP2040 controller** sits under the plate, in the chassis thickness. The
-  cavity there is clear end-to-end (nothing but the joint screws crosses the
-  Parting plane). The SBC is in the Rear band, not here. The externally
+  cavity there is clear end-to-end (nothing but the joint screws and the eight
+  plate-screw heads crosses the Parting plane). The SBC is in the Rear band, not
+  here. The externally
   reachable I/O is the accessory-rail USB-hub module, not a face cutout in the
   chassis.
 
@@ -272,10 +276,13 @@ HARD (the build fails):
   that bearing border.
 * `keyboard-plate-seam`, `keyboard-plate-sections` — the Plate Seam crosses no
   switch/stabilizer cutout and splits the plate into two build-volume Sections.
-* `keyboard-mounts-stations`, `keyboard-mounts-fit`, `keyboard-mounts-parting` —
-  eight M2 stations, four per Section; they fit the lips, the Seam clearance
-  and the ears/notches; and no printed plate fastener crosses the Parting
-  plane (zero floor standoffs). `slide-chassis-joint-clear` measures the joint
+* `keyboard-mounts-stations`, `keyboard-mounts-fit`, `keyboard-mounts-screw`,
+  `keyboard-mounts-head`, `keyboard-mounts-parting` — eight stations, four per
+  Section; they fit the lips, the Seam clearance and the ears/notches; the
+  stock screw (M2×4) reaches the insert without bottoming out; the screw heads'
+  dip below the Parting plane clears the Tray walls and every placed part; and
+  no printed plate fastener column crosses the Parting plane (zero floor
+  standoffs). `slide-chassis-joint-clear` measures the joint
   stations against the plate's **notched** footprint, not its bounding box.
 
 GOAL (reported, not fatal): closed face height, thickness, mass, open pose

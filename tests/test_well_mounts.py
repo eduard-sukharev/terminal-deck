@@ -443,6 +443,32 @@ def test_seam_path_reads_the_ends_and_the_side_of_a_band(seam):
     assert path.section_at(1.0, -30.0) == 1
 
 
+def test_the_budget_carries_the_plate_seam(data, seam):
+    """The Deck's adapter calls well_mounts without the keyboard model.
+
+    ``compute_slide_budget`` puts the plate's Seam on the Well, so the Deck's
+    insert bosses and the plate's ears are one pattern from one source.
+    """
+    config, _, budget, _ = data
+    assert budget.well.seam == seam
+    implicit = well_mounts(config, budget)
+    explicit = well_mounts(config, budget, seam=seam)
+    assert implicit.ok, implicit.summary()
+    assert [(m.name, m.x, m.y) for m in implicit.mounts] == [
+        (m.name, m.x, m.y) for m in explicit.mounts
+    ]
+
+
+def test_a_missing_seam_is_an_error_not_a_centreline_guess(data):
+    """Never fall back to the straight x = 0 cut the real Seam replaced."""
+    config, _, budget, _ = data
+    bare = dataclasses.replace(
+        budget, well=dataclasses.replace(budget.well, seam=None)
+    )
+    with pytest.raises(ValueError, match="plate's Seam"):
+        well_mounts(config, bare)
+
+
 def test_seam_path_accepts_bare_bands_and_rejects_broken_ones():
     plain = SeamPath.from_seam(((-10.0, 0.0, 2.0), (0.0, 10.0, -3.0)), 40.0)
     assert plain.bands[0][0] == pytest.approx(-20.0)  # stretched to the edge

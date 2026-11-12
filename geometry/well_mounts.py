@@ -226,8 +226,8 @@ class SeamPath:
     one the keyboard's geometry model and the ``cutouts`` argument use, so the
     path does not move when the plate is placed in the chassis. ``RowSeam``
     from :mod:`keyboard.geometry.seam` is the source; any object exposing a
-    ``bands`` tuple of that shape is accepted, which keeps this module clear of
-    the keyboard package.
+    ``bands`` tuple of that shape (or a bare band sequence) is accepted, which
+    keeps this module clear of the keyboard package.
 
     The Seam's ``x`` is where the split runs inside a row band; the jogs between
     bands are at the row boundaries. A station sits *outside* the plate in Y (in
@@ -781,7 +781,7 @@ def well_mounts(
     config,
     budget,
     *,
-    seam,
+    seam=None,
     cutouts=(),
     obstacles=(),
     plate_origin: tuple[float, float] | None = None,
@@ -800,14 +800,16 @@ def well_mounts(
         (``budget.chassis_joint``) and the bearing-clamp seats
         (``clamp_width``, ``rod_x``, ``clamp_center_y``). Duck-typed, so this
         module stays free of the ``components`` package.
-    seam : RowSeam-like
+    seam : RowSeam-like, optional
         The plate's split Seam -- ``keyboard.geometry.seam.plate_seam()``'s
         ``RowSeam`` or any object with the same ``bands`` tuple
         (``(y0, y1, x)``, plate-local). The at-Seam stations straddle the
         segments where the Seam meets the plate's front and rear edges, and the
-        Section membership (four stations each) is read from the path. There is
-        no default: the straight ``x = 0`` cut this pattern used to assume is
-        exactly the bug this argument exists to prevent.
+        Section membership (four stations each) is read from the path. Defaults
+        to ``budget.well.seam``, which is how the Deck's adapter gets the same
+        path without knowing the keyboard; a Seam is never assumed, because the
+        straight ``x = 0`` cut this pattern used to assume is exactly the bug
+        this argument exists to prevent.
     cutouts : sequence of PlanRect
         The plate's own openings (switch/stabilizer cutouts), plate-local. They
         are checked against the ears and kept out of the connectivity raster.
@@ -872,6 +874,15 @@ def well_mounts(
     # Each at-Seam station keeps one clearance off the segment where its end of
     # the Seam meets the plate's edge: the configured jog allowance (so the pair
     # is never pinched by a step) plus the ear and the printable minimum.
+    # The path comes from the caller, or from the Well (the Deck's adapter has
+    # no keyboard model, and both halves must place the same stations).
+    if seam is None:
+        seam = getattr(well, "seam", None)
+    if seam is None:
+        raise ValueError(
+            "well_mounts needs the plate's Seam: pass seam=<RowSeam>, or let "
+            "the Well carry it (compute_slide_budget does)"
+        )
     seam_path = SeamPath.from_seam(seam, depth)
     seam_far = _seam_far(config)
     seam_clearance = seam_far + ear_half + minimum

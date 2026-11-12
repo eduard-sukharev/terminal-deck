@@ -9,6 +9,10 @@ keyboard:
     family: cherry
   plate:
     thickness: 1.5
+    wobble: 0.6          # keycap wobble allowance each side of the Well Cutout
+                         # (ADR-0014; assumed from switch play -- confirm on the
+                         # assembled plate). Not the plate's old border: the
+                         # plate is Cutout + one wall each side.
     edge_margin: 2.5
     corner_radius: 2.0
   mounting:

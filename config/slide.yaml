@@ -12,8 +12,10 @@
 slide:
   face_height_limit: 140.0   # HARD closed face height (the product target)
   travel_clearance: 5.0      # gap between the lid's open edge and the keyboard's upper edge
-  well_front_margin: 10.0    # chassis outer front face -> keyboard plate front edge
-                             # (TODO: derive from the Tray wall + Well once the case exists)
+                             # (`well_front_margin` is derived, not configured: ADR-0014
+                             # makes it the face-height budget's remainder after the
+                             # Well plate, floored by the front lip that hosts the
+                             # plate's M2 boss -- see components/slide.py)
   clamp_wall: 2.0            # wall around the linear bearing in its clamp
   top_bezel: 2.5             # lid face above the display module
   lid_clearance: 1.0         # gap between the keycaps and the lid's flat back

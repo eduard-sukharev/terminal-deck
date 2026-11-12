@@ -51,6 +51,10 @@ class SliderFrame:
     clearance: float
     side_pod: float
     usable_half: float
+    well: Any
+    well_front_margin: float
+    plate_z: float
+    plate_top_z: float
     clamp_width: float
     clamp_body_width: float
     rod_x: float
@@ -147,6 +151,15 @@ class SliderFrame:
             )
 
         front = -budget.chassis_height / 2.0
+        # The keyboard placement must sit exactly the derived Well margin behind
+        # the chassis front (ADR-0014): the recipe reads that margin from the
+        # budget, so a recipe/config drift has to fail here, not move the Well.
+        if abs((keyboard_p.box[1] - front) - budget.well_front_margin) > 1e-6:
+            raise ValueError(
+                "the keyboard placement disagrees with the derived Well front "
+                f"margin ({keyboard_p.box[1] - front:.3f} vs "
+                f"{budget.well_front_margin:.3f} mm)"
+            )
         rod_raise = budget.rod_raise
         rod_z = panel_inner_z + rod_raise
         rod_length = budget.rod_usable
@@ -239,6 +252,10 @@ class SliderFrame:
             clearance=clearance,
             side_pod=budget.side_pod,
             usable_half=budget.usable_half,
+            well=budget.well,
+            well_front_margin=budget.well_front_margin,
+            plate_z=budget.well.plate_bottom,
+            plate_top_z=budget.well.plate_top,
             clamp_width=clamp_width,
             clamp_body_width=clamp_body_width,
             rod_x=rod_x,

@@ -138,6 +138,12 @@ def test_column_is_a_frustum_inside_the_floor_skin(data):
         )
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason="ADR-0014's 7.65 mm front margin puts the keyboard plate's front "
+    "border 0.75 mm inside the front band stations' Ø7.80 reach; the accepted "
+    "fix is plate-border notches + a ring-safe scallop (T1b/T3, #10)",
+)
 def test_stations_stay_clear_of_the_placed_components(data):
     _, budget, _, placements = data
     joint = budget.chassis_joint

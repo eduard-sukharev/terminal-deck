@@ -19,6 +19,7 @@ the plate (the SBC) when the layout calls :meth:`set_plate_raise` with
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from components.base import BoundingBox, Component, Hole
@@ -135,6 +136,45 @@ class Rp2040Keyboard(Component):
         cap_height = profile.height()
         height = self._plate_raise + self._plate_thickness + CAP_PLATE_GAP + cap_height
         return BoundingBox(box.width, box.depth, height)
+
+    def keycap_envelope(self) -> tuple[float, float, float]:
+        """The keycap set's ``(width, depth, tallest)`` footprint (mm, local).
+
+        ADR-0014 sizes the Deck's Well from the real caps, so the Cutout is
+        this footprint plus the wobble allowance per side — measured from the
+        same geometry the caps are built from, never a pinned number. The
+        footprint is the union of each cap's base rectangle (rotated about its
+        own centre, as the keys are); ``tallest`` is the profile's cap height,
+        which is how far the Well has to descend.
+        """
+        from keyboard.geometry.keycaps import keycap_specs
+        from keyboard.registry import get_keycap
+
+        self._plate._ensure_model()
+        layout = self._plate._layout
+        specs = keycap_specs(
+            list(layout.keys),
+            get_keycap(self._keycap_profile)(),
+            pitch=self._pitch,
+            layout_centroid=layout._centroid(),
+        )
+        xs: list[float] = []
+        ys: list[float] = []
+        for (cx, cy), spec in zip(self.switch_grid, specs):
+            half_w = float(spec["base_w"]) / 2.0
+            half_d = float(spec["base_d"]) / 2.0
+            rad = math.radians(float(spec["rotation"]))
+            cos_r, sin_r = math.cos(rad), math.sin(rad)
+            for dx, dy in (
+                (half_w, half_d),
+                (-half_w, half_d),
+                (-half_w, -half_d),
+                (half_w, -half_d),
+            ):
+                xs.append(cx + dx * cos_r - dy * sin_r)
+                ys.append(cy + dx * sin_r + dy * cos_r)
+        tallest = max(float(spec["height"]) for spec in specs)
+        return (max(xs) - min(xs), max(ys) - min(ys), tallest)
 
     #: Y-slices the plate's occupied volume is reported in. Collision/
     #: clearance checks widen each sub-volume's Z-span by up to half its own

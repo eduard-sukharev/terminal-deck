@@ -153,10 +153,10 @@ def test_cutout_and_plate_follow_the_keycap_footprint():
     assert well.plate == pytest.approx(
         (well.cutout_width + 2 * wall, well.cutout_depth + 2 * wall)
     )
-    # The plate border is the Well wall plus the wobble: wall + wobble each
-    # side (the ADR's `edge_margin`, measured from the keycap edge).
+    # The plate border is derived per side from the real keycap/switch geometry
+    # (ADR-0014): the Well wall plus the wobble on each axis, and no single
+    # `edge_margin` value (the switch-free border differs side to side).
     assert well.ring == pytest.approx(wall)
-    assert well.edge_margin == pytest.approx(wall + wobble)
     assert (well.plate_width - well.keycap_width) / 2.0 == pytest.approx(wall + wobble)
     assert (well.plate_depth - well.keycap_depth) / 2.0 == pytest.approx(wall + wobble)
 

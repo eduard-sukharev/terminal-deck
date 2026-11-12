@@ -155,6 +155,13 @@ class Chassis:
         cut = mounts.cutout_rect
         plate = mounts.frame.rect
         plate_top = mounts.plate_top
+        # The Well ring and the notches are cut as world-axis-aligned boxes, so
+        # the plate frame may only be the layout's 0/180 deg turn.
+        if mounts.frame.rotation not in (0.0, 180.0):
+            raise ValueError(
+                "the Deck builds the Well and its notches as world-axis-aligned "
+                f"boxes; the plate frame is {mounts.frame.rotation:g} deg"
+            )
         ring_height = top - plate_top
         if ring_height <= 0.0:
             raise ValueError(

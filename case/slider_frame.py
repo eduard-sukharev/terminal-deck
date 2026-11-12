@@ -53,6 +53,7 @@ class SliderFrame:
     usable_half: float
     well: Any
     well_front_margin: float
+    plate_frame: Any
     plate_z: float
     plate_top_z: float
     clamp_width: float
@@ -254,6 +255,7 @@ class SliderFrame:
             usable_half=budget.usable_half,
             well=budget.well,
             well_front_margin=budget.well_front_margin,
+            plate_frame=budget.well.plate_frame(keyboard_p),
             plate_z=budget.well.plate_bottom,
             plate_top_z=budget.well.plate_top,
             clamp_width=clamp_width,

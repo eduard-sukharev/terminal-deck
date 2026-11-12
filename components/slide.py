@@ -85,6 +85,34 @@ class WelledPlate:
         """Material left in the front lip beyond what an M2 boss needs (mm)."""
         return self.front_lip - self.boss_lip_required
 
+    def plate_frame(self, placement):
+        """The plate's frame in the chassis plan, from the keyboard's placement.
+
+        The Well sizes the plate; the layout places it (rotated, so the
+        spacebar faces the user). This is the one call that joins the two, so
+        the Deck's bosses and the plate's ears cannot end up in different
+        frames (issue #19).
+        """
+        from geometry.well_mounts import PlateFrame
+
+        return PlateFrame.from_placement(
+            placement,
+            width=self.plate_width,
+            depth=self.plate_depth,
+        )
+
+    def seam_in(self, frame):
+        """The split Seam converted into the chassis plan through ``frame``.
+
+        ``seam`` is plate-local (the keyboard model's frame), so the world Seam
+        is derived here once, with the same frame the mounts use.
+        """
+        from geometry.well_mounts import SeamPath
+
+        if self.seam is None:
+            return None
+        return SeamPath.from_seam(self.seam, self.plate_depth).to_world(frame)
+
     def summary(self) -> str:
         return (
             f"cutout {self.cutout_width:.2f} x {self.cutout_depth:.2f}, "

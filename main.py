@@ -184,10 +184,17 @@ class BuildPipeline:
 
         # The plate carries the Well's mounting pattern (ears, notches, M2
         # clearance holes) -- one source, derived from the same budget the Deck
-        # uses (ADR-0014).
+        # uses and the keyboard's own placement (its 180 deg turn is the plate's
+        # frame, ADR-0014/issue #19).
         from geometry.well_mounts import well_mounts
 
-        components["keyboard"].set_well_mounts(well_mounts(config, budget))
+        keyboard = components["keyboard"]
+        keyboard_placement = next(
+            p for p in placements if p.component is keyboard
+        )
+        keyboard.set_well_mounts(
+            well_mounts(config, budget, placement=keyboard_placement)
+        )
 
         report = run_slider_checks(budget, config, placements)
         print("[pipeline] slider validation:")

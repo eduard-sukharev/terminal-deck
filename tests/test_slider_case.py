@@ -657,8 +657,8 @@ def deck(data):
 
 @pytest.fixture(scope="module")
 def mounts(data):
-    config, _, budget, _ = data
-    return well_mounts(config, budget)
+    config, _, budget, frame = data
+    return well_mounts(config, budget, frame=frame.plate_frame)
 
 
 def _material_bounds(shape, x0, y0, x1, y1, z0, z1):
@@ -937,3 +937,36 @@ def test_deck_sections_rejoin_and_print_closed_face_down(data, deck):
             report,
         )
     assert report.passed, report.summary()
+
+
+def test_the_placed_plate_does_not_share_volume_with_the_deck(data, deck, mounts):
+    """The plate sits under the Well ring and clears every band boss (#19).
+
+    The plate is placed by the keyboard's own frame, exactly as the assembly
+    places it, then intersected with the Deck. The notches were on the wrong
+    lip before the frame fix: the plate's front-lip material would sit inside
+    the band columns.
+    """
+    config, components, budget, frame = data
+    keyboard = components["keyboard"]
+    keyboard.set_well_mounts(mounts)
+    plate = keyboard._plate.build()
+    placed = ch.rotate_z(plate, frame.plate_frame.rotation)
+    placed = ch.translate(
+        placed,
+        frame.plate_frame.cx,
+        frame.plate_frame.cy,
+        budget.well.plate_bottom,
+    )
+    assert ch.volume_mm3(ch.intersect(deck, placed)) == pytest.approx(
+        0.0, abs=1e-6
+    )
+    # And the plate really is under the ring: every station's ear is plate
+    # material at the plate's own Z (the screw has something to clamp).
+    for mount in mounts.mounts:
+        assert _material_at(
+            placed,
+            mount.world_xy[0] + 1.75,
+            mount.world_xy[1],
+            budget.well.plate_bottom + 0.75,
+        ) > 0.0, f"{mount.name}: no plate material under the boss"

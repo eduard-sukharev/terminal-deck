@@ -321,7 +321,7 @@ class Chassis:
             rod_x=f.rod_x,
             clamp_center_y=f.clamp_center_y,
         )
-        mounts = well_mounts(self.config, budget)
+        mounts = well_mounts(self.config, budget, frame=f.plate_frame)
         if not mounts.ok:
             raise ValueError(
                 "the plate's Well mounts are invalid: "

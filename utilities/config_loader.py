@@ -132,6 +132,20 @@ class Keyboard:
     mounting: dict[str, Any] | None = None
     keycap: dict[str, Any] | None = None
     controller: dict[str, object] | None = None
+    #: Keycap wobble allowance each side of the Well Cutout (mm, ADR-0014):
+    #: a keycap rocking under switch play must never strike a Well wall.
+    #: Single source: ``keyboard.plate.wobble``.
+    plate_wobble: float = 0.6
+    #: Switch plate thickness (mm): ``keyboard.plate.thickness``. The Well's
+    #: depth and the plate's Z are measured from it, so it is exposed here
+    #: instead of being read out of the raw plate dict by every consumer.
+    plate_thickness: float = 1.5
+
+    def __post_init__(self) -> None:
+        if self.plate_wobble < 0:
+            raise ValueError("keyboard.plate.wobble must be >= 0")
+        if self.plate_thickness <= 0:
+            raise ValueError("keyboard.plate.thickness must be positive")
 
 
 @dataclass(frozen=True)
@@ -572,11 +586,15 @@ class Slide:
     ``travel + one bearing + end support + lid bezel``. ``travel`` is the
     keyboard's front margin plus its depth plus clearance, because the lid's
     lower edge has to pass the keyboard's *upper* edge when open.
+
+    The front margin (chassis outer front face -> keyboard plate front edge)
+    is **not** configured: ADR-0014 derives it from that same face-height
+    budget in :func:`components.slide.compute_slide_budget`, because the plate
+    grew to bear on the Well ring and the margin is what absorbs the growth.
     """
 
     face_height_limit: float = 140.0
     travel_clearance: float = 5.0
-    well_front_margin: float = 10.0
     clamp_wall: float = 2.0
     top_bezel: float = 2.5
     lid_clearance: float = 1.0
@@ -599,8 +617,8 @@ class Slide:
     def __post_init__(self) -> None:
         if self.face_height_limit <= 0:
             raise ValueError("slide.face_height_limit must be positive")
-        if self.travel_clearance < 0 or self.well_front_margin < 0:
-            raise ValueError("slide travel/front margins must be >= 0")
+        if self.travel_clearance < 0:
+            raise ValueError("slide.travel_clearance must be >= 0")
         if self.clamp_wall <= 0 or self.top_bezel < 0:
             raise ValueError("slide.clamp_wall must be positive and top_bezel >= 0")
         if self.lid_clearance < 0 or self.lid_back <= 0 or self.lid_front <= 0:
@@ -727,7 +745,6 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
     slide = Slide(
         face_height_limit=float(slide_raw.get("face_height_limit", 140.0)),
         travel_clearance=float(slide_raw.get("travel_clearance", 5.0)),
-        well_front_margin=float(slide_raw.get("well_front_margin", 10.0)),
         clamp_wall=float(slide_raw.get("clamp_wall", 2.0)),
         top_bezel=float(slide_raw.get("top_bezel", 2.5)),
         lid_clearance=float(slide_raw.get("lid_clearance", 1.0)),
@@ -839,6 +856,10 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
             mounting=keyboard.get("mounting"),
             keycap=keyboard.get("keycap"),
             controller=keyboard.get("controller"),
+            plate_wobble=float((keyboard.get("plate") or {}).get("wobble", 0.6)),
+            plate_thickness=float(
+                (keyboard.get("plate") or {}).get("thickness", 1.5)
+            ),
         ),
         screws=Screws(
             body=str(screws["body"]), standoff=str(screws["standoff"]),

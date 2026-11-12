@@ -75,7 +75,7 @@ def run_slider_checks(
     keyboard = _by_role(placements, "keyboard")
     display = _by_role(placements, "display")
     device_front = (
-        keyboard.box[1] - slide.well_front_margin if keyboard is not None else 0.0
+        keyboard.box[1] - budget.well_front_margin if keyboard is not None else 0.0
     )
 
     report.add(

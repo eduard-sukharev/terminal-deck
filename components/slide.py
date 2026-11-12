@@ -21,9 +21,69 @@ from typing import Any
 
 from routing.cable_routing import CONNECTOR_HDMI, MIN_BEND_RADIUS_MM
 
+from components.keycap_set import CAP_PLATE_GAP
 from geometry.chassis_joint import chassis_joint as chassis_band_joint
 from geometry.joint import lid_joint
 from utilities import fasteners
+
+
+@dataclass(frozen=True)
+class WelledPlate:
+    """The keyboard plate and the Deck's Well (ADR-0014), all mm.
+
+    The Well is a ``ring``-thick ring of Deck walls around a rectangular
+    ``cutout``, descending from the Deck's top face to ``plate_top``; the plate
+    is a flat sheet one wall wider than the Cutout on every side, so it bears
+    on the ring's lower faces from below. Both sizes are derived from the real
+    keycap footprint and the wobble allowance -- never chosen.
+
+    ``front_lip``/``rear_lip`` are the solid Deck material outboard of the ring
+    (front wall inner face -> ring, and ring -> rear wall inner face); the
+    plate's M2 insert bosses are merged to the ring's outer face there, so each
+    lip must host one (``boss_lip_required``).
+    """
+
+    keycap_width: float
+    keycap_depth: float
+    tallest_keycap: float
+    wobble: float
+    cutout_width: float
+    cutout_depth: float
+    plate_width: float
+    plate_depth: float
+    plate_thickness: float
+    plate_bottom: float
+    plate_top: float
+    well_depth: float
+    ring: float
+    edge_margin: float
+    front_lip: float
+    rear_lip: float
+    boss_lip_required: float
+
+    @property
+    def cutout(self) -> tuple[float, float]:
+        """The Well Cutout ``(width, depth)`` — keycap + wobble per side."""
+        return (self.cutout_width, self.cutout_depth)
+
+    @property
+    def plate(self) -> tuple[float, float]:
+        """The plate ``(width, depth)`` — Cutout + one wall per side."""
+        return (self.plate_width, self.plate_depth)
+
+    @property
+    def front_lip_slack(self) -> float:
+        """Material left in the front lip beyond what an M2 boss needs (mm)."""
+        return self.front_lip - self.boss_lip_required
+
+    def summary(self) -> str:
+        return (
+            f"cutout {self.cutout_width:.2f} x {self.cutout_depth:.2f}, "
+            f"plate {self.plate_width:.2f} x {self.plate_depth:.2f} x "
+            f"{self.plate_thickness:.1f} at z {self.plate_bottom:.2f} "
+            f"(top {self.plate_top:.2f}), ring {self.ring:.1f}, "
+            f"wobble {self.wobble:.2f}"
+        )
 
 
 @dataclass(frozen=True)
@@ -56,6 +116,8 @@ class SlideBudget:
 
     travel: float
     keyboard_top: float
+    well_front_margin: float
+    well: WelledPlate
     rear_band: float
     rear_band_min: float
     rear_band_extension: float
@@ -106,6 +168,21 @@ class SlideBudget:
         return self.closed_face_height <= self.face_height_limit + 1e-9
 
     @property
+    def plate_z(self) -> float:
+        """The plate's bottom face (ADR-0014): the Deck's Well reaches it."""
+        return self.well.plate_bottom
+
+    @property
+    def parting_below_plate(self) -> bool:
+        """``parting_z <= plate_bottom`` is HARD: the Parting never cuts the Well."""
+        return self.chassis_joint.parting_z <= self.well.plate_bottom + 1e-9
+
+    @property
+    def front_lip_hosts_boss(self) -> bool:
+        """The front lip must hold the plate's M2 insert boss (ADR-0014)."""
+        return self.well.front_lip_slack >= -1e-9
+
+    @property
     def slot_fits(self) -> bool:
         """The back-panel slot must contain the Bearing clamp at both poses."""
         return self.slot_span >= self.slot_needed - 1e-9
@@ -128,6 +205,10 @@ class SlideBudget:
             f"(limit {self.face_height_limit:.1f}, {status})",
             f"  travel: {self.travel:.2f} mm "
             f"(keyboard top {self.keyboard_top:.2f} + clearance)",
+            f"  well: {self.well.summary()}",
+            f"  front margin: {self.well_front_margin:.2f} mm "
+            f"(lip {self.well.front_lip:.2f} for a "
+            f"{self.well.boss_lip_required:.2f} boss)",
             f"  chassis: {self.chassis_height:.2f} mm "
             f"(rear band {self.rear_band:.2f}, of which "
             f"{self.rear_band_extension:.2f} is the lid-driven extension)",
@@ -169,10 +250,21 @@ def _size(components: dict[str, Any], role: str) -> Any:
 def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget:
     """Derive the travel, guide span and envelope from config + components.
 
-    The formulas are the spec's face-height budget (ADR-0009/0010):
+    The formulas are the spec's face-height budget (ADR-0009/0010/0013) and the
+    Well's sizing chain (ADR-0014):
 
-    * ``travel = well_front_margin + keyboard.depth + travel_clearance``
-      (the lid's lower edge must pass the keyboard's *upper* edge).
+    * the **Cutout** is the keycap footprint plus the wobble allowance per
+      side; the **plate** is the Cutout plus one wall per side, so it bears on
+      the Well walls' lower faces.
+    * ``plate_z = chassis_top - tallest_keycap - CAP_PLATE_GAP -
+      plate_thickness``: the plate sits one cap stack below the Deck's top, so
+      the Well is exactly as deep as the keycaps need. ``parting_z`` must stay
+      below it (HARD).
+    * the **front margin** is the face-height budget's remainder:
+      ``face_height_limit - lid stack - plate.depth``, floored by the front lip
+      that has to host the plate's M2 insert boss (ADR-0014).
+    * ``travel = well_front_margin + plate.depth + travel_clearance`` (the
+      lid's lower edge must pass the keyboard's *upper* edge).
     * the Bearing clamp's seat sits at the rear end of the bearing's travel
       envelope; the rear band is the larger of that run and the SBC depth.
     * ``rod_usable = travel + bearings + 2 * (Rod clamp + clearance)``: the
@@ -189,15 +281,39 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
     wall = config.wall_thickness
     shell = config.clearance.shell
 
-    keyboard = _size(components, "keyboard")
+    keyboard_component = components.get("keyboard")
+    if keyboard_component is None:
+        raise ValueError("slide budget needs the 'keyboard' component")
+    keyboard = keyboard_component.size()
     display = _size(components, "display")
     # Required: the FPC guard's planform is anchored to its FPC connector.
     _size(components, "driver")
     sbc = _size(components, "sbc")
     controller = _size(components, "controller")
 
-    keyboard_top = slide.well_front_margin + keyboard.depth
-    travel = keyboard_top + slide.travel_clearance
+    # -- The Well's Cutout and the plate (ADR-0014) -----------------------
+    # The Cutout is the real keycap footprint plus the wobble allowance; the
+    # plate is one wall wider on each side so it reaches under the Well walls
+    # and bears on their lower faces.
+    keycap_width, keycap_depth, tallest_keycap = keyboard_component.keycap_envelope()
+    wobble = config.keyboard.plate_wobble
+    cutout_width = keycap_width + 2.0 * wobble
+    cutout_depth = keycap_depth + 2.0 * wobble
+    plate_width = cutout_width + 2.0 * wall
+    plate_depth = cutout_depth + 2.0 * wall
+    plate_thickness = config.keyboard.plate_thickness
+
+    # The chassis' Z stack: the keyboard is the tallest content unless a buried
+    # part is. The Deck's top is the keycap stack above the plate.
+    chassis_thickness = max(
+        keyboard.height,
+        wall + sbc.height,
+        wall + controller.height,
+    )
+    # Slaved to the tallest keycap: the Well always reaches the plate's top.
+    plate_z = (
+        chassis_thickness - tallest_keycap - CAP_PLATE_GAP - plate_thickness
+    )
 
     bearing_stack = (
         bearing.per_rod * bearing.length
@@ -206,6 +322,39 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
     # The rod must be long enough for the bearing's full travel envelope plus
     # a Rod clamp and a clearance gap at each end.
     rod_clamp_allowance = slide.rod_clamp.length + slide.rod_clamp.clearance
+
+    # -- The face-height budget derives the front margin (ADR-0014) -------
+    # Everything between the keyboard's top and the closed face: the travel's
+    # clearance, the bearing, the two Rod clamps and their gaps, the lid's end
+    # supports and its top bezel. The margin is what the HARD limit leaves
+    # after the plate.
+    lid_stack = (
+        slide.travel_clearance
+        + bearing_stack
+        + 2.0 * rod_clamp_allowance
+        + 2.0 * rod.end_support
+        + slide.top_bezel
+    )
+    # The floor: the front lip is the Deck material between the front wall's
+    # inner face and the Well ring. An M2 insert boss merged to the ring's
+    # outer face needs the bore's merged-boss margin, the insert hole and the
+    # boss margin around it.
+    plate_screw = fasteners.heat_insert(
+        str((config.keyboard.mounting or {}).get("screw", "M2"))
+    )
+    boss_lip_required = (
+        config.merged_boss.bore_margin
+        + plate_screw.printed_hole_diameter
+        + config.chassis_joint.boss_margin
+    )
+    front_margin_floor = wall + boss_lip_required
+    well_front_margin = max(
+        slide.face_height_limit - lid_stack - plate_depth,
+        front_margin_floor,
+    )
+    keyboard_top = well_front_margin + plate_depth
+    travel = keyboard_top + slide.travel_clearance
+
     rod_usable = travel + bearing_stack + 2.0 * rod_clamp_allowance
     rear_band_clamp = slide.rear_band_clamp
     rear_band_contents = sbc.depth + 2 * shell
@@ -227,10 +376,25 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
     # open: the lid's own overhang and the top bezel must not inflate it.
     lid_overlap = min(lid_height, chassis_height) - travel
 
-    chassis_thickness = max(
-        keyboard.height,
-        wall + sbc.height,
-        wall + controller.height,
+    # -- The Well and the plate, sized from the numbers above --------------
+    well = WelledPlate(
+        keycap_width=keycap_width,
+        keycap_depth=keycap_depth,
+        tallest_keycap=tallest_keycap,
+        wobble=wobble,
+        cutout_width=cutout_width,
+        cutout_depth=cutout_depth,
+        plate_width=plate_width,
+        plate_depth=plate_depth,
+        plate_thickness=plate_thickness,
+        plate_bottom=plate_z,
+        plate_top=plate_z + plate_thickness,
+        well_depth=chassis_thickness - (plate_z + plate_thickness),
+        ring=wall,
+        edge_margin=wall + wobble,
+        front_lip=well_front_margin - wall,
+        rear_lip=rear_band,
+        boss_lip_required=boss_lip_required,
     )
 
     # -- The moving head has to pass under the display --------------------
@@ -281,7 +445,10 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
     )
     draft_allowance = math.tan(math.radians(config.draft.angle)) * taper_height
     side_pod = wall + shell + draft_allowance
-    content_width = max(keyboard.width, display.width)
+    # The keyboard plate is wider than the display (ADR-0014: it grew to bear
+    # on the Well ring), so the Well plate is the width driver; the display is
+    # only the fallback content reference.
+    content_width = max(plate_width, display.width)
     width = content_width + 2 * side_pod
     # The Tray <-> Deck band joint (ADR-0012): the Parting plane and the ten
     # fastener stations, sized from the chassis plan at that plane.
@@ -296,6 +463,14 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
         parting=config.parting,
         joint=config.chassis_joint,
     )
+    # `parting_z <= plate_bottom` is HARD (ADR-0014): the Tray/Deck Parting
+    # must never cut through the Well, or the plate's bearing ring is split.
+    if chassis_band.parting_z > plate_z + 1e-9:
+        raise ValueError(
+            "the chassis Parting plane cuts the keyboard Well: parting_z "
+            f"{chassis_band.parting_z:.2f} > plate_bottom {plate_z:.2f} "
+            "(ADR-0014 requires the Parting below the plate)"
+        )
     # `usable_half` is the inner wall at the content's plane: what the layout
     # may fill before the shell clearance runs out.
     usable_half = width / 2.0 - side_pod
@@ -376,6 +551,8 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
     return SlideBudget(
         travel=travel,
         keyboard_top=keyboard_top,
+        well_front_margin=well_front_margin,
+        well=well,
         rear_band=rear_band,
         rear_band_min=rear_band_min,
         rear_band_extension=rear_band_extension,
@@ -582,6 +759,7 @@ def build_bearing_clamp(
 
 __all__ = [
     "SlideBudget",
+    "WelledPlate",
     "build_bearing_clamp",
     "build_guide_rod",
     "build_linear_bearing",

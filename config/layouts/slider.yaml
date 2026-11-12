@@ -26,7 +26,7 @@ constraints:
   - kind: fixed_position
     subject: keyboard
     x: 0.0
-    y: "-{budget.chassis_height} / 2 + {config.slide.well_front_margin} + {keyboard.depth} / 2"
+    y: "-{budget.chassis_height} / 2 + {budget.well_front_margin} + {keyboard.depth} / 2"
     z: 0.0
     rotation: 180.0
 

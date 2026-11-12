@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from keyboard.geometry.plate import generate as _generate
+from keyboard.geometry.outline import PlateTab
 from keyboard.layout.kle_parser import load_kle, parse_kle
 from keyboard.layout.layout import KeyboardLayout
 from keyboard.metadata import KeyboardGeometryModel, KeyboardMetadata, MountingHole
@@ -71,12 +72,15 @@ def generate(
     wobble: float = 0.0,
     corner_radius: float = 2.0,
     mounting_holes: Iterable[MountingHole] = (),
+    ears: Iterable = (),
+    notches: Iterable[tuple[float, float, float, float]] = (),
 ) -> KeyboardGeometryModel:
     """Generate the complete keyboard geometry model.
 
     The plate is the Well Cutout plus one *wall* per side (ADR-0014); the
     Cutout itself is the real keycap footprint plus *wobble*. The plate carries
-    only the *mounting_holes* passed in.
+    only the *mounting_holes* passed in, and merges the enclosure's *ears* and
+    *notches* into its outline.
 
     Parameters
     ----------
@@ -101,6 +105,10 @@ def generate(
         Plate corner radius (mm).
     mounting_holes : Iterable[MountingHole]
         Holes the plate carries (injected by the enclosure; empty by default).
+    ears : Iterable[PlateTab]
+        Filleted tabs the enclosure injects (M2 boss stations), plate-local mm.
+    notches : Iterable[tuple[float, float, float, float]]
+        Rectangles the chassis forces the plate to give up, plate-local mm.
 
     Returns
     -------
@@ -117,6 +125,8 @@ def generate(
         wobble=wobble,
         corner_radius=corner_radius,
         mounting_holes=mounting_holes,
+        ears=ears,
+        notches=notches,
     )
 
 
@@ -132,6 +142,8 @@ def generate_from_file(
     wobble: float = 0.0,
     corner_radius: float = 2.0,
     mounting_holes: Iterable[MountingHole] = (),
+    ears: Iterable[PlateTab] = (),
+    notches: Iterable[tuple[float, float, float, float]] = (),
     pitch: float = 19.05,
 ) -> KeyboardGeometryModel:
     """Load a KLE JSON file and generate the geometry model.
@@ -152,6 +164,8 @@ def generate_from_file(
         wobble=wobble,
         corner_radius=corner_radius,
         mounting_holes=mounting_holes,
+        ears=ears,
+        notches=notches,
     )
 
 

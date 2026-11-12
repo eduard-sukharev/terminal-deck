@@ -111,3 +111,54 @@ def test_plate_sections_are_cut_on_the_seam_not_at_x0():
             cad_helpers.volume_mm3(want)
         )
 
+
+
+# -- the eared/notched plate Sections (ADR-0014, issue #14) ---------------
+
+
+def _well_plate():
+    """The slider's plate with its Well-mount pattern injected."""
+    from components.slide import compute_slide_budget
+    from geometry.well_mounts import well_mounts
+    from main import BuildPipeline
+
+    pipeline = BuildPipeline()
+    config = pipeline.load_config()
+    components = pipeline.load_components()
+    budget = compute_slide_budget(config, components)
+    mounts = well_mounts(config, budget)
+    plate = components["keyboard"]._plate
+    plate.set_well_mounts(mounts)
+    return plate, mounts
+
+
+@needs_cad
+def test_eared_plate_sections_rejoin_and_each_ear_lands_on_one_section():
+    from keyboard.validation import _point_in_polygon
+
+    plate, mounts = _well_plate()
+    whole = plate.build()
+    left, right = plate.plate_sections()
+    assert check_sections(whole, [left, right]) == []
+    assert cad_helpers.volume_mm3(left) + cad_helpers.volume_mm3(right) == (
+        pytest.approx(cad_helpers.volume_mm3(whole))
+    )
+
+    # Every ear is still connected to exactly one Section: a probe in the ear
+    # (beside its clearance hole) is material in one Section and absent in the
+    # other. Which one is the data model's own answer.
+    left_poly, right_poly = plate.section_outlines
+    probe = cad_helpers.box_centered(0.4, 0.4, 0.6)
+    for mount in mounts.mounts:
+        x, y = mount.plate_xy
+        px, py = x + 1.75, y
+        shape = cad_helpers.translate(probe, px, py, 0.75)
+        volumes = [
+            cad_helpers.volume_mm3(cad_helpers.intersect(section, shape))
+            for section in (left, right)
+        ]
+        expected = 0 if _point_in_polygon(px, py, left_poly) else 1
+        assert volumes[expected] > 0.0, f"{mount.name}: ear not in its Section"
+        assert volumes[1 - expected] == pytest.approx(0.0, abs=1e-6), (
+            f"{mount.name}: ear split across Sections"
+        )

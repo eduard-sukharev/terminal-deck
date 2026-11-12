@@ -19,7 +19,7 @@ from dataclasses import replace
 
 from keyboard.geometry.cutouts import stabilizer_cutouts, switch_cutouts
 from keyboard.geometry.keycaps import keycap_footprint, keycap_specs
-from keyboard.geometry.outline import generate_outline
+from keyboard.geometry.outline import PlateTab, attach_features, generate_outline
 from keyboard.geometry.seam import (
     plate_seam,
     seam_conflicts,
@@ -84,6 +84,8 @@ def generate(
     wobble: float = 0.0,
     corner_radius: float = 2.0,
     mounting_holes: Iterable[MountingHole] = (),
+    ears: Iterable = (),
+    notches: Iterable[Rect] = (),
 ) -> KeyboardGeometryModel:
     """Generate the complete keyboard geometry model.
 
@@ -114,6 +116,13 @@ def generate(
     mounting_holes : Iterable[MountingHole]
         Holes the plate carries, in plate-local ``(x, y, diameter)`` mm. Empty
         by default: the enclosure injects its Well-mount holes (ADR-0014).
+    ears : Iterable[PlateTab]
+        Filleted tabs the enclosure needs outboard of the plate edge (the M2
+        boss stations), plate-local mm. Merged into the outline; the solid and
+        the holes stay the adapter's job.
+    notches : Iterable[Rect]
+        Rectangles the chassis forces the plate to give up, plate-local mm.
+        Cut out of the outline; the plate must stay one connected sheet.
 
     Returns
     -------
@@ -154,6 +163,7 @@ def generate(
     outline = generate_outline(
         centers, margin=margins, corner_radius=corner_radius,
     )
+    outline = attach_features(outline, ears, notches)
 
     sw_cuts = switch_cutouts(layout.keys, switch_family, layout.pitch, layout._centroid())
     stab_cuts = stabilizer_cutouts(

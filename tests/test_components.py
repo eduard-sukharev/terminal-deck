@@ -138,3 +138,183 @@ def test_keyboard_plate_takes_injected_mounting_holes():
     holes = keyboard._plate.mounting_holes()
     assert [(h.x, h.y, h.diameter) for h in holes] == [(10.0, 5.0, 2.2)]
     assert holes[0].height == pytest.approx(keyboard._plate.size().height)
+
+
+# -- the plate's Well-mount pattern (ADR-0014, issue #14) -----------------
+
+@pytest.fixture(scope="module")
+def well_plate():
+    """The slider's plate with the Well-mount pattern injected (#11/#18)."""
+    from components.slide import compute_slide_budget
+    from geometry.well_mounts import well_mounts
+    from main import BuildPipeline
+
+    pipeline = BuildPipeline()
+    config = pipeline.load_config()
+    components = pipeline.load_components()
+    placements = pipeline.place_layout(components).placements()
+    budget = compute_slide_budget(config, components)
+    mounts = well_mounts(config, budget)
+    keyboard = components["keyboard"]
+    keyboard.set_well_mounts(mounts)
+    return config, components, budget, placements, mounts, keyboard
+
+
+def _rect_of(plan_rect):
+    return (plan_rect.x0, plan_rect.y0, plan_rect.x1, plan_rect.y1)
+
+
+def _circle_in_rect(x, y, r, rect, margin=0.0):
+    eps = 1e-9
+    return (
+        x - r - margin >= rect[0] - eps
+        and x + r + margin <= rect[2] + eps
+        and y - r - margin >= rect[1] - eps
+        and y + r + margin <= rect[3] + eps
+    )
+
+
+def _circle_hits_rect(x, y, r, rect):
+    dx = max(rect[0] - x, 0.0, x - rect[2])
+    dy = max(rect[1] - y, 0.0, y - rect[3])
+    return dx * dx + dy * dy < r * r
+
+
+def test_the_plate_carries_eight_m2_clearance_holes(well_plate):
+    config, _, _, _, mounts, keyboard = well_plate
+    plate = keyboard._plate
+    holes = plate.mounting_holes()
+    assert len(holes) == len(mounts.mounts) == 8
+    screw = __import__("utilities.fasteners", fromlist=["screw"]).screw(
+        str((config.keyboard.mounting or {}).get("screw", "M2"))
+    )
+    for hole, mount in zip(holes, mounts.mounts):
+        assert (hole.x, hole.y) == pytest.approx(mount.plate_xy)
+        assert hole.x, hole.y  # placed facts, not the origin
+        assert hole.diameter == pytest.approx(screw.clearance)
+        assert hole.diameter == pytest.approx(2.20)
+        assert hole.height == pytest.approx(plate.size().height) == pytest.approx(1.5)
+
+
+def test_every_clearance_hole_sits_in_its_ear_with_an_edge_margin(well_plate):
+    config, _, _, _, mounts, keyboard = well_plate
+    plate = keyboard._plate
+    for mount in mounts.mounts:
+        assert mount.ear is not None
+        rect = _rect_of(mount.ear.rect)
+        x, y = mount.plate_xy
+        r = mount.clearance_hole_diameter / 2.0
+        assert _circle_in_rect(x, y, r, rect, margin=mounts.boss_margin), (
+            f"{mount.name}: hole misses its ear"
+        )
+        # The ear still overlaps the plate ring (the union is a real ligature).
+        assert mount.ear.overlap >= config.material.minimum_feature
+
+
+def test_no_ear_or_hole_intersects_a_switch_or_stabilizer_cutout(well_plate):
+    _, _, _, _, mounts, keyboard = well_plate
+    model = keyboard.plate_model()
+    cutouts = list(model.switch_cutouts) + list(model.stabilizer_cutouts)
+    for cut in cutouts:
+        xs = [cut.x + vx for vx, _ in cut.vertices]
+        ys = [cut.y + vy for _, vy in cut.vertices]
+        box = (min(xs), min(ys), max(xs), max(ys))
+        for mount in mounts.mounts:
+            assert not _circle_hits_rect(
+                *mount.plate_xy, mount.clearance_hole_diameter / 2.0, box
+            ), f"{mount.name}: hole overlaps a cutout"
+            ear = _rect_of(mount.ear.rect)
+            assert not (
+                ear[0] < box[2] and box[0] < ear[2] and ear[1] < box[3] and box[1] < ear[3]
+            ), f"{mount.name}: ear overlaps a cutout"
+
+
+def test_ears_do_not_overlap_each_other_and_stay_inside_the_case(well_plate):
+    from case.slider_frame import SliderFrame
+
+    config, components, budget, placements, mounts, _ = well_plate
+    frame = SliderFrame.from_data(config, budget, components, placements)
+    ears = [_rect_of(m.ear.rect) for m in mounts.mounts]
+    for i, first in enumerate(ears):
+        for second in ears[i + 1 :]:
+            assert not (
+                first[0] < second[2]
+                and second[0] < first[2]
+                and first[1] < second[3]
+                and second[1] < first[3]
+            )
+    # Plan-frame ears against the chassis cavity (vertical end walls, the
+    # band's inner X faces at the plate's Z).
+    inner_x = frame.chassis_band_width / 2.0 - frame.wall
+    inner_y = frame.depth / 2.0 - frame.wall
+    for mount in mounts.mounts:
+        rect = mounts.frame.to_plan_rect(mount.ear.rect)
+        assert -inner_x <= rect.x0 and rect.x1 <= inner_x
+        assert -inner_y <= rect.y0 and rect.y1 <= inner_y
+
+
+def test_plate_footprint_cutouts_are_the_four_band_notches(well_plate):
+    from keyboard.validation import _point_in_polygon
+
+    _, _, _, _, mounts, keyboard = well_plate
+    rects = keyboard.footprint_cutouts()
+    assert len(rects) == len(mounts.notches) == 4
+    assert sorted(rects) == sorted(_rect_of(notch.rect) for notch in mounts.notches)
+    outline = keyboard.footprint_outline()
+    assert outline
+    half_d = keyboard._plate.size().depth / 2.0
+    for rect in rects:
+        cx = (rect[0] + rect[2]) / 2.0
+        # The bite is a gap in the sheet, the material just inboard is not.
+        assert not _point_in_polygon(cx, -half_d + (rect[3] + half_d) / 2.0, outline)
+        assert _point_in_polygon(cx, rect[3] + 0.2, outline)
+
+
+def test_the_plate_is_one_uniform_sheet_with_its_ears(well_plate):
+    _, _, _, _, mounts, keyboard = well_plate
+    plate = keyboard._plate
+    assert plate.size().height == pytest.approx(1.5)
+    # Every ear is plate thickness: an extension of the sheet, not a boss.
+    for mount in mounts.mounts:
+        assert mount.ear.thickness == pytest.approx(1.5)
+    # The outline reaches into every ear, i.e. the sheet really grows.
+    outline = keyboard.footprint_outline()
+    ys = [y for _, y in outline]
+    assert min(ys) == pytest.approx(-(80.85 / 2.0) - 4.6)
+    assert max(ys) == pytest.approx(80.85 / 2.0 + 4.6)
+
+
+def test_the_m2_stack_is_bottom_up_below_the_deck_bosses(well_plate):
+    """Plate clearance hole -> insert boss, in Z: nothing is below the Tray."""
+    _, components, budget, _, mounts, keyboard = well_plate
+    plate_top = keyboard._plate_raise + keyboard._plate.size().height
+    for mount in mounts.mounts:
+        assert mount.boss_z0 == pytest.approx(plate_top)
+        assert mount.boss_z0 == pytest.approx(budget.well.plate_top)
+        assert mount.boss_z1 > mount.boss_z0
+    # No Tray-floor standoffs: the keyboard component still declares none.
+    assert keyboard.mounting_holes() == []
+    assert len(keyboard.plate_mounting_holes()) == 8
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="the keyboard is placed rotated 180 deg (so its spacebar faces the "
+    "user), but geometry.well_mounts (#18) emits its stations in the chassis "
+    "plan as if the plate were not rotated: in the assembly every plate hole "
+    "lands at the point-reflection of its Deck boss about the plate centre "
+    "(front<->rear). Ears/holes/notches are consistent in the plate's own "
+    "frame; the plan frame needs #18's plate_xy/seam expressed in the placed "
+    "frame (and the front-lip at-Seam pair then clashes with the side band "
+    "column at x=40.19) -- report, do not move stations here.",
+)
+def test_plate_holes_align_with_the_deck_bosses_in_the_assembly(well_plate):
+    _, _, _, placements, mounts, keyboard = well_plate
+    placement = next(p for p in placements if p.component is keyboard)
+    for mount in mounts.mounts:
+        hole = next(
+            h for h in keyboard.plate_mounting_holes()
+            if (h.x, h.y) == pytest.approx(mount.plate_xy)
+        )
+        wx, wy, _ = placement.world_offset(hole.x, hole.y, 0.0)
+        assert (wx, wy) == pytest.approx((mount.x, mount.y))

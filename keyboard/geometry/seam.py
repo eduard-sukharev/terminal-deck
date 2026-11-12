@@ -9,6 +9,7 @@ rows. Pure data: no CAD library needed.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from keyboard.metadata import Cutout, KeyboardGeometryModel
@@ -145,77 +146,83 @@ def _seam_band(seam: RowSeam, ylo: float, yhi: float) -> list[tuple[float, float
     return [tuple(b) for b in bands]
 
 
-def _staircase(
-    bands: list[tuple[float, float, float]], ylo: float, yhi: float, far: float
+def _seam_path(
+    bands: list[tuple[float, float, float]],
+    y_front: float,
+    y_rear: float,
 ) -> list[tuple[float, float]]:
-    """The region on one side of the Seam, closed through a far edge at ``far``.
-
-    The polygon runs bottom to top along the Seam's staircase, then closes
-    through the far edge (negative ``far`` is the left Section).
-    """
-    points: list[tuple[float, float]] = [(far, ylo), (bands[0][2], ylo)]
+    """The Seam as a polyline from its front-edge crossing to its rear one."""
+    points: list[tuple[float, float]] = [(bands[0][2], y_front)]
     for i, (_, y1, x) in enumerate(bands):
-        points.append((x, y1))
-        if i + 1 < len(bands):
-            points.append((bands[i + 1][2], y1))
-    points.append((far, yhi))
-    return _ccw(points)
+        last = i + 1 == len(bands)
+        y = y_rear if last else min(y1, y_rear)
+        points.append((x, y))
+        if not last:
+            points.append((bands[i + 1][2], y))
+    return points
 
 
-def _clip_intersection(
-    s: tuple[float, float], e: tuple[float, float],
-    a: tuple[float, float], b: tuple[float, float],
-) -> tuple[float, float]:
-    """Where segment ``s-e`` crosses the infinite line ``a-b``."""
-    sx, sy = s
-    ex, ey = e
-    dx, dy = ex - sx, ey - sy
-    ax, ay = a
-    bx, by = b
-    cx, cy = bx - ax, by - ay
-    denom = dx * cy - dy * cx
-    if abs(denom) < 1e-15:
-        return e
-    t = ((ax - sx) * cy - (ay - sy) * cx) / denom
-    return (sx + t * dx, sy + t * dy)
-
-
-def _clip_by_convex(
-    subject: list[tuple[float, float]],
-    clipper: list[tuple[float, float]],
-    eps: float = 1e-9,
+def _vertical_crossings(
+    outline: list[tuple[float, float]], x: float
 ) -> list[tuple[float, float]]:
-    """Sutherland–Hodgman: the part of ``subject`` inside a convex ``clipper``."""
-    clipper = _ccw(clipper)
-    out = list(subject)
-    for i, a in enumerate(clipper):
-        b = clipper[(i + 1) % len(clipper)]
-        if not out:
-            return []
-        inp, out = out, []
-        s = inp[-1]
-        for e in inp:
-            side_e = (b[0] - a[0]) * (e[1] - a[1]) - (b[1] - a[1]) * (e[0] - a[0])
-            side_s = (b[0] - a[0]) * (s[1] - a[1]) - (b[1] - a[1]) * (s[0] - a[0])
-            if side_e >= -eps:
-                if side_s < -eps:
-                    out.append(_clip_intersection(s, e, a, b))
-                out.append(e)
-            elif side_s >= -eps:
-                out.append(_clip_intersection(s, e, a, b))
-            s = e
-    # Drop repeated vertices (a clipped edge can leave collinear duplicates).
-    clean: list[tuple[float, float]] = []
-    for point in out:
-        if not clean or abs(point[0] - clean[-1][0]) > eps or abs(
-            point[1] - clean[-1][1]
-        ) > eps:
-            clean.append(point)
-    if len(clean) > 1 and abs(clean[0][0] - clean[-1][0]) <= eps and abs(
-        clean[0][1] - clean[-1][1]
-    ) <= eps:
-        clean.pop()
-    return clean
+    """Where the vertical line at ``x`` crosses the outline ring.
+
+    The Seam leaves the plate through its front and rear edges, so its two
+    ends are the extreme crossings of that line: the lowest is the front one,
+    the highest the rear one. A Seam that does not reach both edges (a closed
+    loop inside the plate) is not a split and is rejected by the caller.
+    """
+    hits: list[tuple[float, float]] = []
+    for index in range(len(outline)):
+        p, q = outline[index], outline[(index + 1) % len(outline)]
+        dx = q[0] - p[0]
+        if abs(dx) < 1e-12:
+            continue
+        t = (x - p[0]) / dx
+        if 0.0 <= t <= 1.0:
+            hits.append((x, p[1] + t * (q[1] - p[1])))
+    return hits
+
+
+def _insert_points(
+    outline: list[tuple[float, float]], points: list[tuple[float, float]]
+) -> list[tuple[float, float]]:
+    """Insert each point on the outline edge it lies on, in edge order."""
+    out: list[tuple[float, float]] = []
+    for index in range(len(outline)):
+        p, q = outline[index], outline[(index + 1) % len(outline)]
+        out.append(p)
+        length = math.hypot(q[0] - p[0], q[1] - p[1])
+        if length <= 1e-12:
+            continue
+        on_edge = []
+        for point in points:
+            t = ((point[0] - p[0]) * (q[0] - p[0]) + (point[1] - p[1]) * (q[1] - p[1])) / (
+                length * length
+            )
+            cross = (q[0] - p[0]) * (point[1] - p[1]) - (q[1] - p[1]) * (point[0] - p[0])
+            if abs(cross) <= 1e-7 and 1e-9 < t < 1.0 - 1e-9:
+                on_edge.append((t, point))
+        out.extend(point for _, point in sorted(on_edge, key=lambda item: item[0]))
+    return out
+
+
+def _index_of(point: tuple[float, float], ring: list[tuple[float, float]]) -> int:
+    for index, vertex in enumerate(ring):
+        if abs(vertex[0] - point[0]) <= 1e-9 and abs(vertex[1] - point[1]) <= 1e-9:
+            return index
+    raise ValueError(f"{point} is not on the plate outline")
+
+
+def _chain(
+    ring: list[tuple[float, float]], start: int, end: int
+) -> list[tuple[float, float]]:
+    out = [ring[start]]
+    index = start
+    while index != end:
+        index = (index + 1) % len(ring)
+        out.append(ring[index])
+    return out
 
 
 def section_outlines(
@@ -223,18 +230,46 @@ def section_outlines(
 ) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
     """Split a plate ``outline`` along ``seam`` into ``(left, right)`` polygons.
 
-    ``depth`` is the part's extent in Y (centered on the origin), the same
-    value the CAD splitter takes. The outline must be convex — the keyboard
-    plate is a rounded rectangle — so it can clip the Seam's staircase. Pure
-    data: the Section **solids** are cut by the CAD adapter.
+    ``depth`` is the part's extent in Y, the same value the CAD splitter takes.
+    The outline may be any simple single ring -- tabs and notches included: the
+    Seam leaves the plate through its front and rear edges, so the outline just
+    contributes two chains between those two crossings and the Seam closes each
+    Section. Pure data: the Section **solids** are cut by the CAD adapter.
     """
-    xs = [x for x, _ in outline]
+    outline = _ccw(list(outline))
     ys = [y for _, y in outline]
     ylo, yhi = min(ys), max(ys)
     bands = _seam_band(seam, min(ylo, -depth / 2.0), max(yhi, depth / 2.0))
-    far = max(abs(min(xs)), abs(max(xs))) + 1.0
-    return (
-        _clip_by_convex(_staircase(bands, ylo, yhi, -far), outline),
-        _clip_by_convex(_staircase(bands, ylo, yhi, +far), outline),
-    )
+
+    front_hits = _vertical_crossings(outline, bands[0][2])
+    if not front_hits:
+        raise ValueError(
+            f"the Seam's front end x={bands[0][2]:.2f} does not cross the plate"
+        )
+    front = min(front_hits, key=lambda point: point[1])
+    rear_hits = _vertical_crossings(outline, bands[-1][2])
+    if not rear_hits:
+        raise ValueError(
+            f"the Seam's rear end x={bands[-1][2]:.2f} does not cross the plate"
+        )
+    rear = max(rear_hits, key=lambda point: point[1])
+    if abs(front[1] - rear[1]) <= 1e-9:
+        raise ValueError("the Seam does not run from the plate's front to rear")
+
+    ring = _insert_points(outline, [front, rear])
+    i_front = _index_of(front, ring)
+    i_rear = _index_of(rear, ring)
+    path = _seam_path(bands, front[1], rear[1])
+    # Two chains between the crossings, closed by the Seam's staircase: one
+    # Section walks the Seam forward, the other backward.
+    first = _chain(ring, i_front, i_rear) + list(reversed(path[1:-1]))
+    second = _chain(ring, i_rear, i_front) + path[1:-1]
+    if _area(first) < 0.0:
+        first = list(reversed(first))
+    if _area(second) < 0.0:
+        second = list(reversed(second))
+    # The left Section is the one reaching the plate's left edge.
+    if min(x for x, _ in first) <= min(x for x, _ in second):
+        return first, second
+    return second, first
 

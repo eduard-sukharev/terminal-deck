@@ -177,6 +177,25 @@ def test_a_thicker_wall_grows_the_plate_not_the_cutout():
     )
 
 
+def test_the_well_carries_the_plate_seam():
+    """The Well is one source for the plate: the Deck reads its mount stations.
+
+    The plate's Seam is a keyboard artifact, but the Deck's insert bosses and
+    the plate's ears are one pattern, so the budget hands it on rather than
+    letting each builder re-derive (or, worse, assume) the split.
+    """
+    _, config, components, _, _ = _data()
+    budget = _budget(config, components)
+    seam = components["keyboard"].plate_model().seam
+
+    assert budget.well.seam == seam
+    # The path's ends are what the mount stations straddle (#18): the front is
+    # on the centreline, the rear is the spacebar row's gap.
+    bands = budget.well.seam.segments(budget.well.plate_depth)
+    assert bands[0][2] == pytest.approx(0.0)
+    assert bands[-1][2] == pytest.approx(-50.584375)
+
+
 def test_plate_z_is_slaved_to_the_tallest_keycap():
     """The plate sits one cap stack below the Deck top (ADR-0014)."""
     _, config, components, _, _ = _data()

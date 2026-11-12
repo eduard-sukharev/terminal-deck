@@ -347,6 +347,36 @@ def test_notches_keep_the_plate_one_connected_sheet(mounts):
     assert mounts.ok
 
 
+def test_the_notches_come_from_the_band_joint_not_a_list(data, mounts):
+    config, _, budget, _ = data
+    bare = dataclasses.replace(
+        budget,
+        chassis_joint=dataclasses.replace(budget.chassis_joint, stations=()),
+    )
+    result = well_mounts(config, bare)
+    assert result.notches == ()
+    # Without the corner column the outer stations can sit at the plate's edge.
+    for name in ("front-outer-left", "rear-outer-right"):
+        assert abs(result.mount(name).x) > abs(mounts.mount(name).x)
+
+
+def test_a_feature_that_breaches_the_ring_fails(data, mounts):
+    config, _, budget, _ = data
+    plate = _plate_rect(budget)
+    reach = budget.well.ring - config.material.minimum_feature / 2.0
+    blocker = Obstacle(
+        name="test-ring-breach",
+        rect=PlanRect(-20.0, plate.y0 - 5.0, -19.0, plate.y0 + reach),
+        z0=mounts.plate_bottom,
+        z1=mounts.plate_top,
+    )
+    result = well_mounts(config, budget, obstacles=(blocker,))
+    assert not result.ok
+    assert any("Well ring" in reason for reason in result.failures)
+    # The mount pattern is still complete.
+    assert len(result.mounts) == 8
+
+
 def test_a_severing_notch_is_a_structural_failure(data, mounts):
     """A notch that cuts the sheet in two must fail, never silently vanish."""
     config, _, budget, _ = data
@@ -438,6 +468,7 @@ def test_an_obstacle_over_a_boss_invalidates_that_station_only(data, mounts):
 
 
 def test_the_frame_is_the_plate_in_the_chassis(data, mounts):
+    _, components, budget, _ = data
     frame = mounts.frame
     assert frame.width == pytest.approx(mounts.plate_width)
     assert frame.depth == pytest.approx(mounts.plate_depth)
@@ -451,6 +482,9 @@ def test_the_frame_is_the_plate_in_the_chassis(data, mounts):
     # Today: the plate spans x +/-116.625, y -62.35..18.50.
     assert frame.local_rect.x1 == pytest.approx(116.625)
     assert frame.to_plan(0.0, 0.0) == pytest.approx((0.0, -21.925))
+    # The Well Cutout is the plate inset by the ring, matching the budget.
+    assert mounts.cutout_rect.width == pytest.approx(budget.well.cutout_width)
+    assert mounts.cutout_rect.depth == pytest.approx(budget.well.cutout_depth)
 
 
 def test_summary_reports_stations_bosses_ears_and_notches(mounts):

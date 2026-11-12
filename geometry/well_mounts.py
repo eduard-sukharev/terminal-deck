@@ -362,6 +362,16 @@ class WellMounts:
         """Material the front lip has left beyond what the boss needs (mm)."""
         return self.front_lip - self.lip_required
 
+    @property
+    def cutout_rect(self) -> PlanRect:
+        """The Well Cutout in plan: the plate inset by the ring on every side."""
+        return PlanRect(
+            self.frame.x0 + self.ring,
+            self.frame.y0 + self.ring,
+            self.frame.x1 - self.ring,
+            self.frame.y1 - self.ring,
+        )
+
     def mount(self, name: str) -> WellMount:
         for mount in self.mounts:
             if mount.name == name:
@@ -372,7 +382,8 @@ class WellMounts:
         state = "PASS" if self.ok else "FAIL"
         first = self.mounts[0]
         lines = [
-            f"plate mounts: 8 x {self.screw} (boss Ø{self.boss_diameter:.2f}, "
+            f"plate mounts: {len(self.mounts)} x {self.screw} "
+            f"(boss Ø{self.boss_diameter:.2f}, "
             f"insert Ø{self.insert_hole_diameter:.2f} x {self.insert_depth:.1f} "
             f"deep, z {first.boss_z0:.2f}-{first.boss_z1:.2f}) on a "
             f"{self.plate_width:.2f} x {self.plate_depth:.2f} x "
@@ -534,6 +545,14 @@ def _footprint_bite(
     for index in range(segments):
         angle = 2.0 * math.pi * index / segments
         add(cx + radius * math.cos(angle), cy + radius * math.sin(angle))
+    # The disc's axis extremes: the sampling may straddle them.
+    for x, y in (
+        (cx, cy - radius),
+        (cx, cy + radius),
+        (cx - radius, cy),
+        (cx + radius, cy),
+    ):
+        add(x, y)
     # The plate corners inside the disc ...
     for x, y in (
         (plate_rect.x0, plate_rect.y0),
@@ -866,20 +885,14 @@ def well_mounts(
             continue
         local_bite = frame.to_local_rect(bite)
         under_an_ear = any(
-            mount.ear is not None
-            and mount.ear.rect.overlaps(local_bite, clearance)
-            for mount in mounts if mount.station in STATIONS
+            mount.ear is not None and mount.ear.rect.overlaps(local_bite, clearance)
+            for mount in mounts
         )
         if under_an_ear:
             # An ear is the whole point of the tab: losing it is a station
             # failure (reported above), never something to notch away.
             continue
         local = frame.to_local_rect(bite.expanded(clearance))
-        intrusion = 0.0
-        if obstacle.rect.y0 < plate_rect.y0 < obstacle.rect.y1:
-            intrusion = obstacle.rect.y1 - plate_rect.y0
-        if obstacle.rect.y0 < plate_rect.y1 < obstacle.rect.y1:
-            intrusion = max(intrusion, plate_rect.y1 - obstacle.rect.y0)
         notches.append(
             PlateNotch(
                 rect=local,
@@ -887,7 +900,9 @@ def well_mounts(
                 obstacle=frame.to_local_rect(obstacle.rect),
                 clearance=clearance,
                 depth=_notch_depth(local, frame),
-                intrusion=intrusion,
+                # How deep the feature itself (no air gap) bites into the
+                # border: the reach that must not pierce the Well ring.
+                intrusion=_notch_depth(local_bite, frame),
             )
         )
 

@@ -234,13 +234,19 @@ class KeyboardPlate(Component):
         is the only place the keyboard model and the enclosure meet, and it
         passes plain rectangles (the keyboard package stays enclosure-free).
 
+        Everything injected is **plate-local** -- ``plate_xy``, ``ear.rect`` and
+        ``notch.rect`` are the pattern converted through the plate's own frame,
+        the same centred frame this model builds in. The plate never composes
+        the keyboard's placement turn: the frame did that once.
+
         Parameters
         ----------
         mounts : WellMounts-like
-            Anything with ``mounts`` (each carrying ``plate_xy``,
-            ``clearance_hole_diameter`` and an ``ear``) and ``notches`` (each
-            with a ``rect``); ``geometry.well_mounts.WellMounts`` is the real
-            implementation. The object is kept for :meth:`well_mounts`.
+            Anything with ``frame`` (its size must be this plate's), ``mounts``
+            (each carrying ``plate_xy``, ``clearance_hole_diameter`` and an
+            ``ear``) and ``notches`` (each with a ``rect``);
+            ``geometry.well_mounts.WellMounts`` is the real implementation. The
+            object is kept for :meth:`well_mounts`.
         """
         self._well_mounts = mounts
         self._ears = [
@@ -308,6 +314,21 @@ class KeyboardPlate(Component):
             return
         problems: list[str] = list(mounts.failures)
         margin = float(getattr(mounts, "boss_margin", 0.0))
+        # The pattern is plate-local, so its frame must be *this* plate: a
+        # pattern derived for another plate size would drill the holes in the
+        # wrong place while every rectangle still looked plausible (issue #19).
+        frame = getattr(mounts, "frame", None)
+        if frame is not None:
+            meta = model.metadata
+            if (
+                abs(frame.width - meta.width) > _EPS + 1e-6
+                or abs(frame.depth - meta.height) > _EPS + 1e-6
+            ):
+                problems.append(
+                    f"frame: the Well-mount pattern is {frame.width:.2f} x "
+                    f"{frame.depth:.2f} mm, this plate is {meta.width:.2f} x "
+                    f"{meta.height:.2f} mm"
+                )
         cutouts = list(model.switch_cutouts) + list(model.stabilizer_cutouts)
         boxes = []
         for cut in cutouts:

@@ -530,7 +530,7 @@ class WellMount:
 
     @property
     def local_rect(self) -> PlanRect:
-        """The boss's footprint in the plate's own frame (its bore's bbox)."""
+        """The boss's plan footprint in the plate's own frame (its bbox)."""
         return PlanRect.from_circle(
             self.local_x, self.local_y, self.boss_diameter
         )

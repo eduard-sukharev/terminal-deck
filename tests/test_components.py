@@ -140,6 +140,33 @@ def test_keyboard_plate_takes_injected_mounting_holes():
     assert holes[0].height == pytest.approx(keyboard._plate.size().height)
 
 
+def test_a_pattern_for_another_plate_is_rejected():
+    """The injected pattern is plate-local: its frame must be this plate."""
+    import dataclasses
+
+    from components.slide import compute_slide_budget
+    from geometry.well_mounts import PlateFrame, well_mounts
+    from main import BuildPipeline
+
+    pipeline = BuildPipeline()
+    config = pipeline.load_config()
+    components = pipeline.load_components()
+    placements = pipeline.place_layout(components).placements()
+    budget = compute_slide_budget(config, components)
+    keyboard = components["keyboard"]
+    placement = next(p for p in placements if p.component is keyboard)
+    mounts = well_mounts(config, budget, placement=placement)
+    wrong = dataclasses.replace(
+        mounts,
+        frame=dataclasses.replace(
+            mounts.frame, width=mounts.frame.width + 2.0
+        ),
+    )
+    keyboard.set_well_mounts(wrong)
+    with pytest.raises(ValueError, match="pattern is 235.25"):
+        components["keyboard"]._plate.size()
+
+
 # -- the plate's Well-mount pattern (ADR-0014, issue #14) -----------------
 
 @pytest.fixture(scope="module")

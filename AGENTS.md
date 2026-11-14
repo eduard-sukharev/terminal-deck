@@ -132,11 +132,11 @@ intuition. Wire-up lives in `main.py` (`BuildPipeline`, `run()`).
   solids at their placements; `case.slider_frame.SliderFrame` derives the
   world-frame dimensions from the layout + budget; `case.chassis.Chassis`
   builds the two halves at the Parting plane (ADR-0012): `build_tray()` is the
-  drafted bowl (taper from the base to `band_z0`, prismatic band to the plane),
-  the twelve frustum screw columns and the lower scallops;
+  drafted bowl (taper from the base to `band_z0`, prismatic band to the plane)
+  and the twelve frustum screw columns;
   `build_deck()` is the purely prismatic Deck: the keyboard Well, the two
-  bearing-clamp seats (merged seat blocks with foot pockets), the insert bosses
-  and the upper scallops; `build()` returns their compound; `tray_sections()` /
+  bearing-clamp seats (merged seat blocks with foot pockets) and the insert
+  bosses; `build()` returns their compound; `tray_sections()` /
   `deck_sections()` split a half on the Seam configured for **that piece**
   (ADR-0015), through `geometry.split.split_part`.
 - `case.screen_lid.ScreenLid.build_fpc_guard()` produces the printed FPC
@@ -232,7 +232,10 @@ is checked by `keyboard/validation.py`.
 - `wall_thickness = config.wall.thickness` is the single wall parameter.
 - **Chamfer-first.** Outside edges are chamfered, never filleted
   (`corners.chamfer`, `edges.*`). Fillets are only allowed sparingly on hidden
-  inside joints (see `docs/design_spec.md` § Edge Treatment).
+  inside joints (see `docs/design_spec.md` § Edge Treatment). A shell's cavity
+  corners carry the **derived inner chamfer**
+  (`cad_helpers.inner_corner_chamfer(chamfer, wall)`, ADR-0016): a square
+  cavity corner meets a 4 mm outer chop on a 2 mm wall in a knife edge.
 - Layouts contain **no CAD** — only placements.
 - Slide math lives in `components/slide.py`, cable routing in
   `routing/cable_routing.py`, fasteners in `utilities/fasteners.py` — never
@@ -254,7 +257,7 @@ code (the clamshell's `deck.slope`/`tilt_x`/`deck_level_at` are gone). `config.s
 linear guide (rod diameter/length, bearing model, clamp, travel margin, chain
 pitch/width/bend radius); the build checks the chosen combination against the
 140 mm face-height budget. `config.chassis_joint` holds the Tray/Deck band
-(band height, boss cap, per-wall station insets, scallop size, screw size);
+(band height, boss cap, per-wall station insets, screw size);
 `config.parting` sets the plane it sits on. `config.keyboard.plate` holds the
 plate thickness, the `wobble` allowance and the corner radius: there is no
 `edge_margin` knob (the plate is the Cutout + one wall per side) and
@@ -325,10 +328,11 @@ Gotchas:
   `side_inset` 4.5 from a vertical front/rear wall (the keyboard plate). The
   boss is capped at `min(10, 2·(surface − min_feature))` — the long sides only
   afford **7.8 mm** — and the Tray column is a *frustum* down to what the floor
-  skin allows (≈ Ø8.57), never a full-diameter straight boss. The scallop
-  (10 × 0.8, 3 mm per half) leaves 1.5 mm to the insert at the long sides.
-  Do not widen the insets: the 1.5 mm scallop margin and the 1.4 mm countersink
-  skin are the binding constraints.
+  skin allows (≈ Ø8.57), never a full-diameter straight boss. The outer band
+  is **plain**: no relief is cut into it (ADR-0016 removed ADR-0012's
+  scallops).
+  Do not widen the insets: the 2.3 mm insert skin at the long sides and the
+  1.4 mm countersink skin are the binding constraints.
 - **Every printed piece has its own Seam, and the pairs stagger (ADR-0015).**
   The Deck and the Bezel split straight at `x = −14`; the Tray and the Back
   plate split on a 45° trapezoid at `x = +10` across the middle, stepping to

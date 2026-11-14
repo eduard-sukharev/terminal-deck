@@ -142,6 +142,20 @@ def draft_inset(angle_deg: float, height: float) -> float:
     return math.tan(math.radians(angle_deg)) * height
 
 
+def inner_corner_chamfer(chamfer: float, wall: float) -> float:
+    """The cavity's corner chamfer that keeps ``wall`` mm of material (mm).
+
+    The outer shell's vertical corners are chopped by ``chamfer`` (chamfer
+    first). A *square* cavity corner sits ``(2 * wall - chamfer) / sqrt(2)``
+    from that face — zero for the default 4 mm chamfer on a 2 mm wall, i.e. a
+    knife edge that prints as a hole. Chopping the cavity by
+    ``chamfer - wall * (2 - sqrt(2))`` puts the inner chamfer face exactly one
+    ``wall`` from the outer one, so the corner is as thick as the walls.
+    Clamped at zero: a small outer chamfer needs no inner relief.
+    """
+    return max(0.0, chamfer - wall * (2.0 - math.sqrt(2.0)))
+
+
 def _rect_vertices(
     width: float, depth: float, chamfer: float
 ) -> list[tuple[float, float]]:

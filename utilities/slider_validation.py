@@ -1405,16 +1405,6 @@ def run_slider_checks(
         f"countersink to outer skin {floor_margin:.2f} >= min feature "
         f"{min_feature:.2f}",
     )
-    scallop_margin = min(
-        station.surface - cj.scallop_depth - cj.insert_hole / 2.0
-        for station in cj.stations
-    )
-    report.add(
-        "slide-chassis-joint-scallop",
-        scallop_margin >= cj.boss_margin - 1e-6,
-        f"scallop floor to insert {scallop_margin:.2f} >= boss margin "
-        f"{cj.boss_margin:.2f}",
-    )
     report.add(
         "slide-chassis-joint-parting",
         cj.parting_z >= cj.countersink.depth + min_feature - 1e-6

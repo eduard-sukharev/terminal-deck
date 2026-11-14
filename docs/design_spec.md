@@ -580,6 +580,15 @@ Inside (concave) joints:
   boss/floor and rib/floor joints is a 45 degree chamfer
   (`edges.chamfer_factor * wall`).
 
+* A shell's cavity corners follow the outer chop. The outer chamfer is cut
+  with a square cavity behind it and the corner pinches to nothing — for the
+  shipped 4 mm chop on a 2 mm wall the cavity corner lies exactly on the
+  chamfer plane. The cavity is therefore chopped by the derived
+  `cad_helpers.inner_corner_chamfer(chamfer, wall)`
+  (`chamfer - wall * (2 - sqrt(2))`), which puts the inner chamfer face one
+  `wall` behind the outer one (ADR-0016). Never leave a knife edge at a
+  chamfered corner.
+
 * Fillets are allowed sparingly and only on hidden inside joints, where a
   smooth relief is needed and a chamfer would leave a sharp rebate. The
   sanctioned uses are the vertical wall/wall joints in

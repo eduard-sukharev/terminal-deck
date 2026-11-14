@@ -25,10 +25,6 @@ prismatic band's wall at the plane. The column is therefore a frustum: the
 boss diameter at the plane, tapering to whatever the floor skin allows. The
 station diameters are derived per station from the local wall, never assumed.
 
-Each half also gets a shallow scallop at every station, straddling the seam:
-the Tray's 3 mm below the plane, the Deck's 3 mm above it. Both scallops cut a
-prismatic wall, so they are straight prisms a constant ``scallop_depth`` deep.
-
 Pure data: no CAD import, so the data layer can size and check the joint
 before the case is built.
 """
@@ -85,9 +81,6 @@ class ChassisJoint:
     boss_margin: float
     station_inset: float
     side_inset: float
-    scallop_width: float
-    scallop_depth: float
-    scallop_height: float
     insert_hole: float
     insert_depth: float
     countersink: fasteners.Countersink
@@ -286,9 +279,6 @@ def chassis_joint(
         boss_margin=joint.boss_margin,
         station_inset=joint.station_inset,
         side_inset=joint.side_inset,
-        scallop_width=joint.scallop_width,
-        scallop_depth=joint.scallop_depth,
-        scallop_height=joint.scallop_height,
         insert_hole=hole,
         insert_depth=insert.depth,
         countersink=countersink,

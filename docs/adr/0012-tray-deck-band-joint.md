@@ -1,7 +1,7 @@
 ---
 status: accepted
 amends: ADR-0003
-amended_by: ADR-0015
+amended_by: ADR-0015, ADR-0016
 ---
 
 # The chassis splits into a Tray and a Deck, joined at a prismatic band
@@ -33,6 +33,8 @@ The chassis now splits at the Parting plane like the lid's band joint:
   shear; the screws clamp it.
 - Both halves carry a shallow **scallop** at every station, straddling the
   seam. It is a relief line round the joint, not a structural feature.
+  **Amended by ADR-0016:** the scallops are gone — they read as dents on the
+  outside of the case and carry nothing. The outer band is plain.
 
 ## The twelve stations
 
@@ -104,6 +106,7 @@ The material left between features is what sizes the joint:
 - countersink to the outer skin at the floor: 4.5 − 3.1 = **1.40 mm** (the
   front corner, on the 45° chamfer, is the tightest at **0.71 mm**);
 - scallop floor to insert hole: 4.5 − 0.8 − 2.2 = **1.50 mm** (≥ `boss_margin`);
+  moot after ADR-0016, which removed the scallops (the plain wall is 2.30 mm);
 - boss to the nearest placed component (the keyboard plate): **1.60 mm**.
 
 ## The scallops
@@ -115,6 +118,11 @@ halves are prismatic over those spans, so each cut is a **straight prism** at
 a constant 0.8 mm depth; the Tray's draft stops below `band_z0`. This is a
 pure relief line — it is shallow enough to stay outside the insert hole at
 every station (min 1.5 mm of material) and does not touch the pocket rim.
+
+**Amendment (ADR-0016): removed.** Built, the relief is a row of shallow
+rectangular dents on the outside of the case at every screw, holding nothing.
+The outer band is now plain and the `slide-chassis-joint-scallop` check is
+gone with it.
 
 ## Consequences
 
@@ -135,6 +143,7 @@ every station (min 1.5 mm of material) and does not touch the pocket rim.
   margin, the tightest column holds the screw clearance, the countersink keeps
   its skin, the scallop keeps its insert margin, the band sits inside the
   chassis top, and every station stays clear of a placed component.
+  **Amended by ADR-0016:** eight — the scallop check went with the scallops.
 - `geometry/chassis_joint.py` sizes the stations as pure data (no CAD
   import); `case/chassis.py` builds `build_tray()` / `build_deck()`. The old
   one-shell `build()` now returns their compound, so the assembly, the opened

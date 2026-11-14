@@ -5,6 +5,8 @@ printable Sections that add back to the whole, with the guide hardware in the
 right place. These are shape-level assertions, not a golden-master volume.
 """
 
+import math
+
 import pytest
 
 from case.chassis import Chassis
@@ -212,6 +214,59 @@ def test_outer_corners_are_chamfered_not_filleted(data, solids):
     y_rear = frame.lid_y_center + frame.lid_height / 2
     assert _material_at(lid, hx - 0.3, y_front + 0.3, zc) == pytest.approx(0)
     assert _material_at(lid, hx - 0.3, y_rear - 0.3, zc) == pytest.approx(0)
+
+
+def test_each_shell_keeps_a_wall_at_its_chamfered_corners(data, pieces):
+    """The cavity corners follow the outer chop (ADR-0016).
+
+    A square cavity corner meets the 4 mm outer chamfer at a knife edge on the
+    2 mm wall: the corner prints as a hole. The cavity carries the derived
+    inner chamfer, so a full wall stands behind every chopped corner.
+    """
+    config, _, _, frame = data
+    root = math.sqrt(0.5)
+    outer_face = config.corners.chamfer * root
+    specs = (
+        (
+            "chassis_tray",
+            frame.chassis_band_width / 2.0,
+            0.0,
+            frame.depth / 2.0,
+            frame.parting_z - 1.5,
+        ),
+        (
+            "chassis_deck",
+            frame.chassis_band_width / 2.0,
+            0.0,
+            frame.depth / 2.0,
+            frame.parting_z + 1.5,
+        ),
+        (
+            "screen_lid_bezel",
+            frame.width / 2.0,
+            frame.lid_y_center,
+            frame.lid_height / 2.0,
+            (frame.band_z0 + frame.band_z1) / 2.0,
+        ),
+    )
+    for name, hx, y_centre, hy, z in specs:
+        part = pieces[name][0]
+        for sx in (-1, 1):
+            for sy in (-1, 1):
+                ax, ay = sx * hx, y_centre + sy * hy
+                nx, ny = sx * root, sy * root
+
+                def at(d: float) -> float:
+                    return _material_at(part, ax - nx * d, ay - ny * d, z)
+
+                assert at(outer_face - 0.4) == pytest.approx(0), (
+                    f"{name}: no chamfer at ({ax:.1f}, {ay:.1f})"
+                )
+                for d in (outer_face + 0.4, outer_face + 0.8):
+                    assert at(d) > 0, (
+                        f"{name}: the corner at ({ax:.1f}, {ay:.1f}) is open "
+                        f"{d - outer_face:.2f} mm behind the chop"
+                    )
 
 
 def test_lid_and_chassis_share_the_closed_face(data, solids):
@@ -985,13 +1040,12 @@ def test_ring_is_interrupted_where_the_plate_is_notched(data, deck, mounts):
         assert sealed is not None, f"the notch severed the ring at {notch.source}"
 
 
-def test_scallop_cannot_pierce_the_ring_or_a_boss(data, deck, mounts):
-    """The band's relief stops at the ring; the Well walls stay whole."""
+def test_the_band_does_not_breach_the_plate_border_or_a_boss(data, deck, mounts):
+    """Nothing cut into the band reaches the plate's border or a Well boss."""
     _, _, _, frame = data
-    joint = frame.chassis_joint
-    z = frame.parting_z + joint.scallop_height / 2.0 + 0.35
+    z = frame.parting_z + 1.85
     cut = mounts.cutout_rect
-    for station in joint.stations:
+    for station in frame.chassis_joint.stations:
         if station.y < 0.0:
             assert _material_at(deck, station.x, cut.y0 - 0.45, z) > 0
         else:
@@ -1000,35 +1054,6 @@ def test_scallop_cannot_pierce_the_ring_or_a_boss(data, deck, mounts):
         # The boss itself still stands proud of the ring, off the insert bore.
         off = 1.5 if mount.is_front else -1.5
         assert _material_at(deck, mount.x, mount.y + off, z + 0.5) > 0
-
-
-def test_a_scallop_that_would_reach_the_well_is_skipped(data):
-    """A relief whose plan reaches the ring is dropped, not cut into it."""
-    config, _, _, frame = data
-    joint = frame.chassis_joint
-    station = next(s for s in joint.stations if s.y < 0.0 and s.kind == "side")
-    chassis = Chassis(config, frame)
-
-    def cutter(avoid):
-        return chassis._scallop(
-            station,
-            z0=frame.parting_z,
-            distance=station.surface,
-            shift=0.0,
-            avoid=avoid,
-        )
-
-    # The cutter spans the station's wall band, outward of the station.
-    reach = [
-        (
-            station.x - 1.0,
-            station.y - 10.0,
-            station.x + 1.0,
-            station.y - 1.0,
-        )
-    ]
-    assert cutter(reach) is None
-    assert cutter([]) is not None
 
 
 def test_deck_sections_rejoin_and_print_closed_face_down(data, deck):

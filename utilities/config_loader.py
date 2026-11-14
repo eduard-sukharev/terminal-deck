@@ -453,9 +453,8 @@ class ChassisJoint:
     The chassis splits at the Parting plane. The ``band`` is split evenly
     around it: the Tray is drafted from its base up to ``band_z0`` and
     prismatic from there to the plane; the Deck is prismatic all the way to
-    the closed face. Ten M3 screws are driven from below into heat-set
-    inserts in the Deck's band; each station gets a shallow scallop on both
-    halves, straddling the seam.
+    the closed face. Twelve M3 screws are driven from below into heat-set
+    inserts in the Deck's band.
 
     ``station_inset`` is measured from a drafted (X) wall's outer face: the
     draft pulls the Tray's floor skin inward, so the column and its
@@ -469,9 +468,6 @@ class ChassisJoint:
     boss_margin: float = 1.5
     station_inset: float = 6.5
     side_inset: float = 4.5
-    scallop_width: float = 10.0
-    scallop_depth: float = 0.8
-    scallop_height: float = 3.0
     screw: str = "M3"
 
     def __post_init__(self) -> None:
@@ -481,12 +477,6 @@ class ChassisJoint:
             raise ValueError("chassis_joint.boss_margin must be positive")
         if self.station_inset <= 0 or self.side_inset <= 0:
             raise ValueError("chassis_joint insets must be positive")
-        if self.scallop_width <= 0 or self.scallop_depth <= 0:
-            raise ValueError("chassis_joint scallop sizes must be positive")
-        if not 0.0 < self.scallop_height <= self.band:
-            raise ValueError(
-                "chassis_joint.scallop_height must fit inside the band"
-            )
 
 
 @dataclass(frozen=True)
@@ -1114,9 +1104,6 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
             boss_margin=float(chassis_joint_raw.get("boss_margin", 1.5)),
             station_inset=float(chassis_joint_raw.get("station_inset", 6.5)),
             side_inset=float(chassis_joint_raw.get("side_inset", 4.5)),
-            scallop_width=float(chassis_joint_raw.get("scallop_width", 10.0)),
-            scallop_depth=float(chassis_joint_raw.get("scallop_depth", 0.8)),
-            scallop_height=float(chassis_joint_raw.get("scallop_height", 3.0)),
             screw=str(chassis_joint_raw.get("screw", "M3")),
         ),
         merged_boss=MergedBoss(**{k: float(v) for k, v in (raw.get("merged_boss") or {}).items()}),

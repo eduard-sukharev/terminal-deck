@@ -245,9 +245,8 @@ to tilt it.**
   (7°); the Tray's half-band and the whole Deck are prismatic, and twelve
   countersunk M3 × 18 from below thread into heat-set inserts in the Deck's
   band bosses (four corners, three per long side incl. one on the centreline,
-  one per short side). Both
-  halves carry a 10 × 0.8 mm scallop at each station, straddling the seam.
-  Nothing stands proud of the keyboard Deck under the hands.
+  one per short side). The outer band is plain — no relief is cut into it
+  (ADR-0016). Nothing stands proud of the keyboard Deck under the hands.
 * The two **centreline** long-wall stations sit between the Tray's and the
   Deck's staggered Seams, so each screw clamps a Deck Section to the other Tray
   Section — that is the interlock that keeps the lapped shell from hinging. The

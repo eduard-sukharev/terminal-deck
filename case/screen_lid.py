@@ -146,10 +146,21 @@ class ScreenLid:
             )
 
         # Open cavity: the band's inside is straight, the rest follows the
-        # drafted side walls, keeping the wall thickness constant.
+        # drafted side walls, keeping the wall thickness constant. Its vertical
+        # corners carry the inner chamfer, so the corner stays one `wall` thick
+        # behind the outer chop instead of meeting it in a knife edge.
+        cavity_chamfer = ch.inner_corner_chamfer(chamfer, wall)
         cavity_z1 = top - f.lid_front
-        cavity = ch.box_centered(f.width - 2.0 * wall, f.lid_height - 2.0 * wall, z1 - z0)
-        cavity = ch.translate(cavity, 0.0, f.lid_y_center, (z0 + z1) / 2.0)
+        cavity = ch.tapered_box(
+            f.width - 2.0 * wall,
+            f.lid_height - 2.0 * wall,
+            f.width - 2.0 * wall,
+            f.lid_height - 2.0 * wall,
+            z0,
+            z1,
+            chamfer=cavity_chamfer,
+            y=f.lid_y_center,
+        )
         if cavity_z1 > z1:
             top_width = (
                 f.lid_face_width
@@ -165,6 +176,7 @@ class ScreenLid:
                     f.lid_height - 2.0 * wall,
                     z1,
                     cavity_z1,
+                    chamfer=cavity_chamfer,
                     y=f.lid_y_center,
                 ),
             )

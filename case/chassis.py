@@ -8,7 +8,7 @@ width and the closed face follow from that.
 
 * The **Tray** is the lower bowl: tapered outer walls up to the joint band,
   then a prismatic band to the Parting plane, a wall-thick floor, and a
-  frustum column at each of the ten fastener stations. An M3 screw is driven
+  frustum column at each of the twelve fastener stations. An M3 screw is driven
   from below through a countersink in the floor, up the column, and across the
   plane into a heat-set insert in the Deck.
 * The **Deck** is purely prismatic from the Parting plane to the closed face:
@@ -17,7 +17,10 @@ width and the closed face follow from that.
   front/rear lips), the two bearing-clamp seats and their pockets, and one
   insert boss per band station standing out of the band's cavity.
 
-Both halves carry a shallow scallop at every station, straddling the seam.
+Both shells' outer vertical corners are chamfered, and their cavities are
+chopped to match (``cad_helpers.inner_corner_chamfer``): a square cavity corner
+would sit flush with the outer chamfer at the default 4 mm / 2 mm wall and print
+as a knife edge.
 
 The bearing clamps are separate printed parts. Each has a foot that drops
 through a pocket in the Deck; the Deck carries a small raised/merged seat with
@@ -74,8 +77,10 @@ class Chassis:
         )
         # The cavity is the outer skin offset by one wall. It starts one wall
         # above the table (the floor), follows the draft up to the band and is
-        # prismatic with it to the plane.
+        # prismatic with it to the plane. Its corners carry the inner chamfer
+        # so the corner wall stays one `wall` thick behind the outer chop.
         bottom_inset = ch.draft_inset(f.draft_angle, wall)
+        cavity_chamfer = ch.inner_corner_chamfer(chamfer, wall)
         cavity = ch.tapered_box(
             base_w + 2.0 * bottom_inset - 2.0 * wall,
             f.depth - 2.0 * wall,
@@ -83,6 +88,7 @@ class Chassis:
             f.depth - 2.0 * wall,
             wall,
             z_band,
+            chamfer=cavity_chamfer,
         )
         cavity = ch.union(
             cavity,
@@ -93,6 +99,7 @@ class Chassis:
                 f.depth - 2.0 * wall,
                 z_band,
                 z1,
+                chamfer=cavity_chamfer,
             ),
         )
         body = ch.cut(outer, cavity)
@@ -122,18 +129,6 @@ class Chassis:
             holes.extend((through, cone))
         body = ch.cut(body, *holes)
 
-        # Scallops: the lower half of every station's relief, cut into the
-        # prismatic band.
-        scallops = [
-            self._scallop(
-                station,
-                z0=z_band,
-                distance=station.surface,
-                shift=0.0,
-            )
-            for station in joint.stations
-        ]
-        body = ch.cut(body, *scallops)
         # ADR-0006: the Seam's glued-filament pins, grown into the half before
         # the split so each Section prints its own share of every fin.
         body = self._add_seam_pins(body, "chassis_tray", f.depth)
@@ -179,7 +174,8 @@ class Chassis:
             band_w, f.depth, band_w, f.depth, z0, top, chamfer=chamfer
         )
         # Open cavity: straight through the whole Deck, with a wall-thick top
-        # plate.
+        # plate. Its corners carry the inner chamfer so the corner wall stays
+        # one `wall` thick behind the outer chop.
         cavity = ch.tapered_box(
             band_w - 2.0 * wall,
             f.depth - 2.0 * wall,
@@ -187,6 +183,7 @@ class Chassis:
             f.depth - 2.0 * wall,
             z0,
             cavity_top,
+            chamfer=ch.inner_corner_chamfer(chamfer, wall),
         )
         body = ch.cut(outer, cavity)
 
@@ -292,26 +289,6 @@ class Chassis:
         ]
         body = ch.cut(body, *plate_holes)
 
-        # Scallops: the upper half of every station's relief. Inside the band
-        # the wall is prismatic, so no shear. A station whose relief would
-        # reach the Well ring or one of its bosses is left uncut rather than
-        # breaking the Well.
-        avoid = [plate] + [m.plan_rect for m in mounts.mounts]
-        scallops = [
-            cutter
-            for cutter in (
-                self._scallop(
-                    station,
-                    z0=z0,
-                    distance=station.surface,
-                    shift=0.0,
-                    avoid=[(r.x0, r.y0, r.x1, r.y1) for r in avoid],
-                )
-                for station in joint.stations
-            )
-            if cutter is not None
-        ]
-        body = ch.cut(body, *scallops)
         body = self._add_seam_pins(body, "chassis_deck", f.depth)
         return ch.clean(body)
 
@@ -371,70 +348,6 @@ class Chassis:
         height = f.parting_z
         column = ch.frustum_centered(station.base_boss, station.boss, height)
         return ch.translate(column, station.x, station.y, height / 2.0)
-
-    def _scallop(
-        self,
-        station: Any,
-        *,
-        z0: float,
-        distance: float,
-        shift: float,
-        avoid=(),
-    ):
-        """A shallow relief at one station, its floor following the wall.
-
-        ``distance`` is the station-to-outer-face distance at ``z0`` and
-        ``shift`` how far that face recedes outward over the scallop height
-        (zero where the wall is prismatic). The cutter is a sheared prism: the
-        top outline is the bottom one shifted outward, so the cut stays a
-        constant ``scallop_depth`` deep.
-
-        ``avoid`` lists plan rectangles (``x0, y0, x1, y1``) the relief may not
-        reach -- the Well ring and its insert bosses. A relief that would cut
-        one is skipped (``None``): the relief is cosmetic, the Well is not.
-        """
-        from utilities import cad_helpers as ch
-
-        f = self.frame
-        joint = f.chassis_joint
-        width = joint.scallop_width
-        depth = joint.scallop_depth
-        height = joint.scallop_height
-        nx, ny = station.normal
-        # Tangent along the wall (the normal rotated +90 degrees).
-        tx, ty = -ny, nx
-
-        inner = distance - depth
-        outer = distance + shift + 2.0 * f.wall + 2.0
-
-        def point(r: float, s: float) -> tuple[float, float]:
-            return (
-                station.x + nx * r + tx * s,
-                station.y + ny * r + ty * s,
-            )
-
-        half = width / 2.0
-        bottom = [
-            point(inner, -half),
-            point(outer, -half),
-            point(outer, half),
-            point(inner, half),
-        ]
-        top = [
-            point(inner + shift, -half),
-            point(outer + shift, -half),
-            point(outer + shift, half),
-            point(inner + shift, half),
-        ]
-        if avoid:
-            xs = [p[0] for p in bottom + top]
-            ys = [p[1] for p in bottom + top]
-            x0, x1 = min(xs), max(xs)
-            y0, y1 = min(ys), max(ys)
-            for ax0, ay0, ax1, ay1 in avoid:
-                if x0 < ax1 and ax0 < x1 and y0 < ay1 and ay0 < y1:
-                    return None
-        return ch.loft_between(bottom, top, height, z=z0)
 
     # -- Deck features ---------------------------------------------------
     def _seat(self, side: int):

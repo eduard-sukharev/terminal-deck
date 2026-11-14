@@ -2,7 +2,8 @@
 
 Data-level assertions (stations, band, screw, stations clear of components)
 plus shape-level checks that the Tray and the Deck really meet at the Parting
-plane, carry the screw holes and the scallops, and rejoin into the whole.
+plane, carry the screw holes, keep a plain outer band (ADR-0016) and rejoin into
+the whole.
 """
 
 import math
@@ -218,21 +219,62 @@ def test_every_station_has_an_insert_hole_in_the_deck(data, solids):
         assert _material_at(deck, station.x, station.y, z) == pytest.approx(0)
 
 
-def test_scallops_cut_each_half_of_the_band(data, solids):
+def test_the_band_skin_is_plain_at_every_station(data, solids):
+    """No relief is cut into the band: the outer face stays flush (ADR-0016)."""
     _, budget, frame, _ = data
     joint = budget.chassis_joint
     tray, deck = solids
-    # A vertical (front/rear) station: the wall does not shear, so the cut is
-    # exactly one scallop_depth deep on both halves.
-    station = next(s for s in joint.side_stations if s.y > 0.0)
-    outer_y = station.y + station.surface
-    floor_y = outer_y - joint.scallop_depth
     for part, z in (
-        (tray, frame.parting_z - joint.scallop_height / 2.0),
-        (deck, frame.parting_z + joint.scallop_height / 2.0),
+        (tray, frame.parting_z - 1.5),
+        (deck, frame.parting_z + 1.5),
     ):
-        assert _material_at(part, station.x, outer_y - 0.2, z) == pytest.approx(0)
-        assert _material_at(part, station.x, floor_y - 0.4, z) > 0
+        for station in joint.stations:
+            if station.is_corner:
+                # The corner's outer face is the 45 degree chop, tested below.
+                continue
+            nx, ny = station.normal
+            # 0.2 mm inside the outer face: material, not a relief floor.
+            x = station.x + nx * (station.surface - 0.2)
+            y = station.y + ny * (station.surface - 0.2)
+            assert _material_at(part, x, y, z) > 0, (
+                f"the band is cut at {station.kind} ({station.x:.2f}, "
+                f"{station.y:.2f})"
+            )
+
+
+def test_each_chamfered_corner_keeps_a_full_wall(data, solids):
+    """The cavity follows the outer chop, so no corner pinches to nothing.
+
+    Before ADR-0016 a square cavity corner met the 4 mm outer chamfer at a
+    knife edge on the 2 mm wall: half way along the corner diagonal there was
+    neither material nor a free face.
+    """
+    config, _, frame, _ = data
+    tray, deck = solids
+    chamfer = config.corners.chamfer
+    hx = frame.chassis_band_width / 2.0
+    hy = frame.depth / 2.0
+    root = math.sqrt(0.5)
+    # Apex -> outer chamfer face, and the wall behind it.
+    outer_face = chamfer * root
+    for part, z in (
+        (tray, frame.parting_z - 1.5),
+        (deck, frame.parting_z + 1.5),
+    ):
+        for sx in (-1, 1):
+            for sy in (-1, 1):
+                ax, ay = sx * hx, sy * hy
+                nx, ny = sx * root, sy * root
+
+                def at(d: float) -> float:
+                    return _material_at(part, ax - nx * d, ay - ny * d, z)
+
+                assert at(outer_face - 0.4) == pytest.approx(0), "the chop is gone"
+                # The old pinch point and a point one wall behind it: solid.
+                for d in (outer_face + 0.4, outer_face + 1.3):
+                    assert at(d) > 0, (
+                        f"the corner at ({ax:.1f}, {ay:.1f}) is open at {d:.2f} mm"
+                    )
 
 
 def test_tray_and_deck_sections_fit_and_rejoin(data, solids):

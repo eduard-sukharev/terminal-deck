@@ -42,19 +42,16 @@ parting:
 # Chassis Tray <-> Deck band joint (ADR-0012). The chassis splits at the
 # Parting plane; the band is split evenly around it: the Tray is drafted below
 # its half of the band (up to band_z0) and prismatic through it, the Deck is
-# prismatic all the way to the closed face. Ten M3 screws are driven from below
-# through the Tray floor into heat-set inserts in the Deck's band: four
-# corners, two per long side, one per short side. Each half gets a shallow
-# scallop at every station, straddling the seam.
+# prismatic all the way to the closed face. Twelve M3 screws are driven from
+# below through the Tray floor into heat-set inserts in the Deck's band: four
+# corners, three per long side, one per short side. The outer skin is plain:
+# no relief is cut into the band (ADR-0016).
 chassis_joint:
   band: 6.0            # band split 3 mm each side of the Parting plane
   boss: 10.0           # insert boss diameter at the plane (capped per station)
   boss_margin: 1.5     # material between an insert hole and a free face
   station_inset: 6.5   # station centre from a drafted (X) wall's outer face
   side_inset: 4.5      # station centre from a vertical (front/rear) wall
-  scallop_width: 10.0  # scallop along the wall, per station, both halves
-  scallop_depth: 0.8   # how far the scallop cuts into the wall
-  scallop_height: 3.0  # scallop height per half (2 x this = the band)
   screw: M3            # countersunk from below into a heat-set insert
 
 # Merged boss (ADR 0003): a boss, column, standoff or lug whose outer surface is

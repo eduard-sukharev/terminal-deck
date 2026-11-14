@@ -1,7 +1,7 @@
 ---
 status: accepted
 amends: ADR-0010
-amended_by: ADR-0013, ADR-0014, ADR-0015
+amended_by: ADR-0013, ADR-0014, ADR-0015, ADR-0016
 ---
 
 # The screen lid splits into a Bezel and a Back plate, joined by a prismatic band
@@ -79,6 +79,10 @@ the shipped width is 241.17 mm, `rod_x` is ±94.98 and the corner post spans
   front panel's inner face (−1.00), which lets the display frame sink 1 mm into
   the panel while a 1.0 mm lip (≥ `material.minimum_feature`) still retains it.
   Device thickness 51.60 → **50.15 mm**, now **57.75 mm** after ADR-0013.
+- **Amended by ADR-0016:** the Bezel's cavity corners are chopped by the
+  derived inner chamfer (`cad_helpers.inner_corner_chamfer`), not cut square.
+  A square cavity corner met the 4 mm outer chop in a knife edge on the 2 mm
+  wall on all four corners.
 - The joint is a **plain butt** at `panel_inner_z`: ten screws locate it and
   the perimeter walls carry the load. There is no lap or tongue to print, and
   no undercut on either part. Both parts are flat-sliceable; `sections()` still

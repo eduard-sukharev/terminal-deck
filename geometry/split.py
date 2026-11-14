@@ -1,11 +1,12 @@
-"""Section splitting along X (ADR 0003).
+"""Section splitting along X (ADR 0003, 0015).
 
 A part too wide for the build volume is cut into two or three Sections along
-Seams. A Seam is a line in plan view: straight, or stepped (``__--__--__``)
-so that walking along Y it jogs by ``step`` in X on alternate segments. The
-jogs are plain butt joints (no tongue-and-groove, no dowels). The cut is a
-boolean partition, so the Sections rejoin to the original with no gap and no
-overlap by construction.
+Seams. A Seam is a path in plan view: one straight run, a square-stepped
+``__--__--__`` line, or a trapezoid that runs near the centreline in the
+middle and steps out to the end walls at 45 degrees. The jogs are plain butt
+joints (no tongue-and-groove, no dowels). The cut is a boolean partition, so
+the Sections rejoin to the original with no gap and no overlap by
+construction.
 """
 
 from __future__ import annotations
@@ -22,22 +23,18 @@ BUILD_VOLUME: tuple[float, float, float] = (220.0, 220.0, 256.0)
 def _left_region(seam, depth: float, y_extent: float, x_extent: float, z_extent: float):
     """Solid covering everything left of the Seam (oversized in X/Y/Z).
 
-    The steps sit where ``seam.segments(depth)`` puts them, the same places the
-    Seam bands and lug sites are planned at; only the end segments run on out
-    to ``y_extent`` so the region overhangs the part.
+    The Seam's own plan path is the polygon's left edge, so a 45 degree jog and
+    a square step cut exactly the same way; only the path's two ends are
+    stretched out to ``y_extent`` so the region overhangs the part.
     """
-    pad = 2.0 * x_extent
-    pieces = []
-    segments = list(seam.segments(depth))
-    y0, y1, sx = segments[0]
-    segments[0] = (min(y0, -y_extent), y1, sx)
-    y0, y1, sx = segments[-1]
-    segments[-1] = (y0, max(y1, y_extent), sx)
-    for y0, y1, sx in segments:
-        width = sx + pad
-        box = cad_helpers.box_centered(width, y1 - y0, 2.0 * z_extent)
-        pieces.append(cad_helpers.translate(box, sx - width / 2.0, (y0 + y1) / 2.0, 0.0))
-    return cad_helpers.union(pieces[0], *pieces[1:])
+    points = []
+    for point in seam.polyline(depth):
+        if not points or point != points[-1]:
+            points.append(point)
+    points[0] = (points[0][0], -y_extent)
+    points[-1] = (points[-1][0], y_extent)
+    polygon = points + [(-x_extent, y_extent), (-x_extent, -y_extent)]
+    return cad_helpers.extrude_polygon(polygon, 2.0 * z_extent)
 
 
 def split_sections(shape, seams, depth: float) -> list:
@@ -64,6 +61,15 @@ def split_sections(shape, seams, depth: float) -> list:
         remainder = cad_helpers.cut(remainder, region)
     sections.append(remainder)
     return sections
+
+
+def split_part(shape, split, depth: float, wall: float = 0.0) -> list:
+    """Split ``shape`` per a configured :class:`~utilities.config_loader.Split`.
+
+    ``depth`` and ``wall`` are the part's Y extent and end wall thickness; a
+    trapezoid Seam places its 45 degree jogs from them.
+    """
+    return split_sections(shape, split.seams(depth, wall), depth)
 
 
 def check_build_volume(

@@ -17,6 +17,7 @@ from main import BuildPipeline
 from utilities.slider_validation import (
     _add_mount_checks,
     _add_plate_checks,
+    _add_seam_pin_checks,
     _add_well_checks,
     run_slider_checks,
 )
@@ -80,6 +81,8 @@ def _report_for(
         _add_well_checks(report, config, budget)
     elif check_name.startswith("keyboard-plate-"):
         _add_plate_checks(report, config, budget, model)
+    elif check_name.startswith("slide-seam-pin-"):
+        _add_seam_pin_checks(report, config, budget, list(placements), mounts)
     else:
         _add_mount_checks(
             report,
@@ -360,3 +363,74 @@ def test_mounts_parting_fails_when_floor_standoffs_come_back(shipped):
     check = _check(report, "keyboard-mounts-parting")
     assert not check.passed
     assert "1 floor standoffs" in check.message
+
+
+# ── Seam pins (ADR-0006) ───────────────────────────────────────────────
+
+SEAM_PIN_CHECKS = ("slide-seam-pin-fit", "slide-seam-pin-clear")
+
+
+@pytest.mark.parametrize("name", SEAM_PIN_CHECKS)
+def test_seam_pin_checks_pass_on_the_shipped_design(shipped, name):
+    *_, report = shipped
+    check = _check(report, name)
+    assert check.passed, check.message
+    assert check.message, "a HARD check must report its measured values"
+
+
+def _with_sites(config, **sites):
+    return dataclasses.replace(
+        config,
+        slide=dataclasses.replace(
+            config.slide,
+            seam_pin_sites={**config.slide.seam_pin_sites, **sites},
+        ),
+    )
+
+
+def test_seam_pin_clear_fails_when_a_site_lands_in_the_sbc(shipped):
+    config, _, placements, budget, mounts, _ = shipped
+    broken = _with_sites(config, chassis_tray=(-48.0, 45.0))
+    report = _report_for(
+        "slide-seam-pin-clear", broken, budget, mounts=mounts, placements=placements
+    )
+    check = _check(report, "slide-seam-pin-clear")
+    assert not check.passed
+    assert "chassis_tray pin at y=45.00" in check.message
+
+
+def test_seam_pin_clear_fails_when_a_site_lands_on_a_jog(shipped):
+    config, _, placements, budget, mounts, _ = shipped
+    # The Tray Seam runs at +10 only between y = -31 and +31; y = 35 is on the
+    # 45 degree jog (y 31..39) into the end wall.
+    broken = _with_sites(config, chassis_tray=(-48.0, 35.0))
+    report = _report_for(
+        "slide-seam-pin-clear", broken, budget, mounts=mounts, placements=placements
+    )
+    check = _check(report, "slide-seam-pin-clear")
+    assert not check.passed
+    assert "lands on a jog" in check.message
+
+
+def test_seam_pin_clear_needs_two_pins_per_seam(shipped):
+    config, _, placements, budget, mounts, _ = shipped
+    broken = _with_sites(config, chassis_deck=(26.0,))
+    report = _report_for(
+        "slide-seam-pin-clear", broken, budget, mounts=mounts, placements=placements
+    )
+    check = _check(report, "slide-seam-pin-clear")
+    assert not check.passed
+    assert "asks for two" in check.message
+
+
+def test_seam_pin_fit_fails_when_a_fin_is_below_the_printable_minimum(shipped):
+    from utilities.config_loader import SeamPin
+
+    config, _, placements, budget, mounts, _ = shipped
+    thin = dataclasses.replace(config, seam_pin=SeamPin(fin=0.5, chamfer=0.3))
+    report = _report_for(
+        "slide-seam-pin-fit", thin, budget, mounts=mounts, placements=placements
+    )
+    check = _check(report, "slide-seam-pin-fit")
+    assert not check.passed
+    assert "fin 0.50" in check.message

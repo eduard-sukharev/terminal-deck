@@ -17,6 +17,36 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
+from geometry.seam_joint import pin_planes
+
+
+def _seam_pin_planes(
+    config: Any, budget: Any, lid_top: float, panel_inner_z: float
+) -> dict[str, tuple[float, bool]]:
+    """The Seam pins' planes, with the frame's own derivations cross-checked.
+
+    :func:`geometry.seam_joint.pin_planes` is the single source; the frame
+    re-derives the Bezel's panel inner face and the Back plate's inner face
+    from its own numbers, so a drift between the two fails the build instead of
+    printing a pin into the wrong surface.
+    """
+    planes = pin_planes(config, budget)
+    bezel_expected = lid_top - config.slide.lid_front
+    back_expected = panel_inner_z
+    if abs(planes["screen_lid_bezel"][0] - bezel_expected) > 1e-6:
+        raise ValueError(
+            "the Bezel's Seam-pin substrate disagrees with its panel inner "
+            f"face ({planes['screen_lid_bezel'][0]:.2f} vs "
+            f"{bezel_expected:.2f} mm)"
+        )
+    if abs(planes["screen_lid_back"][0] - back_expected) > 1e-6:
+        raise ValueError(
+            "the Back plate's Seam-pin substrate disagrees with its inner "
+            f"face ({planes['screen_lid_back'][0]:.2f} vs "
+            f"{back_expected:.2f} mm)"
+        )
+    return planes
+
 
 @dataclass(frozen=True)
 class SliderFrame:
@@ -45,6 +75,8 @@ class SliderFrame:
     band_z1: float
     lid_joint: Any
     bezel_recess: float
+    #: Per part, the Seam pins' ``(substrate z, fins stand up?)`` (ADR-0006).
+    seam_pin_planes: Any
     front: float
     lid_y_center: float
     wall: float
@@ -247,6 +279,7 @@ class SliderFrame:
             band_z1=band_z1,
             lid_joint=joint,
             bezel_recess=config.bezel.recess,
+            seam_pin_planes=_seam_pin_planes(config, budget, lid_top, panel_inner_z),
             front=front,
             lid_y_center=front + budget.lid_height / 2.0,
             wall=wall,

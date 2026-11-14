@@ -76,11 +76,17 @@ edges:
   bed_chamfer: 0.5
   seam_convex_extra: 0.5
 
-# Seam lugs (ADR 0006, reserved for the Section stage): Sections of one part
-# are joined by a length of 1.75 mm filament pushed through a bore along X,
-# glued and trimmed flush.
+# Seam pins (ADR 0006): two parallel printed fins straddle a Section Seam and
+# leave a `gap`-wide slot between them; a length of `pin` filament is glued in
+# while the part is assembled, registering the two Sections until the screws
+# that cross the Seam are in. The fins are `fin` thick and `height` tall,
+# `length` long across the Seam (half per Section); their outer top edge takes
+# a 45 deg `chamfer`, the slot faces stay flat. Where each pin goes is
+# `slide.seam_pin_sites` (it depends on the interior).
 seam_pin:
-  diameter: 1.75
-  fit: 0.15
-  engagement: 5.0
-  sleeve: 1.0
+  pin: 1.75
+  gap: 2.0
+  fin: 1.4
+  height: 2.0
+  length: 10.0
+  chamfer: 1.0

@@ -496,8 +496,8 @@ def split_x_stepped(
 ) -> tuple[Any, Any]:
     """Split ``shape`` at a stepped Seam (``__--__--__``) along X.
 
-    The Seam jogs by ``step`` every ``steps``-th of the part's Y extent, so
-    the two Sections share the same stepped line and still butt together.
+    Kept for ad-hoc tests; the configured split lives in
+    :mod:`geometry.split`, which also cuts trapezoid Seams.
     """
     if steps < 2 or step <= 0.0:
         return split_x(shape, at)
@@ -520,7 +520,12 @@ def split_x_stepped(
 
 
 def split_sections(shape: Any, spec: Any = None, at: float = 0.0) -> tuple[Any, Any]:
-    """Split ``shape`` according to a config ``Split`` (straight or stepped)."""
+    """Split ``shape`` along X, honouring a straight or stepped ``Split``.
+
+    Deprecated for build use: a configured part is split with
+    :func:`geometry.split.split_part`, which also cuts trapezoid Seams and
+    returns every Section.
+    """
     if spec is not None:
         at = float(getattr(spec, "x", at))
         if str(getattr(spec, "style", "straight")) == "stepped":

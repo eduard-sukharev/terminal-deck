@@ -4,10 +4,12 @@
 #   make data       # data layer only (config → components → layout → validation)
 #   make all        # full CAD + exports (STEP/STL/SVG/glTF)
 #   make display    # display sub-assembly only (LCD + HDMI driver, fast)
-#   make chassis    # chassis shell + keyboard/SBC/controller (hub is external)
-#   make screen_lid # screen-lid shell + display + driver
+#   make chassis    # chassis shell + keyboard/SBC/controller AND its cuts
+#                   #   (Tray/Deck and their left/right Sections)
+#   make screen_lid # screen-lid shell + display + driver AND its cuts
+#                   #   (Bezel/Back and their left/right Sections)
 #   make slide      # guide rods + LM...LUU bearings
-#   make keyboard_plate  # bare switch plate, split into Sections
+#   make keyboard_plate  # bare switch plate AND its left/right Sections
 #   make assembly   # closed assembly
 #   make assembly_opened  # open pose (lid slid by the travel)
 #   make components # per-component debug STLs only
@@ -41,6 +43,13 @@ RENDER_ELEV ?= 45
 RENDER_AZIM ?= -90
 TARGETS  ?= all
 IGNORE_VALIDATION ?=
+
+# Convenience targets ship the whole part AND its printable cuts, matching what
+# `make all` produces for that sub-assembly (ADR-0015): the shell, its left/right
+# reference halves, and each real Section.
+CHASSIS_TARGETS  := chassis,chassis_left,chassis_right,chassis_tray,chassis_tray_left,chassis_tray_right,chassis_deck,chassis_deck_left,chassis_deck_right
+LID_TARGETS      := screen_lid,screen_lid_left,screen_lid_right,screen_lid_bezel,screen_lid_bezel_left,screen_lid_bezel_right,screen_lid_back,screen_lid_back_left,screen_lid_back_right
+PLATE_TARGETS    := keyboard_plate,keyboard_plate_left,keyboard_plate_right
 
 .PHONY: env env-remove render render_svg render_stl verify data data-slider slider all build test check clean display chassis screen_lid slide keyboard_plate assembly assembly_opened components
 
@@ -86,16 +95,16 @@ all: build
 display: TARGETS = display
 display: build
 
-chassis: TARGETS = chassis
+chassis: TARGETS = $(CHASSIS_TARGETS)
 chassis: build
 
-screen_lid: TARGETS = screen_lid
+screen_lid: TARGETS = $(LID_TARGETS)
 screen_lid: build
 
 slide: TARGETS = slide
 slide: build
 
-keyboard_plate: TARGETS = keyboard_plate
+keyboard_plate: TARGETS = $(PLATE_TARGETS)
 keyboard_plate: build
 
 assembly: TARGETS = assembly

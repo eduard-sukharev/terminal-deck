@@ -129,7 +129,7 @@ def _treated_stepped_sections(extra: float):
     from geometry.split import split_sections
     from utilities.config_loader import Seam
 
-    seam = Seam(0.0, 4.0, 4)
+    seam = Seam.stepped(0.0, 4.0, 4, 40.0)
     sections = split_sections(_tray(), [seam], 40.0)
     out = []
     for section in sections:
@@ -145,10 +145,10 @@ def test_seam_step_corners_point_at_both_sides_of_every_jog():
     from geometry.edge_treatment import seam_corner_points
     from utilities.config_loader import Seam
 
-    points = seam_corner_points([Seam(0.0, 4.0, 4)], 40.0)
+    points = seam_corner_points([Seam.stepped(0.0, 4.0, 4, 40.0)], 40.0)
     assert sorted(points) == sorted([(0.0, -10.0), (4.0, -10.0), (4.0, 0.0), (0.0, 0.0),
                                      (0.0, 10.0), (4.0, 10.0)])
-    assert seam_corner_points([Seam(0.0, 0.0, 1)], 40.0) == []
+    assert seam_corner_points([Seam.straight(0.0)], 40.0) == []
 
 
 def test_rounded_tabs_fit_the_filleted_notches():
@@ -160,7 +160,7 @@ def test_sharp_tabs_clash_with_the_filleted_notches():
     from geometry.split import split_sections
     from utilities.config_loader import Seam
 
-    seam = Seam(0.0, 4.0, 4)
+    seam = Seam.stepped(0.0, 4.0, 4, 40.0)
     left, right = (relieve_concave_joints(s, BED_DOWN, 1.0, ValidationReport())
                    for s in split_sections(_tray(), [seam], 40.0))
     assert cad_helpers.volume_mm3(cad_helpers.intersect(left, right)) > 1e-3

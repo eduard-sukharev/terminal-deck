@@ -13,6 +13,7 @@ defaults for their own section.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -170,35 +171,104 @@ class Material:
 
 @dataclass(frozen=True)
 class Seam:
-    """One Seam line between two adjacent Sections (ADR 0003).
+    """One Seam line between two adjacent Sections (ADR 0015).
 
-    ``x`` is the Seam's base X position; ``step`` the signed jog size (toward
-    +X when positive) and ``steps`` the number of segments along Y (``step ==
-    0`` is a straight cut).
+    A Seam is a plan path, not a single X: a sequence of straight runs with
+    one X per Y band, joined by jogs. ``bands`` holds ``(y0, y1, x)`` per run,
+    front to back (increasing Y). Two consecutive runs either share their Y
+    boundary (a square step) or are separated by a gap the path crosses
+    diagonally -- the gap makes a 45 degree jog when its Y length equals its
+    X travel, which is what :class:`Split`'s ``trapezoid`` style builds.
+
+    The first and last bands are stretched to the part's own Y extent by
+    :meth:`segments` and :meth:`polyline`, so a Seam is written for the shell's
+    depth and still cuts a part that is a hair deeper. Nothing here assumes the
+    Seam is near the centreline: each Section is a real piece with its own
+    fastening, and the two Seams of a screwed pair are deliberately staggered.
     """
 
-    x: float = 0.0
-    step: float = 0.0
-    steps: int = 1
+    bands: tuple[tuple[float, float, float], ...]
+
+    @classmethod
+    def straight(cls, x: float = 0.0) -> "Seam":
+        """A Seam that runs straight along Y at ``x``, whatever the depth."""
+        return cls(((0.0, 1.0, x),))
+
+    @classmethod
+    def stepped(
+        cls, x: float, step: float, steps: int, depth: float
+    ) -> "Seam":
+        """A square-stepped Seam across a part ``depth`` mm deep.
+
+        ``steps`` runs alternate between ``x`` and ``x + step``; the jogs are
+        at right angles (ADR 0003's older shape, kept for tests and for parts
+        that do not need the trapezoid).
+        """
+        if steps < 1:
+            raise ValueError("a stepped Seam needs steps >= 1")
+        seg = depth / steps
+        return cls(tuple(
+            (-depth / 2.0 + i * seg, -depth / 2.0 + (i + 1) * seg,
+             x + (step if i % 2 else 0.0))
+            for i in range(steps)
+        ))
 
     def __post_init__(self) -> None:
-        if self.steps < 1:
-            raise ValueError("seam steps must be >= 1")
+        if not self.bands:
+            raise ValueError("a Seam needs at least one band")
+        previous = None
+        for y0, y1, _ in self.bands:
+            if y1 <= y0:
+                raise ValueError(f"Seam band is inside out: y {y0:.2f}..{y1:.2f}")
+            if previous is not None and y0 < previous - 1e-9:
+                raise ValueError(
+                    f"Seam band starts at y={y0:.2f}, before the previous one "
+                    f"ended at {previous:.2f} (the path must run front to back)"
+                )
+            previous = y1
 
     def segments(self, depth: float) -> list[tuple[float, float, float]]:
-        """``(y0, y1, x)`` per segment, front-to-back across ``depth``."""
-        seg = depth / self.steps
-        return [
-            (-depth / 2 + i * seg, -depth / 2 + (i + 1) * seg,
-             self.x + (self.step if i % 2 else 0.0))
-            for i in range(self.steps)
-        ]
+        """``(y0, y1, x)`` per straight run, stretched to ``depth``.
+
+        The stretch only moves the outer ends: the jog positions are what the
+        Seam is for and never move with the depth.
+        """
+        bands = [list(band) for band in self.bands]
+        bands[0][0] = min(bands[0][0], -depth / 2.0)
+        bands[-1][1] = max(bands[-1][1], depth / 2.0)
+        return [tuple((float(a), float(b), float(c))) for a, b, c in bands]
+
+    def polyline(self, depth: float) -> list[tuple[float, float]]:
+        """The plan path as ``(x, y)`` corners, front to back.
+
+        Each straight run contributes its two ends; the segment between one
+        run's end and the next run's start is the jog itself.
+        """
+        points: list[tuple[float, float]] = []
+        for y0, y1, x in self.segments(depth):
+            for point in ((x, y0), (x, y1)):
+                if not points or point != points[-1]:
+                    points.append(point)
+        return points
+
+    def x_at(self, y: float) -> float:
+        """The Seam's X at ``y``, interpolating across a diagonal jog."""
+        bands = self.bands
+        if y <= bands[0][1]:
+            return bands[0][2]
+        for y0, y1, x in bands:
+            if y0 <= y <= y1:
+                return x
+        for (_, ya, xa), (yb, _, xb) in zip(bands, bands[1:]):
+            if ya <= y <= yb:
+                return xa + (xb - xa) * (y - ya) / (yb - ya)
+        return bands[-1][2]
 
     @property
     def x_range(self) -> tuple[float, float]:
-        """X interval the stepped Seam sweeps across."""
-        far = self.x + (self.step if self.steps > 1 else 0.0)
-        return (min(self.x, far), max(self.x, far))
+        """X interval the Seam sweeps across."""
+        xs = [x for _, _, x in self.bands]
+        return (min(xs), max(xs))
 
 
 #: Section names, left to right, by Section count.
@@ -210,13 +280,25 @@ SECTION_NAMES: dict[int, tuple[str, ...]] = {
 
 @dataclass(frozen=True)
 class Split:
-    """How one part is divided into Sections (ADR 0003).
+    """How one part is divided into Sections (ADR 0015).
 
-    Two Sections have one Seam at ``x``. Three Sections have two Seams at
-    ``-|x|`` and ``+|x|``; on stepped Seams the left one jogs left and the
-    right one right (away from the centerline), so the pair mirrors about it:
-    a step left on one is a step right on the other. ``style`` is ``"straight"`` (one
-    segment, no jog) or ``"stepped"`` (``steps`` segments of jog ``step``).
+    Two Sections have one Seam; three have two, mirrored about the centreline
+    (the left one jogs left, the right one right, away from the centreline).
+
+    ``style`` is the Seam's shape in plan:
+
+    * ``"straight"`` -- one run at ``x``;
+    * ``"stepped"`` -- ``steps`` runs along Y, alternating between ``x`` and
+      ``x + step``; every jog is square;
+    * ``"trapezoid"`` -- a run at ``x`` across the middle, stepping out to
+      ``ends_x`` at each end wall, the jogs running at ``jog`` degrees (45 by
+      default). This is the shape that lets two Seams of a screwed pair stay
+      apart along their whole length: the parts interlock instead of meeting
+      along one line.
+
+    :meth:`seams` needs the part's Y depth (and, for a trapezoid, the end
+    wall thickness) because a trapezoid's jog positions depend on where the
+    end walls are.
     """
 
     sections: int = 2
@@ -224,32 +306,124 @@ class Split:
     style: str = "straight"
     step: float = 0.0
     steps: int = 1
+    ends_x: float | None = None
+    jog: float = 45.0
 
     def __post_init__(self) -> None:
         if self.sections not in SECTION_NAMES:
             raise ValueError(f"split sections must be 2 or 3, got {self.sections}")
         if self.style == "straight":
-            if self.step != 0.0 or self.steps != 1:
-                raise ValueError("a straight split takes no step/steps")
+            if self.step != 0.0 or self.steps != 1 or self.ends_x is not None:
+                raise ValueError("a straight split takes no step/steps/ends_x")
         elif self.style == "stepped":
             if self.step <= 0.0 or self.steps < 2:
                 raise ValueError("a stepped split needs step > 0 and steps >= 2")
+            if self.ends_x is not None:
+                raise ValueError("a stepped split takes no ends_x")
+        elif self.style == "trapezoid":
+            if self.ends_x is None:
+                raise ValueError("a trapezoid split needs ends_x")
+            if abs(self.ends_x - self.x) < 1e-9:
+                raise ValueError("a trapezoid split needs ends_x different from x")
+            if not 0.0 < self.jog < 90.0:
+                raise ValueError("a trapezoid split needs 0 < jog < 90 degrees")
+            if self.step != 0.0 or self.steps != 1:
+                raise ValueError("a trapezoid split takes no step/steps")
         else:
-            raise ValueError(f"split style must be 'straight' or 'stepped', got {self.style!r}")
+            raise ValueError(
+                f"split style must be 'straight', 'stepped' or 'trapezoid', "
+                f"got {self.style!r}"
+            )
 
     @property
     def section_names(self) -> tuple[str, ...]:
         return SECTION_NAMES[self.sections]
 
-    def seams(self) -> list[Seam]:
-        """The Seams, left to right (one fewer than the Sections)."""
+    @property
+    def x_range(self) -> tuple[float, float]:
+        """X interval the Seam path sweeps across (independent of depth)."""
         if self.sections == 2:
-            return [Seam(self.x, self.step, self.steps)]
+            xs = [self.x]
+            if self.style == "trapezoid":
+                xs.append(self.ends_x)
+            elif self.style == "stepped":
+                xs.append(self.x + self.step)
+            return (min(xs), max(xs))
         edge = abs(self.x)
+        if self.style == "trapezoid":
+            far = abs(self.ends_x)
+        elif self.style == "stepped":
+            far = edge + self.step
+        else:
+            far = edge
+        return (-far, far)
+
+    def seams(
+        self, depth: float | None = None, wall: float = 0.0
+    ) -> list[Seam]:
+        """The Seams, left to right (one fewer than the Sections).
+
+        ``depth`` is the part's Y extent; ``wall`` the end wall thickness that
+        a trapezoid's diagonal starts at.
+        """
+        if self.sections == 2:
+            return [self._seam(self.x, self.ends_x, depth, wall)]
+        edge = abs(self.x)
+        if self.style == "trapezoid":
+            far = abs(self.ends_x)
+        elif self.style == "stepped":
+            far = edge + self.step
+        else:
+            far = edge
+        # Mirror the path about the centreline: the left Seam jogs left, the
+        # right one right, so the middle Section is the widest one.
         return [
-            Seam(-edge, -self.step, self.steps),
-            Seam(edge, self.step, self.steps),
+            self._seam(-edge, -far if self.ends_x is not None else None, depth, wall),
+            self._seam(edge, far if self.ends_x is not None else None, depth, wall),
         ]
+
+    def _seam(
+        self,
+        x: float,
+        ends_x: float | None,
+        depth: float | None,
+        wall: float,
+    ) -> Seam:
+        """Build the Seam path for one of the runs (``x`` is this Seam's own)."""
+        if self.style == "straight":
+            return Seam.straight(x)
+        if depth is None or depth <= 0.0:
+            raise ValueError(f"a {self.style} Seam needs the part's depth")
+        half = depth / 2.0
+        if self.style == "stepped":
+            # Three Sections mirror about the centreline: the left Seam jogs
+            # left, the right one right. A two-Section Seam always takes +step.
+            signed = -self.step if (self.sections == 3 and x < 0.0) else self.step
+            return Seam.stepped(x, signed, self.steps, depth)
+        # Five segments front to back -- end run, 45 degree jog, middle run,
+        # 45 degree jog, end run -- with the three straight runs in the ratio
+        # 1.5 : 3 : 1.5. The jogs are not square steps: each is a diagonal the
+        # path crosses over a gap, so its Y span equals its X travel (45 deg).
+        run = abs(ends_x - x) / math.tan(math.radians(self.jog))
+        straight = depth - 2.0 * run      # Y left for the three straight runs
+        if straight <= 0.0:
+            raise ValueError(
+                f"trapezoid Seam jogs eat the whole depth: ends_x {ends_x:g}, "
+                f"x {x:g}, jog {self.jog:g} deg needs {run:.2f} mm per end"
+            )
+        end_run = max(1.5 * straight / 6.0, wall)
+        middle = straight - 2.0 * end_run
+        if middle <= 0.0:
+            raise ValueError(
+                f"trapezoid Seam leaves no middle run: ends_x {ends_x:g}, x {x:g}, "
+                f"jog {self.jog:g} deg leaves {straight:.2f} mm for the runs"
+            )
+        # Gaps between the bands are the jogs; x_at interpolates across them.
+        return Seam((
+            (-half, -half + end_run, ends_x),
+            (-half + end_run + run, half - end_run - run, x),
+            (half - end_run, half, ends_x),
+        ))
 
 
 @dataclass(frozen=True)
@@ -357,22 +531,55 @@ class Edges:
 
 @dataclass(frozen=True)
 class SeamPin:
-    """Glued filament pin through every Seam lug (ADR 0006).
+    """A glued filament pin across a Section Seam (ADR 0006).
 
-    A length of ``diameter`` filament is pushed through a through-bore of
-    ``diameter + fit`` that runs along X across the Seam, glued, and trimmed
-    flush. ``engagement`` is the bore length on each side of the Seam and
-    ``sleeve`` the lug wall around the bore.
+    Two parallel printed fins straddle the Seam and leave a ``gap``-wide slot
+    between them. A length of ``pin`` filament is glued into the slot while the
+    part is assembled, so the pin registers the two Sections and holds them
+    until the screws that cross the Seam are in.
+
+    The fins are ``fin`` thick, ``height`` tall above the substrate they grow
+    from (a floor or a ceiling), and ``length`` long across the Seam --
+    ``engagement`` into each Section. The wall thickness is constant; the outer
+    base takes a 45 degree ``chamfer`` that flares outward into the substrate.
+    The two faces that make the slot stay flat and square, because they locate
+    the pin.
     """
 
-    diameter: float = 1.75
-    fit: float = 0.15
-    engagement: float = 5.0
-    sleeve: float = 1.0
+    pin: float = 1.75
+    gap: float = 2.0
+    fin: float = 1.4
+    height: float = 2.0
+    length: float = 10.0
+    chamfer: float = 1.0
 
     def __post_init__(self) -> None:
-        if min(self.diameter, self.engagement, self.sleeve) <= 0 or self.fit < 0:
-            raise ValueError("seam_pin needs positive diameter/engagement/sleeve and fit >= 0")
+        if min(self.pin, self.gap, self.fin, self.height, self.length) <= 0.0:
+            raise ValueError("seam_pin dimensions must be positive")
+        if self.gap <= self.pin:
+            raise ValueError(
+                "seam_pin needs a gap wider than the pin, or there is no room "
+                "for glue"
+            )
+        if self.chamfer < 0.0 or self.chamfer >= self.height:
+            raise ValueError(
+                "seam_pin chamfer must be >= 0 and smaller than the fin height"
+            )
+
+    @property
+    def engagement(self) -> float:
+        """How far one fin reaches into each Section (mm)."""
+        return self.length / 2.0
+
+    @property
+    def glue_gap(self) -> float:
+        """Side-to-side room for glue between the pin and the fins (mm)."""
+        return self.gap - self.pin
+
+    @property
+    def pocket_width(self) -> float:
+        """Depth of the whole pocket across the Seam: two fins plus the slot."""
+        return 2.0 * self.fin + self.gap
 
 
 @dataclass(frozen=True)
@@ -562,8 +769,9 @@ class SlideJoint:
 
     The lid splits at the Back panel's inner face. The Bezel carries a
     prismatic band whose perimeter wall is locally thickened into posts at the
-    eight stations (four corners, two per long side); the Back is a flat plate
-    with a countersunk screw at each station, driven from its outer face.
+    ten stations (four corners, two per long side plus one on each long side's
+    centreline -- the Section-Seam interlock, ADR-0015); the Back is a flat
+    plate with a countersunk screw at each station, driven from its outer face.
     """
 
     band: float = 6.0
@@ -607,7 +815,7 @@ class Slide:
     lid_front: float = 2.0
     driver_gap: float = 0.5
     component_gap: float = 1.5
-    rear_wall_margin: float = 6.0  # SBC clearance to the rear wall
+    rear_wall_margin: float = 8.0  # SBC clearance to the rear wall
     slot_clearance: float = 0.25  # each side between clamp neck and back-panel slot
     bearing: SlideBearing = field(default_factory=SlideBearing)
     rod: SlideRod = field(default_factory=SlideRod)
@@ -618,6 +826,10 @@ class Slide:
     chain: SlideChain = field(default_factory=SlideChain)
     rail: SlideRail = field(default_factory=SlideRail)
     split: dict[str, Split] = field(default_factory=dict)
+    #: Pin-pocket centres along each part's Seam (part-frame Y, mm). ADR-0006:
+    #: the fins' substrate and the interior decide where they can go, so these
+    #: are placements, like the recipe's ``fixed_position`` entries.
+    seam_pin_sites: dict[str, tuple[float, ...]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.face_height_limit <= 0:
@@ -634,6 +846,15 @@ class Slide:
             raise ValueError("slide.rear_wall_margin must be >= 0")
         if self.slot_clearance < 0:
             raise ValueError("slide.slot_clearance must be >= 0")
+        for name, sites in self.seam_pin_sites.items():
+            if len(set(sites)) != len(sites):
+                raise ValueError(
+                    f"slide.seam_pin_sites.{name} lists the same Y twice"
+                )
+            if any(not isinstance(y, float) for y in sites):
+                raise ValueError(
+                    f"slide.seam_pin_sites.{name} must be a list of Y values"
+                )
         if self.rod.diameter > self.bearing.bore + 0.05:
             raise ValueError(
                 "slide.rod.diameter must fit the bearing bore "
@@ -744,6 +965,8 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
             style=str(v.get("style", "straight")),
             step=float(v.get("step", 0.0)),
             steps=int(v.get("steps", 1)),
+            ends_x=None if v.get("ends_x") is None else float(v["ends_x"]),
+            jog=float(v.get("jog", 45.0)),
         )
         for name, v in (slide_raw.get("split") or {}).items()
     }
@@ -757,7 +980,7 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
         lid_front=float(slide_raw.get("lid_front", 2.0)),
         driver_gap=float(slide_raw.get("driver_gap", 0.5)),
         component_gap=float(slide_raw.get("component_gap", 1.5)),
-        rear_wall_margin=float(slide_raw.get("rear_wall_margin", 6.0)),
+        rear_wall_margin=float(slide_raw.get("rear_wall_margin", 8.0)),
         slot_clearance=float(slide_raw.get("slot_clearance", 0.25)),
         bearing=SlideBearing(
             model=str(slide_bearing.get("model", "LM6UU")),
@@ -822,6 +1045,10 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
             pitch=float(slide_rail.get("pitch", 10.0)),
         ),
         split=slide_split,
+        seam_pin_sites={
+            name: tuple(float(y) for y in ys)
+            for name, ys in (slide_raw.get("seam_pin_sites") or {}).items()
+        },
     )
     wall_thickness = float(wall.get("thickness", 2.0))
     if min(slide.clamp_wall, slide.lid_back, slide.lid_front) < wall_thickness:

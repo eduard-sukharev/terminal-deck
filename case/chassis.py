@@ -133,7 +133,11 @@ class Chassis:
             )
             for station in joint.stations
         ]
-        return ch.clean(ch.cut(body, *scallops))
+        body = ch.cut(body, *scallops)
+        # ADR-0006: the Seam's glued-filament pins, grown into the half before
+        # the split so each Section prints its own share of every fin.
+        body = self._add_seam_pins(body, "chassis_tray", f.depth)
+        return ch.clean(body)
 
     def build_deck(self):
         """The upper shell: a prismatic body with the Well ring and seats."""
@@ -225,7 +229,9 @@ class Chassis:
 
         # One M2 insert boss per plate station, merged to the ring's outer face
         # inside the front/rear lip. It stands on the plate's top face (the
-        # plate's ear is below it), so no boss can enter the Cutout.
+        # plate's ear is below it), so no boss can enter the Cutout, and runs
+        # up to the Deck's inner ceiling: the Deck prints face down, so a boss
+        # that stopped at the insert would be an unsupported overhang.
         well_bosses = [
             ch.translate(
                 ch.cylinder_centered(m.boss_diameter, m.boss_z1 - m.boss_z0),
@@ -237,10 +243,11 @@ class Chassis:
         ]
         body = ch.union(body, *well_bosses)
 
-        # One insert boss per chassis band station, standing out of the band's
-        # cavity. The boss is taller than the Deck's half-band: the M3 heat-set
-        # insert is 4 mm deep and still needs a boss margin of material above it.
-        boss_height = joint.boss_height
+        # One insert boss per chassis band station. The M3 insert is 4 mm deep
+        # and needs a boss margin above it, but the column runs all the way to
+        # the inner ceiling for the same print reason as the Well bosses: on
+        # the face-down print a short boss would hang off the band's wall.
+        boss_height = cavity_top - z0
         band_bosses = [
             ch.translate(
                 ch.cylinder_centered(station.boss, boss_height),
@@ -304,7 +311,25 @@ class Chassis:
             )
             if cutter is not None
         ]
-        return ch.clean(ch.cut(body, *scallops))
+        body = ch.cut(body, *scallops)
+        body = self._add_seam_pins(body, "chassis_deck", f.depth)
+        return ch.clean(body)
+
+    def _add_seam_pins(self, body, name: str, depth: float):
+        """Grow the Seam's glued-filament pins into a half, before the split."""
+        from geometry.seam_joint import add_pins
+
+        f = self.frame
+        substrate, upward = f.seam_pin_planes[name]
+        seam = self.config.slide.split[name].seams(depth, f.wall)[0]
+        return add_pins(
+            body,
+            seam,
+            self.config.seam_pin,
+            self.config.slide.seam_pin_sites.get(name, ()),
+            substrate,
+            upward,
+        )
 
     def _well_mounts(self):
         """The plate's mounting pattern, from the frame's derived dimensions.
@@ -496,21 +521,27 @@ class Chassis:
         return ch.make_compound(holes)
 
     # -- printing --------------------------------------------------------
-    def sections(self) -> tuple[Any, Any]:
-        """Split the assembled chassis into its left and right Sections."""
-        from utilities import cad_helpers as ch
+    def tray_sections(self):
+        """Split the Tray on its configured Seam (ADR-0015)."""
+        from geometry.split import split_part
 
-        return ch.split_x(self.build())
+        return split_part(
+            self.build_tray(),
+            self.config.slide.split["chassis_tray"],
+            self.frame.depth,
+            self.frame.wall,
+        )
 
-    def tray_sections(self) -> tuple[Any, Any]:
-        from utilities import cad_helpers as ch
+    def deck_sections(self):
+        """Split the Deck on its configured Seam (ADR-0015)."""
+        from geometry.split import split_part
 
-        return ch.split_x(self.build_tray())
-
-    def deck_sections(self) -> tuple[Any, Any]:
-        from utilities import cad_helpers as ch
-
-        return ch.split_x(self.build_deck())
+        return split_part(
+            self.build_deck(),
+            self.config.slide.split["chassis_deck"],
+            self.frame.depth,
+            self.frame.wall,
+        )
 
 
 __all__ = ["Chassis"]

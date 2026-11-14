@@ -7,13 +7,17 @@ the way from the plane to the closed face. Only the lower half of the
 silhouette tapers; the Deck and the closed face stay straight. This is the
 chassis counterpart of the lid's Bezel <-> Back band joint (ADR-0011).
 
-Ten M3 screws are driven from below, through a countersink in the Tray's floor
-and a column standing on that floor, into a heat-set insert in a boss in the
-Deck's band:
+Twelve M3 screws are driven from below, through a countersink in the Tray's
+floor and a column standing on that floor, into a heat-set insert in a boss in
+the Deck's band:
 
 * four corners,
-* two per long side (front and rear walls),
+* three per long side (front and rear walls) -- one of them on the centreline,
 * one per short side (left and right walls).
+
+The centreline long-wall stations are ADR-0015's interlock: the Tray's Seam and
+the Deck's Seam run past it on opposite sides, so the screw ties the two
+staggered cuts together.
 
 Because the Tray is drafted, a straight column of the full boss diameter
 cannot both stay inside the Tray's outer skin at the floor and merge into the
@@ -86,7 +90,6 @@ class ChassisJoint:
     scallop_height: float
     insert_hole: float
     insert_depth: float
-    boss_height: float
     countersink: fasteners.Countersink
     screw: DeckScrew
     grip: float
@@ -269,6 +272,11 @@ def chassis_joint(
 
     add(x_edge, y_wall, "corner")
     add(x_mid, y_wall, "side")
+    # ADR-0015: one more station per long wall, on the centreline. The Tray's
+    # Seam and the Deck's Seam pass on either side of it, so this screw is what
+    # cross-ties the two staggered cuts: its insert boss belongs to one Deck
+    # half and its Tray column to the other Tray half.
+    add(0.0, y_wall, "side")
     for sx in (-1, 1):
         stations.append(_station(sx * x_edge, y_end, "end", **common))
 
@@ -283,9 +291,6 @@ def chassis_joint(
         scallop_height=joint.scallop_height,
         insert_hole=hole,
         insert_depth=insert.depth,
-        # The Deck's half of the band is only `band/2` tall; the insert boss
-        # rises out of it far enough to hold the full insert plus a margin.
-        boss_height=insert.depth + joint.boss_margin,
         countersink=countersink,
         screw=screw,
         grip=grip,

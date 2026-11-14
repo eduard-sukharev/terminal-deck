@@ -1,6 +1,7 @@
 ---
 status: accepted
 amends: ADR-0003
+amended_by: ADR-0015
 ---
 
 # The keyboard plate mounts to the Well's lower faces from below
@@ -102,6 +103,15 @@ Parting plane are the joint screws and the eight plate-screw heads.
   margin is **7.65 mm** (wall 2.00 + lip 5.65), the closed face **140.00 mm**
   (at the 140.00 limit). `keyboard-mounts-fit` and `slide-budget` are the HARD
   checks.
+- **The boss is a full column, not an insert stub — confirmed.** The M2 insert
+  is 3.0 deep with a 1.5 margin, so a 4.5 mm boss would hold it; the shipped
+  boss instead runs from the plate's top face (17.80) all the way to the Deck's
+  inner ceiling (30.30), **12.50 mm** in total. The Deck prints face down, so
+  the Deck's top skin is the bed face and everything grows up from it: a boss
+  that stopped at the insert (22.30) would leave an 8.00 mm-deep horizontal
+  annulus overhanging off the Well ring. At full height it reads as a rib on
+  the ring's outer face and needs no support. `well_mounts` fails if the
+  ceiling leaves less than the insert plus its margin above the plate.
 - **The eight M2 screw heads dip into the Tray — accepted and checked.** The
   plate is 1.50 mm thick, so an M2 head (Ø3.80 × 2.00) cannot be recessed: it
   seats on the plate's underside and spans **14.30–16.30 mm**, crossing the
@@ -128,9 +138,9 @@ Parting plane are the joint screws and the eight plate-screw heads.
 | Parting plane | 16.15 (0.15 below the plate bottom) |
 | Derived front margin | 7.65 (front lip 5.65 for a 5.00 boss) |
 | Plate border | 4.05 left/right, 4.85 rear, 3.88 spacebar (min) |
-| Mounts | 8 × M2×4, 4 per Section; boss Ø6.00 z 17.80–22.30, insert Ø3.00 × 3.0, clearance Ø2.20, head Ø3.80 × 2.00 (14.30–16.30, crossing the Parting plane by 1.85, 1.75 clear of the Tray wall) |
+| Mounts | 8 × M2×4, 4 per Section; boss Ø6.00 z 17.80–30.30 (12.50, a full column to the Deck's inner ceiling), insert Ø3.00 × 3.0, clearance Ø2.20, head Ø3.80 × 2.00 (14.30–16.30, crossing the Parting plane by 1.85, 1.75 clear of the Tray wall) |
 | Ears | 5.20 × 5.20, r2.0 |
-| Notches | 4 × 5.30 × 1.45, 1.10 bite, at the front band columns |
+| Notches | **5** × 5.30 × 1.45, 1.10 bite, at the front band columns |
 | Plate Seam | 4 bands; plate-local ends x 0.00 (rear edge) and −50.584 (spacebar edge) |
 | Case | width 241.17, face 140.00 / 140.00, thickness 57.75 |
 | Guide stance | `rod_x` ±94.98 (follows the width) |
@@ -138,3 +148,13 @@ Parting plane are the joint screws and the eight plate-screw heads.
 The plate is one wall wider than the Cutout per side. The switch-free border is
 derived per side from the real keycap/switch geometry, so there is no single
 `edge_margin` value: 4.05 across X, 4.85 at the rear, 3.88 at the spacebar.
+
+**Amended by ADR-0015.** The chassis band joint gained a **centreline** column on
+each long wall (the Section-Seam interlock), so the front border is now notched
+**five** times, not four: the same `5.30 × 1.45` notch with a `1.10 mm` bite into
+the `2.00 mm` border, leaving 0.90 mm of sheet. The at-Seam stations' clearance
+is no longer read from the Section split (the Deck's Seam is straight there): it
+is the named knob **`keyboard.mounting.seam_slack: 4.0`**, and
+`seam_slack` 4.0 + ear 2.60 + `minimum_feature` 0.60 still gives the pinned
+**7.20 mm** `seam_clearance`. The eight M2 stations, the Well ring and the
+Parting-plane checks are unchanged.

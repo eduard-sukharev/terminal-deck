@@ -21,14 +21,14 @@ PLATE = KeyboardPlate({
 
 def test_two_section_straight_split_has_one_seam():
     split = Split(sections=2, x=0.0, style="straight")
-    (seam,) = split.seams()
+    (seam,) = split.seams(100.0)
     assert seam.x_range == (0.0, 0.0)
     assert seam.segments(100.0) == [(-50.0, 50.0, 0.0)]
 
 
 def test_three_section_seams_mirror_about_the_centerline():
     split = Split(sections=3, x=40.0, style="stepped", step=4.0, steps=6)
-    left, right = split.seams()
+    left, right = split.seams(100.0)
     assert left.x_range == (-44.0, -40.0)
     assert right.x_range == (40.0, 44.0)
     # A step left on one is a step right on the other.
@@ -37,8 +37,8 @@ def test_three_section_seams_mirror_about_the_centerline():
 
 
 def test_split_x_sign_is_ignored_for_three_sections():
-    a = Split(sections=3, x=-40.0, style="stepped", step=4.0, steps=6).seams()
-    b = Split(sections=3, x=40.0, style="stepped", step=4.0, steps=6).seams()
+    a = Split(sections=3, x=-40.0, style="stepped", step=4.0, steps=6).seams(100.0)
+    b = Split(sections=3, x=40.0, style="stepped", step=4.0, steps=6).seams(100.0)
     assert [s.x_range for s in a] == [s.x_range for s in b]
 
 
@@ -54,12 +54,59 @@ def test_invalid_split_is_rejected(kwargs):
         Split(**kwargs)
 
 
-def test_slider_config_declares_section_splits():
+def test_slider_config_declares_per_part_section_splits():
+    """ADR-0015: every shell piece has its own Seam, and the pair staggers."""
     cfg = load_config("config/default.yaml")
-    assert cfg.slide.split["chassis"].sections == 2
-    assert cfg.slide.split["chassis"].style == "stepped"
-    assert cfg.slide.split["screen_lid"].style == "stepped"
-    assert cfg.slide.split["chassis"].step > 0
+    split = cfg.slide.split
+    assert set(split) == {
+        "chassis_tray", "chassis_deck", "screen_lid_bezel", "screen_lid_back",
+    }
+    assert all(spec.sections == 2 for spec in split.values())
+    assert split["chassis_deck"].style == "straight"
+    assert split["screen_lid_bezel"].style == "straight"
+    assert split["chassis_tray"].style == "trapezoid"
+    assert split["screen_lid_back"].style == "trapezoid"
+    # The Tray and the Deck Seams land on opposite sides of the centreline.
+    tray_lo, tray_hi = split["chassis_tray"].x_range
+    deck_lo, deck_hi = split["chassis_deck"].x_range
+    assert tray_lo > 0.0 > deck_hi
+    assert 10.0 <= min(abs(v) for v in (tray_lo, tray_hi, deck_lo, deck_hi))
+    assert max(abs(v) for v in (tray_lo, tray_hi, deck_lo, deck_hi)) <= 20.0
+
+
+def test_a_trapezoid_seam_jogs_at_45_degrees_from_each_end_wall():
+    split = Split(
+        sections=2, x=10.0, style="trapezoid", ends_x=18.0, jog=45.0
+    )
+    (seam,) = split.seams(140.0, 2.0)
+    # Five segments: end run, 45 deg jog, middle run, 45 deg jog, end run.
+    # The X travel is ends_x - x = 8, so each 45 deg jog spans 8 mm in Y.
+    # The straight runs share the rest (140 - 2*8 = 124) in 1.5 : 3 : 1.5,
+    # i.e. end runs 31 mm and a 62 mm middle run.
+    assert seam.x_at(0.0) == pytest.approx(10.0)
+    assert seam.x_at(-69.0) == pytest.approx(18.0)     # end run
+    assert seam.x_at(69.0) == pytest.approx(18.0)      # end run
+    # Mid-jog: y = -35 is 4 mm into the 8 mm jog, so X is halfway (14).
+    assert seam.x_at(-35.0) == pytest.approx(14.0)
+    assert seam.x_range == (10.0, 18.0)
+    points = seam.polyline(140.0)
+    assert points == pytest.approx([
+        (18.0, -70.0), (18.0, -39.0),   # end run
+        (10.0, -31.0),                  # 45 deg jog (dy 8, dx -8)
+        (10.0, 31.0),                   # middle run
+        (18.0, 39.0),                   # 45 deg jog (dy 8, dx +8)
+        (18.0, 70.0),                   # end run
+    ])
+    # Every jog really is a diagonal, not a square step: the X and Y spans match.
+    for (xa, ya), (xb, yb) in zip(points, points[1:]):
+        if xa != xb:
+            assert abs(xa - xb) == pytest.approx(abs(ya - yb))
+
+
+def test_a_trapezoid_seam_that_would_leave_no_middle_run_is_rejected():
+    split = Split(sections=2, x=10.0, style="trapezoid", ends_x=40.0, jog=45.0)
+    with pytest.raises(ValueError):
+        split.seams(40.0, 2.0)
 
 
 def test_the_keyboard_plate_split_knob_is_retired():

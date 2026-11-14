@@ -18,6 +18,10 @@ keyboard:
   mounting:
     screw: M2
     edge_offset: 5.0
+    seam_slack: 4.0      # at-Seam M2 stations keep this much clear of the Deck's
+                         # Section Seam, on top of the ear and the printable
+                         # minimum (ADR-0014, ADR-0015). With the straight Deck
+                         # Seam this slack is what pins seam_clearance at 7.20.
   keycap:
     profile: xda
     enabled: true

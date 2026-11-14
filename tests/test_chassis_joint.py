@@ -48,15 +48,22 @@ def _width_at(shape, z):
 
 
 # -- data ----------------------------------------------------------------
-def test_ten_stations_four_corners_four_sides_two_ends(data):
+def test_twelve_stations_four_corners_six_sides_two_ends(data):
+    """ADR-0015 adds one long-wall station per side, on the centreline."""
     _, budget, _, _ = data
     joint = budget.chassis_joint
-    assert joint.station_count == 10
+    assert joint.station_count == 12
     assert len(joint.corner_stations) == 4
-    assert len(joint.side_stations) == 4
+    assert len(joint.side_stations) == 6
     assert len(joint.end_stations) == 2
     centres = {(round(s.x, 6), round(s.y, 6)) for s in joint.stations}
-    assert len(centres) == 10
+    assert len(centres) == 12
+    centreline = [s for s in joint.stations if abs(s.x) < 1e-9]
+    assert len(centreline) == 2
+    assert {round(s.y, 6) for s in centreline} == {
+        round(-joint.depth / 2.0 + joint.side_inset, 6),
+        round(joint.depth / 2.0 - joint.side_inset, 6),
+    }
 
 
 def test_stations_mirror_about_both_centreplanes(data):
@@ -230,13 +237,15 @@ def test_scallops_cut_each_half_of_the_band(data, solids):
 
 def test_tray_and_deck_sections_fit_and_rejoin(data, solids):
     config, _, frame, _ = data
-    split = config.slide.split.get("chassis")
-    for part in solids:
-        left, right = ch.split_sections(part, split)
-        assert ch.volume_mm3(left) + ch.volume_mm3(right) == pytest.approx(
+    wall = config.wall.thickness
+    from geometry.split import split_part
+
+    for part, name in zip(solids, ("chassis_tray", "chassis_deck")):
+        sections = split_part(part, config.slide.split[name], frame.depth, wall)
+        assert sum(ch.volume_mm3(s) for s in sections) == pytest.approx(
             ch.volume_mm3(part), rel=1e-3
         )
-        for section in (left, right):
+        for section in sections:
             x, y, z = ch.bounding_box_mm(section)
             assert x <= BUILD_VOLUME[0] + 1e-6
             assert y <= BUILD_VOLUME[1] + 1e-6

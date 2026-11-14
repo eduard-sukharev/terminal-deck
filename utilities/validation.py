@@ -363,20 +363,24 @@ def seam_bands(
 ) -> dict[str, list[tuple[float, float, float, float]]]:
     """``(x0, x1, y0, y1)`` rectangles covering each Seam ± its steps ± one wall.
 
-    Keyed ``"<part>:<index>"`` (Seams left to right). A stepped Seam is a
-    rectangle per segment plus one per jog face, so the band follows the
-    ``__--__--__`` line rather than its bounding box.
+    Keyed ``"<part>:<index>"`` (Seams left to right). The Seam's plan path is
+    walked run by run, so the band follows the ``__--__--__`` line (or a
+    trapezoid's 45 degree diagonals) rather than its bounding box.
     """
     bands: dict[str, list[tuple[float, float, float, float]]] = {}
     for part, split in splits.items():
         depth = depths[part]
-        for i, seam in enumerate(split.seams()):
+        for i, seam in enumerate(split.seams(depth, wall)):
             rects = []
-            segs = seam.segments(depth)
-            for y0, y1, x in segs:
-                rects.append((x - wall, x + wall, y0, y1))
-            for (_, ya, xa), (_, _, xb) in zip(segs, segs[1:]):
-                rects.append((min(xa, xb) - wall, max(xa, xb) + wall, ya - wall, ya + wall))
+            points = seam.polyline(depth)
+            for (xa, ya), (xb, yb) in zip(points, points[1:]):
+                if abs(xa - xb) < 1e-9:
+                    rects.append((xa - wall, xa + wall, min(ya, yb), max(ya, yb)))
+                else:
+                    rects.append((
+                        min(xa, xb) - wall, max(xa, xb) + wall,
+                        min(ya, yb) - wall, max(ya, yb) + wall,
+                    ))
             bands[f"{part}:{i}"] = rects
     return bands
 

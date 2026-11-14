@@ -39,11 +39,29 @@ def data():
 
 
 @pytest.fixture(scope="module")
-def solids(data):
+def pieces(data):
+    """The four printed shell pieces, each with its own Seam (ADR-0015)."""
     config, _, _, frame = data
-    chassis = Chassis(config, frame).build()
-    lid = ScreenLid(config, frame).build()
-    return chassis, lid
+    chassis = Chassis(config, frame)
+    lid = ScreenLid(config, frame)
+    return {
+        "chassis_tray": (chassis.build_tray(), frame.depth),
+        "chassis_deck": (chassis.build_deck(), frame.depth),
+        "screen_lid_bezel": (lid.build_bezel(), frame.lid_height),
+        "screen_lid_back": (lid.build_back(), frame.lid_height),
+    }
+
+
+@pytest.fixture(scope="module")
+def solids(pieces):
+    return (
+        ch.make_compound(
+            [pieces["chassis_tray"][0], pieces["chassis_deck"][0]]
+        ),
+        ch.make_compound(
+            [pieces["screen_lid_bezel"][0], pieces["screen_lid_back"][0]]
+        ),
+    )
 
 
 @pytest.fixture(scope="module")
@@ -210,47 +228,103 @@ def test_lid_and_chassis_share_the_closed_face(data, solids):
     )
 
 
-def test_chassis_sections_rejoin(data, solids):
+def test_chassis_sections_rejoin(data, pieces):
+    config, _, _, frame = data
+    wall = config.wall.thickness
+    from geometry.split import split_part
+
+    for name in ("chassis_tray", "chassis_deck"):
+        part, depth = pieces[name]
+        left, right = split_part(part, config.slide.split[name], depth, wall)
+        assert ch.volume_mm3(left) + ch.volume_mm3(right) == pytest.approx(
+            ch.volume_mm3(part), rel=1e-3
+        )
+
+
+def test_screen_lid_sections_rejoin(data, pieces):
+    config, _, _, frame = data
+    wall = config.wall.thickness
+    from geometry.split import split_part
+
+    for name in ("screen_lid_bezel", "screen_lid_back"):
+        part, depth = pieces[name]
+        left, right = split_part(part, config.slide.split[name], depth, wall)
+        assert ch.volume_mm3(left) + ch.volume_mm3(right) == pytest.approx(
+            ch.volume_mm3(part), rel=1e-3
+        )
+
+
+def test_sections_are_cut_on_each_parts_own_staggered_seam(data, pieces):
+    """ADR-0015: the Tray and Deck (and Bezel and Back) never share a Seam."""
+    from geometry.split import split_part
+
     config, _, _, _ = data
-    chassis, _ = solids
-    left, right = ch.split_sections(chassis, config.slide.split.get("chassis"))
-    assert ch.volume_mm3(left) + ch.volume_mm3(right) == pytest.approx(
-        ch.volume_mm3(chassis), rel=1e-3
-    )
+    wall = config.wall.thickness
+    cut = {}
+    for name, (part, depth) in pieces.items():
+        spec = config.slide.split[name]
+        left, right = split_part(part, spec, depth, wall)
+        lo, hi = spec.x_range
+        cut[name] = (lo, hi)
+        # The left Section reaches the Seam's furthest +X run, the right one its
+        # furthest -X run: the cut really is the configured path.
+        assert ch.bounding_box(left).xmax == pytest.approx(hi, abs=0.05)
+        assert ch.bounding_box(right).xmin == pytest.approx(lo, abs=0.05)
+
+    # The two Seams of each screwed pair run on opposite sides of the centre.
+    assert cut["chassis_tray"][0] > cut["chassis_deck"][1]
+    assert cut["screen_lid_back"][0] > cut["screen_lid_bezel"][1]
 
 
-def test_screen_lid_sections_rejoin(data, solids):
+def test_sections_fit_the_build_volume(data, pieces):
+    from geometry.split import split_part
+
     config, _, _, _ = data
-    _, lid = solids
-    left, right = ch.split_sections(lid, config.slide.split.get("screen_lid"))
-    assert ch.volume_mm3(left) + ch.volume_mm3(right) == pytest.approx(
-        ch.volume_mm3(lid), rel=1e-3
-    )
-
-
-def test_sections_have_a_stepped_seam(data, solids):
-    config, _, _, _ = data
-    chassis, lid = solids
-    step = config.slide.split["chassis"].step
-    for part, name in ((chassis, "chassis"), (lid, "screen_lid")):
-        left, right = ch.split_sections(part, config.slide.split.get(name))
-        left_box = ch.bounding_box(left)
-        right_box = ch.bounding_box(right)
-        # A straight Seam stops at x=0; a stepped one crosses it by step/2.
-        assert left_box.xmax > step / 2.0 - 1e-6
-        assert right_box.xmin < -step / 2.0 + 1e-6
-
-
-def test_sections_fit_the_build_volume(data, solids):
-    config, _, _, _ = data
-    chassis, lid = solids
-    for part, name in ((chassis, "chassis"), (lid, "screen_lid")):
-        left, right = ch.split_sections(part, config.slide.split.get(name))
-        for section in (left, right):
+    wall = config.wall.thickness
+    for name, (part, depth) in pieces.items():
+        spec = config.slide.split[name]
+        for section in split_part(part, spec, depth, wall):
             x, y, z = ch.bounding_box_mm(section)
             assert x <= BUILD_VOLUME[0] + 1e-6
             assert y <= BUILD_VOLUME[1] + 1e-6
             assert z <= BUILD_VOLUME[2] + 1e-6
+
+
+def test_every_piece_carries_its_half_of_every_seam_pin(data, pieces):
+    """ADR-0006: the fins straddle the Seam, so each Section prints a half."""
+    from geometry.seam_joint import pocket_rect, pocket_z
+    from geometry.split import split_part
+
+    config, _, _, frame = data
+    wall = config.wall.thickness
+    pin = config.seam_pin
+
+    def material(shape, x, y, z, size=0.2):
+        probe = ch.translate(ch.box_centered(size, size, size), x, y, z)
+        return ch.volume_mm3(ch.intersect(shape, probe)) > 1e-6
+
+    # Wall thickness is constant (``fin``); chamfer is a base flare only.
+    fin_mid = pin.gap / 2.0 + pin.fin / 2.0
+    for name, (part, depth) in pieces.items():
+        seam = config.slide.split[name].seams(depth, wall)[0]
+        substrate, upward = frame.seam_pin_planes[name]
+        z0, z1 = pocket_z(pin, substrate, upward)
+        z = substrate + (pin.height / 2.0 if upward else -pin.height / 2.0)
+        left, right = split_part(part, config.slide.split[name], depth, wall)
+        for y in config.slide.seam_pin_sites[name]:
+            x = seam.x_at(y)
+            x0, x1, y0, y1 = pocket_rect(pin, x, y)
+            fin_z = z
+            # Slot center empty; fin walls at ±fin_mid.
+            assert not material(part, x, y, fin_z)
+            assert material(part, x, y - fin_mid, fin_z)
+            assert material(part, x, y + fin_mid, fin_z)
+            # Each Section keeps its half of the fin.
+            half = pin.engagement - 0.5
+            assert material(left, x - half, y - fin_mid, fin_z)
+            assert material(right, x + half, y + fin_mid, fin_z)
+            assert not material(left, x + half, y - fin_mid, fin_z)
+            assert not material(right, x - half, y + fin_mid, fin_z)
 
 
 def test_rod_covers_bearing_at_both_poses(data):
@@ -708,12 +782,17 @@ def _well_z_bands(data, deck, mounts):
     _, _, _, frame = data
     cut = mounts.cutout_rect
     z = (mounts.plate_top + frame.chassis_top) / 2.0
+    # Probe the front/rear bands half-way between the centreline and the side:
+    # the centreline band boss (ADR-0015) merges into the ring at x=0.
+    probe_x = cut.x0 / 2.0
     return {
         "front": _material_bounds(
-            deck, -0.5, cut.y0 - 3.0, 0.5, cut.y0 + 3.0, z - 0.1, z + 0.1
+            deck, probe_x - 0.5, cut.y0 - 3.0, probe_x + 0.5, cut.y0 + 3.0,
+            z - 0.1, z + 0.1,
         ),
         "rear": _material_bounds(
-            deck, -0.5, cut.y1 - 3.0, 0.5, cut.y1 + 3.0, z - 0.1, z + 0.1
+            deck, probe_x - 0.5, cut.y1 - 3.0, probe_x + 0.5, cut.y1 + 3.0,
+            z - 0.1, z + 0.1,
         ),
         "left": _material_bounds(
             deck, cut.x0 - 3.0, mounts.frame.cy - 0.5, cut.x0 + 3.0,
@@ -759,8 +838,9 @@ def test_well_ring_reaches_from_the_deck_top_to_the_plate_top(data, deck, mounts
     """The ring's lower faces are the plate's bearing: no ledge, no floor."""
     _, _, _, frame = data
     cut = mounts.cutout_rect
+    probe_x = cut.x0 / 2.0
     band = _material_bounds(
-        deck, -0.5, cut.y0 - 3.0, 0.5, cut.y0 + 3.0,
+        deck, probe_x - 0.5, cut.y0 - 3.0, probe_x + 0.5, cut.y0 + 3.0,
         frame.parting_z - 2.0, frame.chassis_top + 2.0,
     )
     assert band is not None
@@ -828,6 +908,41 @@ def test_eight_insert_holes_at_the_well_stations(data, deck, mounts):
         )
 
 
+def test_every_boss_column_runs_up_to_the_deck_ceiling(data, deck, mounts):
+    """Printed face down, every boss is a column standing on the top slab.
+
+    The Deck prints with its closed face on the bed, so a boss that stopped at
+    its insert would be an unsupported horizontal overhang. Both the plate's
+    M2 bosses and the chassis band's M3 bosses must be solid from their base
+    all the way up to the ceiling under the closed face -- probed off the
+    insert bore, which is a blind hole.
+    """
+    _, _, _, frame = data
+    ceiling = frame.chassis_top - frame.wall
+    joint = frame.chassis_joint
+    columns = [
+        (m.name, m.x, m.y, m.boss_z0, m.boss_diameter / 2.0)
+        for m in mounts.mounts
+    ] + [
+        (
+            f"band:{s.kind}@{s.x:.2f},{s.y:.2f}",
+            s.x,
+            s.y,
+            frame.parting_z,
+            s.boss / 2.0,
+        )
+        for s in joint.stations
+    ]
+    for name, x, y, base, radius in columns:
+        # Between the insert bore (Ø3.0 -> r 1.5) and the boss surface.
+        probe = radius * 0.75
+        for z in (base + 0.4, (base + ceiling) / 2.0, ceiling - 0.3):
+            assert _material_at(deck, x + probe, y, z) > 0, (
+                f"{name}: hollow {probe:.2f} mm off the axis at z {z:.2f} "
+                f"(base {base:.2f}, ceiling {ceiling:.2f})"
+            )
+
+
 def test_no_insert_boss_or_ledge_enters_the_well_cutout(data, deck, mounts):
     """The Cutout column is clear from below the plate to the Deck top."""
     _, _, _, frame = data
@@ -844,15 +959,19 @@ def test_ring_is_interrupted_where_the_plate_is_notched(data, deck, mounts):
     """A band column may not share volume with the ring (the plate's notch).
 
     The notch removes the ring's outer reach only: the inner sliver of the
-    ring stays, so the Well remains sealed end to end.
+    ring stays, so the Well remains sealed end to end. Above the plate the
+    notch itself is filled by the band column, which now runs the Deck's full
+    height, so the probe keeps clear of that column's disc.
     """
     assert mounts.notches, "the plate is not notched under the band columns"
     for notch in mounts.notches:
         plan = mounts.frame.to_plan_rect(notch.rect)
-        # Above the column's boss (21.65) and below the Deck's top slab (30.3)
-        # only the ring lives here; the notch must leave it empty.
-        probe = ch.box_centered(plan.width, plan.depth, 6.0)
-        probe = ch.translate(probe, plan.cx, plan.cy, 25.5)
+        # Above the plate's top (17.8) and below the Deck's top slab (30.3) the
+        # only Deck material here may be the band column: the notch cut the
+        # ring's outer reach away. Probe the notch's inboard corner -- outboard
+        # of the column's disc and of the ring's remaining sliver.
+        probe = ch.box_centered(0.2, 0.2, 6.0)
+        probe = ch.translate(probe, plan.x0 + 0.25, plan.y1 - 0.25, 25.5)
         assert ch.volume_mm3(ch.intersect(deck, probe)) == pytest.approx(
             0, abs=1e-6
         ), f"the ring fills the plate notch at {notch.source}"
@@ -915,8 +1034,14 @@ def test_a_scallop_that_would_reach_the_well_is_skipped(data):
 def test_deck_sections_rejoin_and_print_closed_face_down(data, deck):
     """The ring is part of the Deck: it splits at the Seam and prints flat."""
     config, _, _, frame = data
-    split = config.slide.split.get("chassis")
-    left, right = ch.split_sections(deck, split)
+    from geometry.split import split_part
+
+    left, right = split_part(
+        deck,
+        config.slide.split["chassis_deck"],
+        frame.depth,
+        config.wall.thickness,
+    )
     assert ch.volume_mm3(left) + ch.volume_mm3(right) == pytest.approx(
         ch.volume_mm3(deck), rel=1e-3
     )

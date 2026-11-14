@@ -468,8 +468,9 @@ class WellMount:
     by the Seam in the plate's own frame (not by the sign of its X: the
     at-Seam pair straddles a Seam well off the centreline, and the 180 deg
     placement turns that frame over). ``boss_z0``/``boss_z1`` is the boss's
-    vertical span: it stands on the plate's top face and merges into the ring's
-    outer face. ``reasons`` lists every check that failed; ``adjustments``
+    vertical span: it stands on the plate's top face and runs up to the Deck's
+    inner ceiling, so it prints as a column on the top slab instead of an
+    overhanging stub. ``reasons`` lists every check that failed; ``adjustments``
     records a station that had to move (and why) -- a station is never moved or
     dropped silently.
     """
@@ -600,6 +601,7 @@ class WellMounts:
     screw_grip: float
     screw_engagement: float
     boss_diameter: float
+    #: The boss column's full height, plate top -> the Deck's inner ceiling.
     boss_height: float
     insert_hole_diameter: float
     insert_depth: float
@@ -743,8 +745,13 @@ class WellMounts:
 # -- chassis features the plate must clear -------------------------------
 
 
-def _band_station_obstacles(joint) -> tuple[Obstacle, ...]:
+def _band_station_obstacles(joint, deck_ceiling: float) -> tuple[Obstacle, ...]:
     """The Tray columns / Deck bosses of the chassis band joint (ADR-0012).
+
+    The Deck's insert boss runs from the Parting plane up to the Deck's inner
+    ceiling, so the obstacle covers the whole station at full height -- the
+    plate and the Well bosses must clear it top to bottom, not only in the
+    band.
 
     ``insert_bore`` marks them as chassis insert bosses: the well boss is Deck
     material and may fuse with one, so only the two heat-set bores have to keep
@@ -755,7 +762,7 @@ def _band_station_obstacles(joint) -> tuple[Obstacle, ...]:
             name=f"chassis-joint:{station.kind}@{station.x:.2f},{station.y:.2f}",
             rect=PlanRect.from_circle(station.x, station.y, station.boss),
             z0=joint.band_z0,
-            z1=joint.parting_z + joint.boss_height,
+            z1=deck_ceiling,
             circle=(station.x, station.y, station.boss / 2.0),
             insert_bore=joint.insert_hole,
         )
@@ -807,20 +814,17 @@ def _plate_corner_radius(config) -> float:
 
 
 def _seam_far(config) -> float:
-    """The stepped Section Seam's lateral jog, as build clearance (mm).
+    """Slack an at-Seam station keeps from the chassis Deck's Section Seam (mm).
 
-    Every Sectioned part is printed against a stepped Seam (ADR-0003) whose
-    jog is configured once; the at-Seam stations keep that jog as slack on top
-    of their ear and the printable minimum, so a station never lands in a jog.
-    The plate's *split* is its own row-jogging path, not this Seam -- that path
-    reaches the stations through :class:`SeamPath` and their own clearance
-    check; this is the Section-level allowance shared by every printed part.
+    The Deck's Seam is straight (ADR 0015), so this is no longer the jog of a
+    stepped cut read off the split config: it is the plate's own allowance,
+    ``keyboard.mounting.seam_slack``, on top of the ear and the printable
+    minimum. Keeping it a named knob matters because the at-Seam stations are
+    derived from it and the value is pinned by the shipped plate and by
+    ADR-0014.
     """
-    split = config.slide.split
-    part = split.get("chassis")
-    if part is None:
-        return 0.0
-    return max(abs(v) for v in part.seams()[0].x_range)
+    mounting = getattr(config.keyboard, "mounting", None) or {}
+    return float(mounting.get("seam_slack", 4.0))
 
 
 def _blocked_interval(
@@ -1177,7 +1181,14 @@ def well_mounts(
     # One source for the boss: the bore plus the print margin on both sides.
     hole = insert.printed_hole_diameter
     boss_diameter = hole + 2.0 * boss_margin
-    boss_height = insert.depth + boss_margin
+    insert_height = insert.depth + boss_margin
+    # The Deck is a bowl whose top slab is one `wall` thick under the closed
+    # face, and it prints face down: the slab is on the bed and everything
+    # grows up from it. A boss column must therefore run from the plate's top
+    # face all the way to that slab's underside -- one that stopped at the
+    # insert (``insert_height``) would be an unsupported overhang.
+    ceiling = budget.chassis_top - config.wall_thickness
+    boss_height = ceiling - plate_top
     # The station sits as close to the ring as the bore allows, so the boss
     # merges into the ring's outer face instead of floating in the lip.
     station_out = bore_margin + hole / 2.0
@@ -1220,7 +1231,9 @@ def well_mounts(
     seam_clearance = seam_far + ear_half + minimum
 
     # -- everything the plate must clear --------------------------------
-    chassis = _band_station_obstacles(joint) + bearing_seat_obstacles(config, budget)
+    chassis = _band_station_obstacles(joint, ceiling) + bearing_seat_obstacles(
+        config, budget
+    )
     chassis += tuple(obstacles)
     sheet_obstacles = [ob for ob in chassis if ob.overlaps_z(plate_bottom, plate_top)]
     boss_obstacles = [
@@ -1471,6 +1484,15 @@ def well_mounts(
     failures: list[str] = []
     for mount in mounts:
         failures.extend(f"{mount.name}: {reason}" for reason in mount.reasons)
+    # The boss column always runs on to the Deck's inner ceiling; that has to
+    # leave at least the insert plus its margin, or the bore would break
+    # through the closed face.
+    if boss_height < insert_height - _EPS:
+        failures.append(
+            f"boss: the Deck leaves {boss_height:.2f} mm above the plate's top "
+            f"face (ceiling {ceiling:.2f}); the {insert.depth:.2f} mm insert "
+            f"plus its {boss_margin:.2f} mm margin needs {insert_height:.2f} mm"
+        )
     # The Well sized the lip for its own bore; if this module sizes a different
     # bore for the same station, one of the two is wrong -- say so loudly.
     if abs(lip_required - (bore_margin + hole + boss_margin)) > 1e-9:

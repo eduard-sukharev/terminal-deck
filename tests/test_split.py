@@ -13,9 +13,9 @@ from utilities.config_loader import Seam, Split  # noqa: E402
 
 WIDTH, DEPTH, HEIGHT = 236.0, 118.0, 20.0
 
-THREE = Split(sections=3, x=40.0, style="stepped", step=4.0, steps=6).seams()
-TWO_STRAIGHT = Split(sections=2, x=0.0, style="straight").seams()
-TWO_STEPPED = Split(sections=2, x=-15.0, style="stepped", step=3.0, steps=5).seams()
+THREE = Split(sections=3, x=40.0, style="stepped", step=4.0, steps=6).seams(DEPTH)
+TWO_STRAIGHT = Split(sections=2, x=0.0, style="straight").seams(DEPTH)
+TWO_STEPPED = Split(sections=2, x=-15.0, style="stepped", step=3.0, steps=5).seams(DEPTH)
 
 
 def _slab():
@@ -76,4 +76,4 @@ def test_disconnected_section_is_reported():
 
 def test_step_must_be_positive_count_when_stepping():
     with pytest.raises(ValueError):
-        Seam(x=0.0, step=4.0, steps=0)
+        Seam.stepped(0.0, 4.0, 0, DEPTH)

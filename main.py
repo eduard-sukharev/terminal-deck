@@ -361,29 +361,56 @@ class BuildPipeline:
 
         plate = components["keyboard"].build_plate()
         split = config.slide.split
+        from geometry.split import split_part
+
         if "keyboard_plate" in split:
             print(
                 "[pipeline] warning: slide.split.keyboard_plate is retired and "
                 "ignored; the plate splits between keys along the Seam its "
                 "layout derives (ADR-0014, #9)"
             )
-        chassis_left, chassis_right = ch.split_sections(
-            chassis_shell, split.get("chassis")
+        for retired in ("chassis", "screen_lid"):
+            if retired in split:
+                print(
+                    f"[pipeline] warning: slide.split.{retired} is retired "
+                    "(ADR-0015); split the Tray and the Deck (or the Bezel and "
+                    "the Back plate) separately"
+                )
+
+        wall = config.wall.thickness
+
+        def sections_of(name: str, shape, depth: float):
+            spec = split.get(name)
+            if spec is None:
+                raise SystemExit(
+                    f"[pipeline] aborted: config.slide.split has no {name!r} entry"
+                )
+            pieces = split_part(shape, spec, depth, wall)
+            if len(pieces) != 2:
+                raise SystemExit(
+                    f"[pipeline] aborted: {name} split into {len(pieces)} "
+                    "Sections; this build exports two per part"
+                )
+            return pieces
+
+        # ADR-0015: each shell piece has its own Seam, so the Tray/Deck and
+        # Bezel/Back pairs are staggered instead of sharing one cut.
+        tray_left, tray_right = sections_of("chassis_tray", chassis_tray, frame.depth)
+        deck_left, deck_right = sections_of("chassis_deck", chassis_deck, frame.depth)
+        bezel_left, bezel_right = sections_of(
+            "screen_lid_bezel", lid_bezel, frame.lid_height
         )
-        tray_left, tray_right = ch.split_sections(
-            chassis_tray, split.get("chassis")
+        back_left, back_right = sections_of(
+            "screen_lid_back", lid_back, frame.lid_height
         )
-        deck_left, deck_right = ch.split_sections(
-            chassis_deck, split.get("chassis")
-        )
-        lid_left, lid_right = ch.split_sections(lid_shell, split.get("screen_lid"))
-        bezel_left, bezel_right = ch.split_sections(
-            lid_bezel, split.get("screen_lid_bezel")
-        )
-        back_left, back_right = ch.split_sections(
-            lid_back, split.get("screen_lid_back")
-        )
+        # The whole-half reference exports are compounds of the real pieces, so
+        # they match what actually prints.
+        chassis_left = ch.make_compound([tray_left, deck_left])
+        chassis_right = ch.make_compound([tray_right, deck_right])
+        lid_left = ch.make_compound([bezel_left, back_left])
+        lid_right = ch.make_compound([bezel_right, back_right])
         plate_left, plate_right = components["keyboard"].plate_sections()
+
         seam = components["keyboard"].plate_model().seam
         print(
             "[pipeline] keyboard plate Seam, front to back: "
@@ -487,8 +514,6 @@ class BuildPipeline:
             "chassis_tray_right",
             "chassis_deck_left",
             "chassis_deck_right",
-            "screen_lid_left",
-            "screen_lid_right",
             "screen_lid_bezel_left",
             "screen_lid_bezel_right",
             "screen_lid_back_left",

@@ -193,12 +193,25 @@ def test_boss_diameter_is_the_insert_hole_plus_two_margins(data, mounts):
     assert mounts.boss_diameter == pytest.approx(6.0)
 
 
-def test_boss_stands_on_the_plate_top_and_holds_the_insert(mounts):
+def test_boss_runs_from_the_plate_top_up_to_the_deck_ceiling(data, mounts):
+    """The boss is a full column: face down it stands on the Deck's top slab."""
+    config, _, budget, _ = data
+    ceiling = budget.chassis_top - config.wall_thickness
     for mount in mounts.mounts:
         assert mount.boss_z0 == pytest.approx(mounts.plate_top)
+        assert mount.boss_z1 == pytest.approx(ceiling)
         assert mount.boss_z1 - mount.boss_z0 == pytest.approx(mounts.boss_height)
         # The insert bottomed in the boss still has printable material above it.
         assert mount.boss_z1 - mount.boss_z0 >= mounts.insert_depth
+
+
+def test_a_ceiling_that_cannot_hold_the_insert_fails(data, seam, frame):
+    """A column is only printable to the ceiling if the ceiling is high enough."""
+    config, _, budget, _ = data
+    shallow = dataclasses.replace(budget, chassis_top=budget.well.plate_top + 2.0)
+    result = well_mounts(config, shallow, seam=seam, frame=frame)
+    assert not result.ok
+    assert any("insert" in reason for reason in result.failures)
 
 
 def test_the_screw_is_a_derived_stock_length(data, mounts):
@@ -666,7 +679,7 @@ def test_plate_notches_are_cut_where_the_band_bosses_reach_the_border(data, moun
     config, _, budget, _ = data
     plate = _plate_rect(budget)
     front_stations = [s for s in budget.chassis_joint.stations if s.y < 0.0]
-    assert len(front_stations) == 4  # long-wall corners + long-wall stations
+    assert len(front_stations) == 5  # two corners, two sides, one centreline
     assert len(mounts.notches) == len(front_stations)
     assert len({n.source for n in mounts.notches}) == len(front_stations)
     for notch in mounts.notches:

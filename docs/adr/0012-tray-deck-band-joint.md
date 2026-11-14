@@ -1,6 +1,7 @@
 ---
 status: accepted
 amends: ADR-0003
+amended_by: ADR-0015
 ---
 
 # The chassis splits into a Tray and a Deck, joined at a prismatic band
@@ -26,24 +27,32 @@ The chassis now splits at the Parting plane like the lid's band joint:
   full closed-face width** (`238.917` after ADR-0013; it was `292.392`), not a
   contracted width at the plane; the base is the drafted width at `band_z0`
   (`235.688`).
-- The joint is a **plain butt**: ten M3 screws driven from below, through a
-  countersunk hole in the Tray's floor and a column standing on it, into a
+- The joint is a **plain butt**: **twelve** M3 screws driven from below, through
+  a countersunk hole in the Tray's floor and a column standing on it, into a
   heat-set insert in a boss in the Deck's band. The perimeter band carries the
   shear; the screws clamp it.
 - Both halves carry a shallow **scallop** at every station, straddling the
   seam. It is a relief line round the joint, not a structural feature.
 
-## The ten stations
+## The twelve stations
 
-Four **corners**, two per **long side** (front and rear), one per **short
-side** (left and right). All coordinates below are on the `+x`/`+y` side; the
-case mirrors them.
+Four **corners**, **six** on the long walls (three per front/rear wall, one of
+them on the centreline), one per **short side** (left and right). All
+coordinates below are on the `+x`/`+y` side; the case mirrors them.
 
 | station | centre (mm) | boss at the plane | Tray column at the floor |
 |---|---|---|---|
-| corner | ±112.96, ±65.125 | Ø7.80 | Ø6.42 frustum |
-| long side | ±39.82, ±65.125 | Ø7.80 | Ø7.80 |
-| short side | ±112.96, 43.875 | Ø10.0 | Ø8.57 frustum |
+| corner | ±114.08, ±65.50 | Ø7.80 | Ø6.42 frustum |
+| long side | ±40.19, ±65.50 | Ø7.80 | Ø7.80 |
+| long side (centre) | 0.00, ±65.50 | Ø7.80 | Ø7.80 |
+| short side | ±114.08, 44.25 | Ø10.0 | Ø8.57 frustum |
+
+**Revised by ADR-0015.** The two **centreline** long-wall stations are the
+Seam interlock: the Tray's Section Seam runs at `+10` (middle) and the Deck's at
+`−14`, so this screw's insert boss belongs to one Deck Section and its column to
+the other Tray Section. The station sees the same `side_inset` and the same
+Ø7.80 long-wall boss; the total is **12**, the M3 × 18, the scallops and
+`parting_z` unchanged. This is what "one per long side" grew into.
 
 **Revised by ADR-0013.** The case is now only 4.39 mm wider than the keyboard,
 so no station fits beside the keys: the corner and long-wall stations sit
@@ -79,10 +88,15 @@ insert and cannot bottom out. The Tray gets a Ø3.2 through-hole and a Ø6.2 ×
 drilled up from the plane.
 
 The Deck's half of the band is only 3 mm tall, shorter than the 4 mm insert,
-so each station gets an **insert boss** standing out of the band's cavity:
-`boss_height = insert_depth + boss_margin = 5.5` mm. The boss is a cylinder at
-the station diameter, merging into the band wall; the insert bottom is at the
-plane and 1.5 mm of boss remains above it.
+so each station gets an **insert boss** standing out of the band's cavity. The
+boss is a cylinder at the station diameter, merging into the band wall, and it
+runs from the Parting plane all the way up to the Deck's inner ceiling
+(`chassis_top − wall` = 30.30), **14.15 mm** tall. The insert's bottom is at
+the plane, so `insert_depth + boss_margin` = 5.5 mm is all the cylinder a
+short boss would need -- but the Deck prints **face down** on its closed face,
+so a boss that stopped there would leave 8.65 mm of unsupported horizontal
+overhang under the ceiling. A full-height column merges into the band wall the
+whole way down and prints as a rib.
 
 The material left between features is what sizes the joint:
 
@@ -105,10 +119,11 @@ every station (min 1.5 mm of material) and does not touch the pocket rim.
 ## Consequences
 
 - The chassis is now `chassis_tray` + `chassis_deck` (each with `_left` /
-  `_right` Sections at the stepped Seam), and `chassis` is the assembled
-  compound. Both halves print flat: after ADR-0013 Tray and Deck are each
-  **121.5 × 139.25 × 16.15 mm** as a Section (45 486 / 27 690 mm³ on the left),
-  well inside 220 × 220 × 256 mm.
+  `_right` Sections), and `chassis` is the assembled compound. Both halves print
+  flat: after ADR-0015 the Tray and Deck Sections are each up to
+  **139.25 × 16.15 mm** in plan (`241.17/2 + 18` wide at most), well inside
+  220 × 220 × 256 mm, and the two pieces of each half are cut on **different**
+  Seams (Tray `+10/+18` trapezoid, Deck `−14` straight).
 - The Deck is removable, so the keyboard Well, the two bearing-clamp seats,
   the SBC pocket and the underside of the band are all reachable. The bearing
   clamps or the SBC can come out without disturbing the Tray screws.

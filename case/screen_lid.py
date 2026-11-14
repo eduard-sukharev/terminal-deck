@@ -110,7 +110,10 @@ class ScreenLid:
                 f.panel_outer_z + csk.depth / 2.0,
             )
             holes.extend((through, cone))
-        return ch.clean(ch.cut(body, *holes))
+        body = ch.cut(body, *holes)
+        # ADR-0006: the Seam's pins stand on the plate's inner face.
+        body = self._add_seam_pins(body, "screen_lid_back")
+        return ch.clean(body)
 
     def build_bezel(self):
         """The display tray: prismatic band, tapered walls, window, posts."""
@@ -228,7 +231,25 @@ class ScreenLid:
             top - f.lid_front + (recess - 1.0) / 2.0,
         )
         body = ch.cut(body, window, pocket)
+        # ADR-0006: the Seam's pins hang from the front panel's inner face.
+        body = self._add_seam_pins(body, "screen_lid_bezel")
         return ch.clean(body)
+
+    def _add_seam_pins(self, body, name: str):
+        """Grow the Seam's glued-filament pins into a half, before the split."""
+        from geometry.seam_joint import add_pins
+
+        f = self.frame
+        substrate, upward = f.seam_pin_planes[name]
+        seam = self.config.slide.split[name].seams(f.lid_height, f.wall)[0]
+        return add_pins(
+            body,
+            seam,
+            self.config.seam_pin,
+            self.config.slide.seam_pin_sites.get(name, ()),
+            substrate,
+            upward,
+        )
 
     # -- the FPC guard ---------------------------------------------------
     def build_fpc_guard(self):
@@ -285,21 +306,27 @@ class ScreenLid:
         return ch.clean(ch.cut(body, *slots))
 
     # -- printing --------------------------------------------------------
-    def sections(self) -> tuple[Any, Any]:
-        """Split the assembled lid into its left and right Sections."""
-        from utilities import cad_helpers as ch
+    def bezel_sections(self):
+        """Split the Bezel on its configured Seam (ADR-0015)."""
+        from geometry.split import split_part
 
-        return ch.split_x(self.build())
+        return split_part(
+            self.build_bezel(),
+            self.config.slide.split["screen_lid_bezel"],
+            self.frame.lid_height,
+            self.frame.wall,
+        )
 
-    def bezel_sections(self) -> tuple[Any, Any]:
-        from utilities import cad_helpers as ch
+    def back_sections(self):
+        """Split the Back plate on its configured Seam (ADR-0015)."""
+        from geometry.split import split_part
 
-        return ch.split_x(self.build_bezel())
-
-    def back_sections(self) -> tuple[Any, Any]:
-        from utilities import cad_helpers as ch
-
-        return ch.split_x(self.build_back())
+        return split_part(
+            self.build_back(),
+            self.config.slide.split["screen_lid_back"],
+            self.frame.lid_height,
+            self.frame.wall,
+        )
 
 
 __all__ = ["ScreenLid"]

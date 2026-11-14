@@ -38,10 +38,11 @@ hardware are serviceable from the keyboard side.
 
 **Band joint** — The butt joint where the Bezel's band meets the Back plate at
 the Back's inner face. The band is prismatic (the lid only tapers above it), so
-the joint sits in straight walls. Eight stations — two per long side, one at
-each corner — take an M3 countersunk screw from the Back's outer face into a
-heat-set insert in the band; the four corners use printed posts outboard of the
-Rod clamps.
+the joint sits in straight walls. Ten stations — two per long side, one on each
+long side's centreline, one at each corner — take an M3 countersunk screw from
+the Back's outer face into a heat-set insert in the band; the four corners use
+printed posts outboard of the Rod clamps. The centreline pair is the Seam
+interlock (ADR-0015).
 _Avoid:_ "flange", "lap" (it is a plain butt joint).
 
 **Face** — The plane carrying the keyboard and the screen. The device is
@@ -160,7 +161,8 @@ _Avoid:_ "tab".
 
 **Plate notch** — A 5.30 × 1.45 mm rectangle (1.10 mm bite) the chassis forces
 the plate's front border to yield where a Tray/Deck band column reaches into it.
-A plain polygon subtraction, as the Plate ear is an addition.
+Five of them (ADR-0015 added the centreline column). A plain polygon
+subtraction, as the Plate ear is an addition.
 _Avoid:_ "Cutout" (that is the Well's opening).
 
 **Plate Seam** — The keyboard plate's split between key columns: a row-jogging
@@ -172,20 +174,20 @@ _Avoid:_ "centre cut", "straight split".
 
 **Tray** — The Chassis's floor and walls (bosses, ribs, vents, cutouts) below
 the Parting plane: drafted from its base up to `band_z0`, then a prismatic
-half-band to the plane. Carries the ten frustum columns the Deck's screws pass
-through into the Deck's insert bosses.
+half-band to the plane. Carries the twelve frustum columns the Deck's screws
+pass through into the Deck's insert bosses.
 _Avoid:_ "base" (retired clamshell term).
 
 **Deck** — The Chassis's purely prismatic top half: the keyboard Well, the
 bearing-clamp seats and the Rear band sit on it; its skirt meets the Tray at
-the Parting plane and holds the ten heat-set inserts in the band's insert
+the Parting plane and holds the twelve heat-set inserts in the band's insert
 bosses.
 
 **Parting plane** — The horizontal plane where the Deck meets the Tray,
 part-way up the Chassis walls, so the Deck has a flat face and a wall skirt.
 Across it a prismatic 6 mm band carries the joint, split 3 mm on each half:
 the side draft continues only below the Tray's half-band (the Deck is purely
-prismatic). Ten M3 countersunk screws come up from below.
+prismatic). Twelve M3 countersunk screws come up from below.
 _Avoid:_ "seam" for the Tray/Deck joint — a Seam joins Sections of one part.
 
 **Scallop** — A shallow (10 × 0.8 mm) relief cut into the outside wall at
@@ -197,18 +199,26 @@ thickness), the number the design minimises.
 
 **Section** — One of the printable pieces a part is split into to fit the
 build volume. Wide parts split into two along X; the keyboard plate splits
-along its Plate Seam. Sections of one part are joined by Seam lugs; thin
-plates are held by screws into the part they bear on (the keyboard plate up
-into the Deck's Well walls).
+along its Plate Seam. Each shell piece is cut on **its own** Seam (ADR-0015),
+not a shared `x = 0` line. Sections of one part are registered by Seam pins;
+thin plates are held by screws into the part they bear on (the keyboard plate
+up into the Deck's Well walls).
 _Avoid:_ "half" (a part has Sections, not halves).
 
-**Seam** — Where two Sections of one part meet. Seams are staggered between
-parts screwed to each other and never cross a structural feature (rib, boss,
+**Seam** — Where two Sections of one part meet: a **plan polyline**, not a
+single X — straight (Deck and Bezel at `x = −14`), square-stepped, or a 45°
+trapezoid (Tray and Back plate at `+10` middle, `+18` at the end walls). Seams
+are staggered between parts screwed to each other, so a Tray/Deck (or
+Bezel/Back) pair laps instead of sharing a cut line, and a band station in the
+lap cross-ties it. A Seam never crosses a structural feature (rib, boss,
 standoff, clamp, guide channel, rail pocket, vent).
 
-**Seam lug** — A pinned joint straddling a Seam: a block shared by the two
-Sections with a glued filament pin through both. Joins Sections of one part for
-good, as opposed to screws, which come apart for service.
+**Seam pin** — The glued filament that registers two Sections of one part:
+two parallel printed **fins** straddle the Seam and leave a slot between them,
+and a 1.75 mm filament offcut is glued into the slot during assembly. An
+alignment feature plus a little early strength, not a structural member; two
+pairs per Seam.
+_Avoid:_ "Seam lug" (the retired drilled block with a bore).
 
 **Merged boss** — A boss, column or lug standing close enough to a wall that it
 is fused into it instead of standing free; the wall then serves as part of its

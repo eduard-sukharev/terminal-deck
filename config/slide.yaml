@@ -24,7 +24,9 @@ slide:
   driver_gap: 0.4            # PCB backside stand-off from the panel
   component_gap: 1.5         # minimum air gap between a buried part and the keyboard,
                              # and between the display and the side guide hardware
-  rear_wall_margin: 6.0      # SBC -> chassis rear wall inner face
+  rear_wall_margin: 8.0      # SBC -> chassis rear wall inner face. 8.0 (not 6.0)
+                             # keeps the SBC clear of the ADR-0015 centreline
+                             # band column at (0, +65.5).
                              # rod_raise is derived: rod diameter/2 - lid_back/2, so
                              # the rod's lowest point always sits at the panel's
                              # mid-thickness (see components/slide.py).
@@ -103,14 +105,44 @@ slide:
     pocket_depth: 5.0
     pitch: 10.0
 
-  # Sectioning (ADR 0003): chassis and lid use stepped Seams at x=0. The
-  # keyboard plate takes no Split here: it splits **between keys** along the
-  # row-jogging Seam its layout derives (keyboard.geometry.seam.plate_seam,
-  # ADR-0014 / issue #9), so a straight x=0 cut through a switch cutout cannot
-  # be configured back in. The retired `keyboard_plate` key is ignored.
+  # Sectioning (ADR 0015): every part is still cut into two Sections, but the
+  # Seams are staggered so no two Seams of a screw-joined pair ever coincide.
+  # The Deck (the welled top) and the Bezel (the display carrier) take a
+  # straight Seam just left of centre; the Tray (the bottom bowl) and the Back
+  # plate (the lid's flat panel) take a trapezoid Seam that runs at +10 in the
+  # middle and steps out to +18 at the end walls on 45 degree jogs. One
+  # long-wall band station per wall sits at x=0, between the two Seams, and its
+  # M3 screw cross-ties the lapped pieces. Offsets stay inside 10..20 mm.
+  # The keyboard plate takes no Split here: it splits **between keys** along
+  # the row-jogging Seam its layout derives (keyboard.geometry.seam.plate_seam,
+  # ADR-0014 / issue #9), so a straight cut through a switch cutout cannot be
+  # configured back in. The retired `keyboard_plate` key is ignored.
   split:
-    chassis:        {sections: 2, x: 0.0, style: stepped, step: 4.0, steps: 6}
-    screen_lid:     {sections: 2, x: 0.0, style: stepped, step: 4.0, steps: 6}
+    chassis_tray:   {sections: 2, x: 10.0, style: trapezoid, ends_x: 18.0, jog: 45.0}
+    chassis_deck:   {sections: 2, x: -14.0, style: straight}
+    screen_lid_bezel: {sections: 2, x: -14.0, style: straight}
+    screen_lid_back:  {sections: 2, x: 10.0, style: trapezoid, ends_x: 18.0, jog: 45.0}
+
+  # Seam pins (ADR 0006, `seam_pin` in default.yaml): two pairs of fins per
+  # Seam, each pair with a filament pin glued between them. Values are the
+  # pocket centres in the part's own Y. Chosen clear of the interior:
+  #   chassis_tray  -49 / +8  -- clear of the RP2040 (x -67..-49, y -34..-10)
+  #                    and of the SBC (y 30..60); both under the plate, 12 mm
+  #                    below it (the pins stand on the floor at z 2..4)
+  #   chassis_deck  +30 / +52 -- both in the rear band, above the SBC (z 8.7);
+  #                    the front strip is only 5.65 mm and the pocket is 4.8.
+  #                    Stay >= 26.5: the rear-seam M2 boss is a full-height
+  #                    column now (17.8 to the ceiling 30.3) and the pocket
+  #                    hangs down from that same ceiling.
+  #   screen_lid_bezel -50 / +50 -- outboard of the display (y +-32.25) and the
+  #                    driver (y <= 27.75), inside the front panel's inner face
+  #   screen_lid_back  -49 / +49 -- outboard of the display and driver, clear of
+  #                    the rods (|x| 94.98) and the clamp slots
+  seam_pin_sites:
+    chassis_tray: [-49.0, 8.0]
+    chassis_deck: [30.0, 52.0]
+    screen_lid_bezel: [-50.0, 50.0]
+    screen_lid_back: [-49.0, 49.0]
 
   # Vent slots: deferred (ADR-0011). The rear wall's joint band has to stay
   # solid and the old row would pierce it; the pattern is redesigned together

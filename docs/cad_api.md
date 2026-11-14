@@ -23,8 +23,9 @@ load configuration -> load components -> place layout -> validate placement
 | `ribs.build(spec, w, d)` | `RibSpec` | rib solids |
 | `vents.build(spec)` | `VentSpec` | vent slots |
 | `cutouts.build(cutouts, shell)` | `Cutout[]`, shell | shell with openings |
-| `split.split(...)` | part, `Split` | printable Sections |
-| `seam_joint.*` | Seam, `SeamPin` | Seam lugs |
+| `split.split_part(shape, split, depth, wall)` | part, configured `Split` | its printable Sections (own Seam) |
+| `seam_joint.add_pins(body, seam, pin, sites, substrate, upward)` | Seam, `SeamPin`, sites | the two fin-pair pin pockets of a half |
+| `seam_joint.pin_planes(config, budget)` | config, budget | each part's pin substrate Z and direction |
 | `edge_treatment.*`, `printability.*` | Sections | chamfers, bed faces |
 
 ### Case (`case/`)
@@ -34,12 +35,11 @@ load configuration -> load components -> place layout -> validate placement
 | `Chassis.build()` | config, frame | assembled chassis: Tray + Deck compound |
 | `Chassis.build_tray()` | config, frame | lower bowl: taper to `band_z0`, prismatic band, floor, screw columns, lower scallops |
 | `Chassis.build_deck()` | config, frame | purely prismatic Deck: keyboard Well, seats, insert bosses, upper scallops |
-| `Chassis.sections()` / `tray_sections()` / `deck_sections()` | — | left/right printable Sections of the whole/half |
+| `Chassis.tray_sections()` / `deck_sections()` | — | each half's printable Sections, on that piece's configured Seam |
 | `ScreenLid.build()` | config, frame | assembled lid: Bezel + Back plate as a compound |
 | `ScreenLid.build_bezel()` | config, frame | display tray, glass opening, band posts, joint inserts |
 | `ScreenLid.build_back()` | config, frame | flat Back plate: clamp slots, Rod-clamp inserts, band screws |
-| `ScreenLid.sections()` | — | left/right printable Sections of the assembled lid |
-| `ScreenLid.bezel_sections()` / `back_sections()` | — | left/right printable Sections of each part |
+| `ScreenLid.bezel_sections()` / `back_sections()` | — | each part's printable Sections, on that piece's configured Seam |
 
 ### Components (`components/`)
 

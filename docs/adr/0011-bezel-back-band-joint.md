@@ -1,7 +1,7 @@
 ---
 status: accepted
 amends: ADR-0010
-amended_by: ADR-0013, ADR-0014
+amended_by: ADR-0013, ADR-0014, ADR-0015
 ---
 
 # The screen lid splits into a Bezel and a Back plate, joined by a prismatic band
@@ -29,11 +29,14 @@ taper. The project adopts that arrangement, with two refinements:
 The face of the lid therefore reads like the reference: prismatic at the back,
 tapered at the front.
 
-## The eight stations
+## The ten stations
 
-Two stations per long side (**front** and **rear**) plus **four corners**, all
-countersunk from the Back's outer face into a heat-set insert in the Bezel's
-band:
+Two stations per long side (**front** and **rear**), **one on each long side's
+centreline** and **four corners**, all countersunk from the Back's outer face
+into a heat-set insert in the Bezel's band. **Revised by ADR-0015:** the
+centreline pair is the Section-Seam interlock — the Bezel's Seam runs at `−14`
+and the Back plate's at `+10..+18`, so a centreline screw clamps a Bezel
+Section to the *other* Back Section:
 
 - **M3 countersunk**, Ø6.2 × 1.5 sink in the 4 mm Back plate, so the grip is
   `lid_back - csk.depth = 2.5` mm; `deck_screw` picks **M3 × 6**, which engages
@@ -59,7 +62,7 @@ now sits **inboard of the cavity wall** and follows the clamp instead of
 widening the case: `post_inner = rod_x + rod_clamp.width/2 + corner_clearance`
 (105.36), `post_outer = width/2 − wall` (117.46), post width **12.10 mm** —
 enough for the Ø4.4 insert plus the 1.5 mm boss margin. `slide.joint.corner_post`
-is retired; the eight stations keep their derivation from the lid plan, and the
+is retired; the stations keep their derivation from the lid plan, and the
 width is 238.92 mm. The station-clearance check now measures the post inboard of
 the clamp. **Amended by ADR-0014:** the keyboard plate is the width driver, so
 the shipped width is 241.17 mm, `rod_x` is ±94.98 and the corner post spans
@@ -76,10 +79,12 @@ the shipped width is 241.17 mm, `rod_x` is ±94.98 and the corner post spans
   front panel's inner face (−1.00), which lets the display frame sink 1 mm into
   the panel while a 1.0 mm lip (≥ `material.minimum_feature`) still retains it.
   Device thickness 51.60 → **50.15 mm**, now **57.75 mm** after ADR-0013.
-- The joint is a **plain butt** at `panel_inner_z`: eight screws locate it and
+- The joint is a **plain butt** at `panel_inner_z`: ten screws locate it and
   the perimeter walls carry the load. There is no lap or tongue to print, and
   no undercut on either part. Both parts are flat-sliceable; `sections()` still
-  splits each at x = 0.
+  splits each at x = 0 (**superseded by ADR-0015**: the Bezel now splits
+  straight at `x = −14` and the Back plate on a 45° trapezoid at `+10`/`+18`, so
+  the pair laps instead of sharing a cut).
 - The Back is removable, so the display, the driver, the rods and the Bearing
   clamps are serviceable from the keyboard side without breaking the glass
   bond. The rods and Rod clamps mount to the Back, so the guide hardware comes

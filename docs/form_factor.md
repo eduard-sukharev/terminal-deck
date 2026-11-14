@@ -145,16 +145,20 @@ to tilt it.**
   at the rear edge and 3.88 mm at the spacebar (front) edge, the minimum.
 * **Plate fastening** — eight **M2 × 4** screws come up **from below** through
   Ø2.20 clearance holes into heat-set inserts (Ø3.00 × 3.0 deep) in Ø6.00 bosses
-  (z 17.80–22.30) merged to the ring's outer face on the **front and rear
+  merged to the ring's outer face on the **front and rear
   lips** — four per Section: front-outer, front-at-Seam, rear-at-Seam,
-  rear-outer. The length is derived from the 1.5 mm plate grip and the insert;
+  rear-outer. The boss runs from the plate's top face (17.80) to the Deck's
+  inner ceiling (30.30), 12.50 mm: the Deck prints face down, so a boss that
+  stopped at the insert would overhang off the ring. The length is derived from
+  the 1.5 mm plate grip and the insert;
   the M2 head (Ø3.80 × 2.00) cannot be recessed, so it spans 14.30–16.30 and
   dips 1.85 mm into the Tray, 1.75 mm clear of its inner walls. The front lip is
   5.65 mm for a 5.00 mm boss requirement. The X
   sides have only ~2 mm of Deck rim, so a station that cannot fit the border
   gets a 5.20 × 5.20 mm, r2.0 filleted **Plate ear** protruding past the
-  outline; four **Plate notches** (5.30 × 1.45, 1.10 mm bite) yield the front
-  border where a Tray/Deck band column reaches into it.
+  outline; **five Plate notches** (5.30 × 1.45, 1.10 mm bite) yield the front
+  border where a Tray/Deck band column reaches into it — the ADR-0015
+  centreline column added the fifth, leaving 0.90 mm of border.
 * **Plate assembly order** — the plate is screwed to the Deck **before** the
   Tray/Deck join and stays captive after it. Servicing the plate or the
   controller under it means splitting the Tray/Deck joint. The Parting plane
@@ -190,10 +194,12 @@ to tilt it.**
   the panel and the driver sit inside the tray. The **Back plate** is a flat
   4 mm plate that closes it. They butt at the Back's inner face in a
   **prismatic 6 mm band**: the lid only tapers above the band, so the joint
-  sits in straight walls. Eight M3 countersunk screws drive from the Back's
-  outer face into heat-set inserts in the band — two per long side and one at
-  each corner, on printed posts outboard of the Rod clamps. The
-  front stays clean: all eight fasteners are on the side hidden against the
+  sits in straight walls. Ten M3 countersunk screws drive from the Back's
+  outer face into heat-set inserts in the band — two per long side, one on each
+  long side's centreline and one at each corner, the corners on printed posts
+  outboard of the Rod clamps. The centreline pair is the Section interlock
+  (ADR-0015). The
+  front stays clean: all ten fasteners are on the side hidden against the
   chassis when closed, and removing the Back exposes the display and the
   guide hardware.
 * **Lid thickness** is the display (6.5) + driver (4.6) stack plus the moving
@@ -220,28 +226,39 @@ to tilt it.**
 
 ## Sections and fastening
 
-* Sections (ADR-0003, ADR-0006) stay: Tray, Deck and screen lid split into two
-  along X with stepped Seams; the keyboard plate splits in two along its
-  **Plate Seam** — the row-jogging path between key columns (four bands, ends
-  at plate-local x = 0 and x = −50.584, the latter on the spacebar side), not
-  the straight x=0 cut that passed through switch cutouts. Every Section must
-  fit the **220 × 220 × 256 mm** build volume, rejoin losslessly, have a flat
-  bed face, and be joined by Seam lugs
-  (1.75 mm filament) or screws into bosses.
-* The lid's Back plate is screwed into the Bezel's band (eight countersunk
+* Sections (ADR-0003, ADR-0006, ADR-0015) stay: Tray, Deck, Bezel and Back
+  plate each split into two, but **each piece has its own Seam**: the Deck and
+  the Bezel straight at `x = −14`, the Tray and the Back plate a 45° trapezoid
+  at `+10` across the middle and `+18` at the end walls. The keyboard plate
+  splits in two along its **Plate Seam** — the row-jogging path between key
+  columns (four bands, ends at plate-local x = 0 and x = −50.584, the latter on
+  the spacebar side), not the straight cut that passed through switch cutouts.
+  Every Section must fit the **220 × 220 × 256 mm** build volume, rejoin
+  losslessly, have a flat bed face, and register on its Seam by two **fin-pair
+  filament pins** (two printed fins `1.4` thick, `2.0` apart, `2.0` tall,
+  `10` long across the Seam, a 45° `1.0` chamfer on the fins' outer top edge; a
+  1.75 mm filament offcut glued into the slot — ADR-0006).
+* The lid's Back plate is screwed into the Bezel's band (ten countersunk
   M3 from the Back's outer face into heat-set inserts). The chassis splits the
   same way (ADR-0012): at the Parting plane a **prismatic band** carries the
   joint, split 3 mm on each half. Only the Tray below `band_z0` is drafted
-  (7°); the Tray's half-band and the whole Deck are prismatic, and ten
+  (7°); the Tray's half-band and the whole Deck are prismatic, and twelve
   countersunk M3 × 18 from below thread into heat-set inserts in the Deck's
-  band bosses (four corners, two per long side, one per short side). Both
+  band bosses (four corners, three per long side incl. one on the centreline,
+  one per short side). Both
   halves carry a 10 × 0.8 mm scallop at each station, straddling the seam.
   Nothing stands proud of the keyboard Deck under the hands.
+* The two **centreline** long-wall stations sit between the Tray's and the
+  Deck's staggered Seams, so each screw clamps a Deck Section to the other Tray
+  Section — that is the interlock that keeps the lapped shell from hinging. The
+  front centreline column is the fifth Plate notch. The lid carries the same
+  centreline pair, so each lid Section keeps four or six of the ten stations.
 * The lid's four corner stations sit on posts **inboard of the cavity wall**,
   following the Rod clamp's outer edge (`post_inner = rod_x + rod_clamp.width/2
   + corner_clearance`); nothing widens the case for them any more
   (ADR-0013 retired `slide.joint.corner_post`).
-* Seams are staggered between parts screwed to each other and never cross a
+* Seams are staggered between parts screwed to each other — a screwed pair
+  laps 24 mm (Tray/Deck, Bezel/Back) or 9.24 mm (Deck/plate) — and never cross a
   structural feature (rib, boss, standoff, clamp, guide channel, rail pocket,
   vent, connector cutout).
 
@@ -284,6 +301,17 @@ HARD (the build fails):
   no printed plate fastener column crosses the Parting plane (zero floor
   standoffs). `slide-chassis-joint-clear` measures the joint
   stations against the plate's **notched** footprint, not its bounding box.
+* `slide-seam-offset`, `slide-seam-stagger`, `slide-seam-clear`,
+  `slide-seam-interlock`, `slide-seam-stations` — every Seam stays 10–20 mm off
+  the centreline; the Tray/Deck, Bezel/Back and Deck/plate Seams stay at least
+  one wall apart over their shared depth; no Seam crosses a band station, a Well
+  M2 boss or a bearing seat; a band station on each long wall sits between the
+  Tray's and the Deck's Seam; and each Section of each piece keeps at least two
+  stations of its joint.
+* `slide-seam-pin-fit`, `slide-seam-pin-clear` — the 1.75 mm filament fits the
+  2.0 mm slot with glue room, each fin is at the printable minimum and reaches
+  5 mm into its Section; every pin site sits on a straight run of its Seam (two
+  per Seam) and clears the band stations and the components' solid sub-volumes.
 
 GOAL (reported, not fatal): closed face height, thickness, mass, open pose
 height.

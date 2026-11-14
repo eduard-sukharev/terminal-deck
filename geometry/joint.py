@@ -2,9 +2,12 @@
 
 The lid splits at the Back panel's inner face: a flat 4 mm Back plate and the
 Bezel that carries the display, the glass opening and a prismatic fastening
-band. Eight stations run round the band — four corners and two per long side —
-with an M3 countersunk screw driven from the Back's outer face into a heat-set
-insert in the Bezel's band.
+band. Ten stations run round the band — four corners, two per long side and one
+on each long side's centreline — with an M3 countersunk screw driven from the
+Back's outer face into a heat-set insert in the Bezel's band. The centreline
+pair is the Section-Seam interlock (ADR-0015): the Bezel's Seam runs at -14 and
+the Back plate's at +10..+18, so a screw there clamps a Bezel piece to the
+*other* Back piece instead of leaving the two pairs free to hinge.
 
 The free middle of each *short* side is the Bearing-clamp slot, and the four
 corners are where the four Rod clamps sit. The guide rods are now *under* the
@@ -108,6 +111,10 @@ def lid_joint(
             (-x_corner, "corner"),
             (x_edge, "front" if sign < 0 else "rear"),
             (-x_edge, "front" if sign < 0 else "rear"),
+            # ADR-0015's interlock: the Bezel Seam runs at -14 and the Back
+            # plate's at +10..+18, so a station on the centreline sits between
+            # them and clamps a Bezel piece to the *other* Back piece.
+            (0.0, "front" if sign < 0 else "rear"),
         ):
             stations.append(BandStation(x=x, y=sign * y, kind=kind))
 

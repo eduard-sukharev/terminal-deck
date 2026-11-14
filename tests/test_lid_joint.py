@@ -23,18 +23,19 @@ def _data():
     return pipeline, config, components, budget, layout.placements()
 
 
-def test_eight_stations_two_per_side_and_four_corners():
+def test_ten_stations_two_per_side_four_corners_and_a_centreline_pair():
     _, _, _, budget, _ = _data()
     joint = budget.lid_joint
-    assert joint.station_count == 8
+    assert joint.station_count == 10
     assert len(joint.corner_stations) == 4
-    assert len(joint.edge_stations) == 4
+    assert len(joint.edge_stations) == 6
     corners = {(round(s.x, 6), round(s.y, 6)) for s in joint.corner_stations}
     assert len(corners) == 4  # all four quadrants, one each
     edges = {(round(s.x, 6), round(s.y, 6)) for s in joint.edge_stations}
-    assert len(edges) == 4
-    # Two per long side, mirrored about the centreline.
-    assert len({round(s.x, 6) for s in joint.edge_stations}) == 2
+    assert len(edges) == 6
+    # Two per long side plus one on each long side's centreline (ADR-0015).
+    assert len({round(s.x, 6) for s in joint.edge_stations}) == 3
+    assert 0.0 in {round(s.x, 6) for s in joint.edge_stations}
     assert {round(s.y, 6) for s in joint.edge_stations} == {
         round(s.y, 6) for s in joint.corner_stations
     }

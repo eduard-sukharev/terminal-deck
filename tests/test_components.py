@@ -286,12 +286,14 @@ def test_ears_do_not_overlap_each_other_and_stay_inside_the_case(well_plate):
         assert -inner_y <= rect.y0 and rect.y1 <= inner_y
 
 
-def test_plate_footprint_cutouts_are_the_four_band_notches(well_plate):
+def test_plate_footprint_cutouts_are_the_five_band_notches(well_plate):
     from keyboard.validation import _point_in_polygon
 
     _, _, _, _, mounts, keyboard = well_plate
     rects = keyboard.footprint_cutouts()
-    assert len(rects) == len(mounts.notches) == 4
+    # ADR-0015 adds a centreline long-wall column per side, so the plate's
+    # front border is notched five times instead of four.
+    assert len(rects) == len(mounts.notches) == 5
     assert sorted(rects) == sorted(_rect_of(notch.rect) for notch in mounts.notches)
     outline = keyboard.footprint_outline()
     assert outline

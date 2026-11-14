@@ -75,7 +75,9 @@ are implemented: `python main.py --layout slider --steps data` derives and
 validates the 140/56/283 budget from the real components, and `make all` /
 `make slider` builds and exports the chassis, screen lid, guide rods, printed
 Rod clamps and Bearing clamps, and both the closed and open assembly (the lid,
-rods and Rod clamps slid by the travel) as STEP/STL/glTF, split into two
-Sections with stepped Seams that fit the 220 × 220 × 256 mm build volume. The
+rods and Rod clamps slid by the travel) as STEP/STL/glTF, each shell piece split
+into two Sections on its own staggered Seam (ADR-0015) and registered by
+fin-pair glued filament pins (ADR-0006) to fit the
+220 × 220 × 256 mm build volume. The
 slider is the only layout; the retired clamshell code is removed. See
 `docs/form_factor.md`, `docs/adr/`, and `CONTEXT.md`.

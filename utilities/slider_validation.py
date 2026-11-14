@@ -73,6 +73,81 @@ def _by_role(placements: list[Any], role_fragment: str) -> Any | None:
     )
 
 
+# -- ADR-0015: Section Seams --------------------------------------------
+
+
+def _seam_polyline(seam: Any, depth: float) -> list[tuple[float, float]]:
+    """``(x, y)`` corners of a Seam path, front to back.
+
+    Accepts anything with ``polyline(depth)`` (a config
+    :class:`~utilities.config_loader.Seam`), ``segments(depth)`` or a bare
+    ``bands`` tuple (a plate ``SeamPath``).
+    """
+    if hasattr(seam, "polyline"):
+        return list(seam.polyline(depth))
+    if hasattr(seam, "segments"):
+        bands = seam.segments(depth)
+    else:
+        bands = seam.bands
+    points: list[tuple[float, float]] = []
+    for y0, y1, x in bands:
+        for point in ((x, y0), (x, y1)):
+            if not points or point != points[-1]:
+                points.append(point)
+    return points
+
+
+def _segment_gap(
+    px: float, py: float,
+    a: tuple[float, float], b: tuple[float, float],
+) -> float:
+    """Distance from a point to a line segment (mm)."""
+    ax, ay = a
+    dx, dy = b[0] - ax, b[1] - ay
+    length2 = dx * dx + dy * dy
+    if length2 <= _EPS:
+        return ((px - ax) ** 2 + (py - ay) ** 2) ** 0.5
+    t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / length2))
+    return ((px - ax - t * dx) ** 2 + (py - ay - t * dy) ** 2) ** 0.5
+
+
+def _seam_gap(seam: Any, depth: float, px: float, py: float) -> float:
+    """Shortest distance from a point to a Seam path (mm)."""
+    points = _seam_polyline(seam, depth)
+    return min(
+        _segment_gap(px, py, a, b) for a, b in zip(points, points[1:])
+    )
+
+
+def _seam_x_at(seam: Any, depth: float, y: float) -> float:
+    """The Seam's X at ``y``, interpolating across a diagonal jog."""
+    if hasattr(seam, "x_at"):
+        return seam.x_at(y)
+    points = _seam_polyline(seam, depth)
+    if y <= points[0][1]:
+        return points[0][0]
+    for (xa, ya), (xb, yb) in zip(points, points[1:]):
+        if ya <= y <= yb:
+            if abs(yb - ya) <= _EPS:
+                return xb
+            return xa + (xb - xa) * (y - ya) / (yb - ya)
+    return points[-1][0]
+
+
+def _seam_stagger(a: Any, b: Any, depth: float, samples: int = 401) -> float:
+    """Smallest X separation between two Seams over their shared Y range (mm)."""
+    pa = _seam_polyline(a, depth)
+    pb = _seam_polyline(b, depth)
+    lo = max(pa[0][1], pb[0][1])
+    hi = min(pa[-1][1], pb[-1][1])
+    if hi <= lo:
+        return float("inf")
+    return min(
+        abs(_seam_x_at(a, depth, y) - _seam_x_at(b, depth, y))
+        for y in (lo + (hi - lo) * i / samples for i in range(samples + 1))
+    )
+
+
 # -- the plate's real plan footprint ------------------------------------
 
 
@@ -492,6 +567,357 @@ def _add_mount_checks(
     )
 
 
+#: The Seam offsets ADR-0015 allows, measured from the centreline (mm).
+SEAM_OFFSET_RANGE = (10.0, 20.0)
+
+
+def _add_seam_checks(
+    report: ValidationReport,
+    config: Any,
+    budget: Any,
+    mounts: Any | None,
+) -> None:
+    """HARD: the Section Seams are staggered, clear and still well fastened.
+
+    ADR-0015 replaces "cut both halves of the case at x=0" with one Seam per
+    printed piece: the Deck and the Bezel take a straight Seam just left of
+    centre, the Tray and the Back plate a trapezoid Seam that runs at +10 in
+    the middle and steps out to +18 at the end walls on 45 degree jogs. These
+    checks are what keeps that geometry honest:
+
+    * every Seam stays 10..20 mm off the centreline (a Seam on the centreline
+      would coincide with its counterpart, and a far one would cut the piece in
+      an unprintable ratio);
+    * the two Seams of every screwed pair stay apart (they must not line up);
+    * Seams keep their boss margin from the band stations, the Well's M2
+      bosses and the bearing seats;
+    * a band station on each long wall sits *between* the Tray's and the Deck's
+      Seam, so one screw cross-ties the two staggered cuts (the interlock);
+    * each Section of each part keeps at least two stations of its joint.
+    """
+    split = dict(getattr(config.slide, "split", {}) or {})
+    wall = config.wall_thickness
+    min_feature = config.material.minimum_feature
+    cj = budget.chassis_joint
+    lj = budget.lid_joint
+    depths = {
+        "chassis_tray": budget.chassis_height,
+        "chassis_deck": budget.chassis_height,
+        "screen_lid_bezel": budget.lid_height,
+        "screen_lid_back": budget.lid_height,
+    }
+
+    seams: dict[str, tuple[Any, list[Any], float]] = {}
+    problems: list[str] = []
+    for name, depth in depths.items():
+        spec = split.get(name)
+        if spec is None:
+            problems.append(f"{name} has no Split")
+            continue
+        try:
+            seams[name] = (spec, spec.seams(depth, wall), depth)
+        except ValueError as exc:
+            problems.append(f"{name}: {exc}")
+
+    # -- offsets from the centreline ---------------------------------------
+    offsets: list[float] = []
+    for _, paths, depth in seams.values():
+        for path in paths:
+            offsets += [abs(x) for x, _ in _seam_polyline(path, depth)]
+    lo, hi = SEAM_OFFSET_RANGE
+    nearest = min(offsets) if offsets else 0.0
+    farthest = max(offsets) if offsets else 0.0
+    report.add(
+        "slide-seam-offset",
+        bool(offsets) and nearest >= lo - _EPS and farthest <= hi + _EPS,
+        (
+            f"Seam offsets {nearest:.2f}..{farthest:.2f} mm from the centreline; "
+            f"ADR-0015 requires {lo:g}..{hi:g}"
+            if offsets else "; ".join(problems) or "no Seams configured"
+        ),
+    )
+
+    # -- the paired Seams must not line up ---------------------------------
+    pairs = (
+        ("chassis_tray", "chassis_deck"),
+        ("screen_lid_bezel", "screen_lid_back"),
+    )
+    gaps: dict[str, float] = {}
+    for a, b in pairs:
+        if a in seams and b in seams:
+            gaps[f"{a}/{b}"] = _seam_stagger(
+                seams[a][1][0], seams[b][1][0], seams[a][2]
+            )
+    if mounts is not None and "chassis_deck" in seams:
+        gaps["chassis_deck/plate"] = _seam_stagger(
+            seams["chassis_deck"][1][0], mounts.seam_world,
+            seams["chassis_deck"][2],
+        )
+    tightest = min(gaps.values()) if gaps else 0.0
+    report.add(
+        "slide-seam-stagger",
+        bool(gaps) and tightest >= wall - _EPS,
+        (
+            "; ".join(f"{key}: {gap:.2f} mm" for key, gap in gaps.items())
+            + f" apart (needs >= wall {wall:.2f})"
+            if gaps else "; ".join(problems) or "no Seam pair to compare"
+        ),
+    )
+    for key, gap in gaps.items():
+        report.goals[f"seam-lap-{key.replace('/', '-')}"] = gap
+
+    # -- clearance from the things the Seam must not thin -------------------
+    hits: list[str] = []
+    for name, (_, paths, depth) in seams.items():
+        path = paths[0]
+        stations = cj.stations if name.startswith("chassis") else lj.stations
+        boss_margin = cj.boss_margin if name.startswith("chassis") else lj.boss_margin
+        for station in stations:
+            boss = station.boss if hasattr(station, "boss") else lj.boss
+            required = boss / 2.0 + boss_margin + min_feature
+            gap = _seam_gap(path, depth, station.x, station.y)
+            if gap < required - _EPS:
+                hits.append(
+                    f"{name} Seam {gap:.2f} mm from a band station at "
+                    f"({station.x:.2f}, {station.y:.2f}), needs {required:.2f}"
+                )
+    if mounts is not None and "chassis_deck" in seams:
+        _, paths, depth = seams["chassis_deck"]
+        path = paths[0]
+        required = mounts.boss_diameter / 2.0 + cj.boss_margin + min_feature
+        for mount in mounts.mounts:
+            gap = _seam_gap(path, depth, mount.x, mount.y)
+            if gap < required - _EPS:
+                hits.append(
+                    f"chassis_deck Seam {gap:.2f} mm from the {mount.name} M2 "
+                    f"boss, needs {required:.2f}"
+                )
+    if "chassis_deck" in seams:
+        from geometry.well_mounts import bearing_seat_obstacles
+
+        _, paths, depth = seams["chassis_deck"]
+        path = paths[0]
+        for obstacle in bearing_seat_obstacles(config, budget):
+            x0, y0 = obstacle.rect.x0, obstacle.rect.y0
+            x1, y1 = obstacle.rect.x1, obstacle.rect.y1
+            perimeter = []
+            steps = 32
+            for i in range(steps + 1):
+                t = i / steps
+                perimeter.append((x0 + (x1 - x0) * t, y0))
+                perimeter.append((x0 + (x1 - x0) * t, y1))
+                perimeter.append((x0, y0 + (y1 - y0) * t))
+                perimeter.append((x1, y0 + (y1 - y0) * t))
+            gap = min(_seam_gap(path, depth, x, y) for x, y in perimeter)
+            if gap < min_feature - _EPS:
+                hits.append(
+                    f"chassis_deck Seam {gap:.2f} mm from the {obstacle.name}"
+                )
+    report.add(
+        "slide-seam-clear",
+        not hits and bool(seams),
+        "; ".join(hits) if hits else (
+            f"{len(seams)} Seam(s) clear of the band stations, the Well's M2 "
+            "bosses and the bearing seats"
+        ),
+    )
+
+    # -- one screw between the Tray and Deck Seams (the interlock) ----------
+    between: list[Any] = []
+    if "chassis_tray" in seams and "chassis_deck" in seams:
+        tray_path, tray_depth = seams["chassis_tray"][1][0], seams["chassis_tray"][2]
+        deck_path, deck_depth = seams["chassis_deck"][1][0], seams["chassis_deck"][2]
+        for station in cj.stations:
+            required = station.boss / 2.0 + cj.boss_margin
+            tray_x = _seam_x_at(tray_path, tray_depth, station.y)
+            deck_x = _seam_x_at(deck_path, deck_depth, station.y)
+            if min(tray_x, deck_x) + required <= station.x <= max(tray_x, deck_x) - required:
+                between.append(station)
+    walls = {1 if station.y > 0 else -1 for station in between}
+    report.add(
+        "slide-seam-interlock",
+        len(between) >= 2 and walls == {-1, 1},
+        (
+            "stations between the Tray and Deck Seams: "
+            + ", ".join(
+                f"({s.x:.2f}, {s.y:.2f})" for s in between
+            )
+            if between else "; ".join(problems) or "no station sits in the lap"
+        ),
+    )
+
+    # -- every Section keeps at least two stations -------------------------
+    counts: dict[str, tuple[int, int]] = {}
+    for name in depths:
+        if name not in seams:
+            continue
+        _, paths, depth = seams[name]
+        path = paths[0]
+        stations = cj.stations if name.startswith("chassis") else lj.stations
+        left = sum(
+            1 for station in stations
+            if station.x < _seam_x_at(path, depth, station.y)
+        )
+        counts[name] = (left, len(stations) - left)
+    thin = [f"{name} {left}/{right}" for name, (left, right) in counts.items() if min(left, right) < 2]
+    report.add(
+        "slide-seam-stations",
+        bool(counts) and not thin,
+        (
+            "each piece keeps at least two band stations: "
+            + ", ".join(f"{name} {left}/{right}" for name, (left, right) in counts.items())
+            if counts and not thin
+            else (f"a piece is left with fewer than two stations: {', '.join(thin)}"
+                  if thin else "; ".join(problems))
+        ),
+    )
+
+
+def _add_seam_pin_checks(
+    report: ValidationReport,
+    config: Any,
+    budget: Any,
+    placements: list[Any],
+    mounts: Any | None,
+) -> None:
+    """HARD: the Seam pins fit, sit on a straight run and clear the interior.
+
+    ADR-0006: two parallel fins straddle each Seam and leave a slot for a glued
+    filament pin; the fins are what registers the Sections before the screws
+    that cross the Seam are in. A pin on a jog or in a component is worse than
+    no pin, so the checks own the fit, the site and the clearance -- against
+    the part's own band stations and the components' *solid sub-volumes*, not
+    their bounding boxes (the keyboard's plate is hollow underneath).
+    """
+    from geometry.seam_joint import (
+        SEAM_PIN_PARTS,
+        pin_planes,
+        pocket_rect,
+        pocket_z,
+        site_on_straight_run,
+    )
+    from geometry.well_mounts import bearing_seat_obstacles
+    from layouts.base import volume_footprint, volume_z_span
+
+    pin = config.seam_pin
+    wall = config.wall_thickness
+    min_feature = config.material.minimum_feature
+    split = dict(getattr(config.slide, "split", {}) or {})
+    sites_cfg = dict(getattr(config.slide, "seam_pin_sites", {}) or {})
+    planes = pin_planes(config, budget)
+    depths = {
+        "chassis_tray": budget.chassis_height,
+        "chassis_deck": budget.chassis_height,
+        "screen_lid_bezel": budget.lid_height,
+        "screen_lid_back": budget.lid_height,
+    }
+    cj = budget.chassis_joint
+    lj = budget.lid_joint
+
+    report.add(
+        "slide-seam-pin-fit",
+        pin.glue_gap > 0.0 and pin.fin >= min_feature - _EPS,
+        f"{pin.pin:.2f} mm pin in a {pin.gap:.2f} mm slot (glue gap "
+        f"{pin.glue_gap:.2f}), fin {pin.fin:.2f} >= min feature "
+        f"{min_feature:.2f}, {pin.engagement:.2f} mm into each Section",
+    )
+
+    # Everything the pins must stay out of, in the device frame. Each entry is
+    # (what, x0, y0, x1, y1, z0, z1).
+    lid_band_z0 = budget.chassis_top + config.slide.lid_clearance
+    deck_ceiling = budget.chassis_top - config.wall_thickness
+    fixed: list[tuple[str, float, float, float, float, float, float]] = []
+    for station in cj.stations:
+        r = station.boss / 2.0
+        fixed.append((
+            "a chassis band station", station.x - r, station.y - r,
+            station.x + r, station.y + r,
+            cj.band_z0, deck_ceiling,
+        ))
+    for station in lj.stations:
+        r = lj.boss / 2.0
+        fixed.append((
+            "a lid band station", station.x - r, station.y - r,
+            station.x + r, station.y + r, lid_band_z0, lid_band_z0 + lj.band,
+        ))
+    if mounts is not None:
+        for mount in mounts.mounts:
+            r = mount.boss_diameter / 2.0
+            fixed.append((
+                f"the {mount.station} M2 boss", mount.x - r, mount.y - r,
+                mount.x + r, mount.y + r, mount.boss_z0, mount.boss_z1,
+            ))
+    for obstacle in bearing_seat_obstacles(config, budget):
+        fixed.append((
+            obstacle.name, obstacle.rect.x0, obstacle.rect.y0,
+            obstacle.rect.x1, obstacle.rect.y1, obstacle.z0, obstacle.z1,
+        ))
+
+    def occupied(z0: float, z1: float):
+        """Component volumes that share the pins' Z band, as AABB windows."""
+        found = []
+        for placement in placements:
+            for vx, vy, vz, box in placement.component.occupied_volumes():
+                wx, wy, wz = placement.world_offset(vx, vy, vz)
+                lo, hi = volume_z_span(placement, box, wz)
+                if hi <= z0 or lo >= z1:
+                    continue
+                w, d = volume_footprint(placement, box)
+                found.append((
+                    placement.component.name, wx - w / 2.0, wy - d / 2.0,
+                    wx + w / 2.0, wy + d / 2.0, lo, hi,
+                ))
+        return found
+
+    problems: list[str] = []
+    tightest: tuple[float, str] = (float("inf"), "")
+    counts: dict[str, int] = {}
+    for name in SEAM_PIN_PARTS:
+        spec = split.get(name)
+        if spec is None:
+            problems.append(f"{name} has no Split")
+            continue
+        depth = depths[name]
+        seam = spec.seams(depth, wall)[0]
+        sites = tuple(sites_cfg.get(name, ()))
+        counts[name] = len(sites)
+        if len(sites) < 2:
+            problems.append(
+                f"{name} has {len(sites)} pin(s); ADR-0006 asks for two"
+            )
+        z0, z1 = pocket_z(pin, *planes[name])
+        obstacles = fixed + occupied(z0, z1)
+        for y in sites:
+            if not site_on_straight_run(seam, depth, y, pin):
+                problems.append(
+                    f"{name} pin at y={y:.2f} lands on a jog (the pocket needs "
+                    f"{pin.pocket_width:.2f} mm inside one straight run)"
+                )
+                continue
+            x0, x1, y0, y1 = pocket_rect(pin, seam.x_at(y), y)
+            rect = (x0, y0, x1, y1)
+            for what, ox0, oy0, ox1, oy1, oz0, oz1 in obstacles:
+                plan = _rect_gap(rect, (ox0, oy0, ox1, oy1))
+                dz = max(oz0 - z1, z0 - oz1)
+                gap = max(plan, dz)
+                if gap < min_feature - _EPS:
+                    problems.append(
+                        f"{name} pin at y={y:.2f} is {gap:.2f} mm from {what}"
+                    )
+                elif gap < tightest[0]:
+                    tightest = (gap, f"{name} pin to {what}")
+    report.add(
+        "slide-seam-pin-clear",
+        not problems,
+        "; ".join(problems) if problems else (
+            f"{sum(counts.values())} pin(s) clear of the stations and the "
+            f"components; tightest {tightest[0]:.2f} mm ({tightest[1]})"
+        ),
+    )
+    for name, count in counts.items():
+        report.goals[f"seam-pins-{name}"] = float(count)
+
+
 def run_slider_checks(
     budget: Any,
     config: Any,
@@ -691,10 +1117,10 @@ def run_slider_checks(
     else:
         report.add("slide-fpc-guard-cover", False, "display/ribbon is not placed")
 
-    # The Deck's Bearing-clamp seat moved inboard with the rods; it must not
-    # merge with the chassis band's corner boss. The pair is Z-separated (the
-    # boss stands in the band, the seat sits on the Deck top), so this is the
-    # plan-space guard the two inboard features need.
+    # The Deck's Bearing-clamp seat and the chassis band's corner boss both
+    # reach the Deck's inner ceiling now (the bosses run the full height so the
+    # face-down print has no overhang), so they are not separated in Z: this
+    # plan-space guard is what keeps them from fusing.
     seat_half_x = (
         budget.clamp_width / 2.0
         + slide.bearing_clamp.seat_fit
@@ -725,9 +1151,9 @@ def run_slider_checks(
         "slide-chassis-seat-clear",
         closest >= min_feature - 1e-6,
         f"Deck seat to chassis band corner boss {closest:.2f} >= "
-        f"{min_feature:.2f} (plan guard; the boss top "
-        f"{budget.chassis_joint.parting_z + budget.chassis_joint.boss_height:.2f}"
-        f" is below the Deck top {budget.chassis_top:.2f})",
+        f"{min_feature:.2f} (plan guard; both run to the Deck's ceiling "
+        f"{budget.chassis_top - config.wall_thickness:.2f}, so the plan gap is "
+        f"all that separates them)",
     )
 
     bounds = budget.rod_x_bounds
@@ -830,12 +1256,23 @@ def run_slider_checks(
     else:
         report.add("slide-layout-width", False, "no placements")
 
+    # ADR-0015: each piece is cut at its own offset Seam, so the widest Section
+    # is the half width plus the furthest Seam, not simply half the case.
+    seam_far = 0.0
+    for name in (
+        "chassis_tray", "chassis_deck", "screen_lid_bezel", "screen_lid_back",
+    ):
+        spec = getattr(config.slide, "split", {}).get(name)
+        if spec is not None:
+            seam_far = max([seam_far, *(abs(v) for v in spec.x_range)])
+    widest_section = budget.width / 2.0 + seam_far
     report.add(
         "slide-section-fit",
-        budget.width / 2.0 <= BUILD_VOLUME[0]
+        widest_section <= BUILD_VOLUME[0]
         and budget.closed_face_height <= BUILD_VOLUME[1]
         and budget.thickness <= BUILD_VOLUME[2],
-        f"half width {budget.width / 2.0:.1f} <= {BUILD_VOLUME[0]:.0f}, face "
+        f"widest Section {widest_section:.1f} (Seams <= {seam_far:.1f} off "
+        f"centre) <= {BUILD_VOLUME[0]:.0f}, face "
         f"{budget.closed_face_height:.1f} <= {BUILD_VOLUME[1]:.0f}, thickness "
         f"{budget.thickness:.1f} <= {BUILD_VOLUME[2]:.0f}",
     )
@@ -925,6 +1362,7 @@ def run_slider_checks(
 
     # -- Tray <-> Deck band joint (ADR-0012) -----------------------------
     cj = budget.chassis_joint
+    deck_ceiling = budget.chassis_top - config.wall_thickness
     report.add(
         "slide-chassis-joint-band",
         cj.band >= cj.insert_depth + min_feature - 1e-6,
@@ -933,9 +1371,10 @@ def run_slider_checks(
     )
     report.add(
         "slide-chassis-joint-boss-height",
-        cj.boss_height >= cj.insert_depth + min_feature - 1e-6,
-        f"insert boss {cj.boss_height:.2f} >= insert {cj.insert_depth:.2f} + "
-        f"min feature {min_feature:.2f}",
+        deck_ceiling - cj.parting_z >= cj.insert_depth + min_feature - 1e-6,
+        f"insert boss column {deck_ceiling - cj.parting_z:.2f} (Parting plane "
+        f"{cj.parting_z:.2f} to the Deck ceiling {deck_ceiling:.2f}) >= insert "
+        f"{cj.insert_depth:.2f} + min feature {min_feature:.2f}",
     )
     report.add(
         "slide-chassis-joint-screw",
@@ -1076,6 +1515,8 @@ def run_slider_checks(
         keyboard=keyboard_component,
         placements=placements,
     )
+    _add_seam_checks(report, config, budget, mounts)
+    _add_seam_pin_checks(report, config, budget, placements, mounts)
 
     report.goals["closed-face-height"] = budget.closed_face_height
     report.goals["open-face-height"] = budget.open_face_height

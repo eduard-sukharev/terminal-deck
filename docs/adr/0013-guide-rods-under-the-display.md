@@ -51,9 +51,11 @@ head 107.50), the derived front margin is 7.65 mm and the closed face is
 | head under the display | `display.width/2 − clamp_width/2` | 107.50 |
 
 `rod_x = min(bounds) − slide.rod.side_margin` (2.5 mm) = **93.86**. The seat
-bound is the tightest; it is a plan-space proxy for a pair that is Z-separated
-(the seat sits on the Deck top at 26.3, the band boss tops out at 21.65), so the
-margin is deliberate rather than earned by that bound. The three bounds are
+bound is the tightest. It is a plan-space guard: the seat and the band's
+corner boss both run up to the Deck's inner ceiling (the bosses are full-height
+columns so the face-down print has no overhang), so the gap between them is
+plan clearance alone. The margin there is deliberate rather than earned by
+that bound. The three bounds are
 exposed on `SlideBudget.rod_x_bounds` and a HARD check asserts the stance stays
 inside all of them.
 
@@ -100,8 +102,9 @@ post_outer = width/2 − wall                                 (117.46)
 width      = 12.10  ≥ insert hole 4.40 + 2 · boss_margin 1.50
 ```
 
-Nothing widens the case for the joint any more, and the eight stations keep
-their derivation from the lid plan.
+Nothing widens the case for the joint any more, and the stations keep
+their derivation from the lid plan (ten of them after ADR-0015's centreline
+interlock pair).
 
 ### The FPC guard
 
@@ -132,7 +135,8 @@ crosses exactly that sweep. The display's back therefore gets a printed plate:
 A 238.92 mm case is only 4.39 mm wider than the 230.15 mm keyboard, so there is
 no band beside the keys: a 10 mm M3 insert boss cannot sit between the X wall
 and the plate, and a Tray column at mid-side would run through the keyboard. The
-joint keeps its ten stations, M3 × 18, boss arithmetic, scallops and
+joint keeps its twelve stations (ADR-0015 added the centreline pair), M3 × 18,
+boss arithmetic, scallops and
 `parting_z`, but:
 
 - the corner and long-wall stations sit `side_inset` (4.5) from the vertical

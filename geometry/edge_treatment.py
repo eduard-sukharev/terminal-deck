@@ -102,14 +102,11 @@ def bed_chamfer(shape, orientation: PrintOrientation, size: float, report):
 
 
 def seam_corner_points(seams, depth: float) -> list[tuple[float, float]]:
-    """XY of both corners of every step of ``seams`` (anything with
-    ``segments(depth) -> [(y0, y1, x)]``)."""
+    """XY of every corner along ``seams`` (anything with
+    ``polyline(depth) -> [(x, y)]``), i.e. both ends of every jog."""
     points = []
     for seam in seams:
-        segments = seam.segments(depth)
-        for (_, y, xa), (_, _, xb) in zip(segments, segments[1:]):
-            if abs(xa - xb) > 1e-9:
-                points += [(xa, y), (xb, y)]
+        points += list(seam.polyline(depth))[1:-1]
     return points
 
 

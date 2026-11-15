@@ -7,9 +7,10 @@ the way from the plane to the closed face. Only the lower half of the
 silhouette tapers; the Deck and the closed face stay straight. This is the
 chassis counterpart of the lid's Bezel <-> Back band joint (ADR-0011).
 
-Twelve M3 screws are driven from below, through a countersink in the Tray's
-floor and a column standing on that floor, into a heat-set insert in a boss in
-the Deck's band:
+Twelve M3 screws are driven from below, through a **keyhole recess** in the
+Tray's floor and a column standing on that floor, into a heat-set insert in a
+boss in the Deck's band (ADR-0018: an ordinary button head seats in a
+counterbored pocket with a 45 degree lift-out ramp, not a flush countersink):
 
 * four corners,
 * three per long side (front and rear walls) -- one of them on the centreline,
@@ -34,6 +35,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from geometry import head_recess
 from geometry.parting import DeckScrew, deck_screw, parting_height
 from utilities import fasteners
 
@@ -58,6 +60,14 @@ class TrayStation:
     base_boss: float
     #: Distance from the station to the Tray's outer skin at the floor.
     base_distance: float
+    #: Plan margin to the nearest free face of the floor skin -- what the
+    #: head recess's mouth is measured against (``base_distance``'s twin; the
+    #: floor skin is where the recess is cut).
+    margin: float
+    #: The 45 degree chamfer that fairs the recess mouth (mm).
+    mouth_chamfer: float
+    #: Material left between the recess mouth and that free face (mm).
+    edge_margin: float
 
     @property
     def is_corner(self) -> bool:
@@ -83,7 +93,7 @@ class ChassisJoint:
     side_inset: float
     insert_hole: float
     insert_depth: float
-    countersink: fasteners.Countersink
+    recess: fasteners.HeadRecess
     screw: DeckScrew
     grip: float
     chassis_top: float
@@ -132,12 +142,13 @@ def _station(
     chamfer: float,
     boss: float,
     minimum_feature: float,
+    pocket_radius: float,
 ) -> TrayStation:
     """Size one station from the wall it sits against.
 
     The band (and therefore the station's ``surface``) is prismatic; the Tray's
     drafted X walls only pull the floor skin inward, which is what
-    ``base_distance`` measures.
+    ``base_distance`` (and with it the recess's ``margin``) measures.
     """
     if kind == "side":
         normal = (0.0, math.copysign(1.0, y))
@@ -163,14 +174,16 @@ def _station(
         surface = min(chamfer_surface, band_half_x - ax, band_half_y - ay)
 
     # At the floor the drafted X walls have receded toward the station by the
-    # full draft inset; the Y walls are still where they were.
+    # full draft inset; the Y walls are still where they were. This is the
+    # margin the column *and* the head recess in the floor are measured
+    # against, so the two are sized from one number.
     base_chamfer = (base_half_x + base_half_y - chamfer - ax - ay) * math.sqrt(0.5)
-    base_distance = min(base_half_x - ax, base_half_y - ay, base_chamfer)
+    margin = min(base_half_x - ax, base_half_y - ay, base_chamfer)
 
     # The boss may grow until its surface reaches the outer skin; the column
     # additionally has to stay inside the Tray's skin at the floor.
     station_boss = min(boss, 2.0 * (surface - minimum_feature))
-    base_boss = min(station_boss, 2.0 * (base_distance - minimum_feature))
+    base_boss = min(station_boss, 2.0 * (margin - minimum_feature))
     return TrayStation(
         x=x,
         y=y,
@@ -179,7 +192,12 @@ def _station(
         surface=surface,
         boss=station_boss,
         base_boss=base_boss,
-        base_distance=base_distance,
+        base_distance=margin,
+        margin=margin,
+        mouth_chamfer=head_recess.mouth_chamfer(
+            pocket_radius, margin, minimum_feature
+        ),
+        edge_margin=head_recess.edge_margin(pocket_radius, margin, minimum_feature),
     )
 
 
@@ -194,6 +212,7 @@ def chassis_joint(
     chamfer: float,
     parting: object,
     joint: object,
+    head_fit: float,
 ) -> ChassisJoint:
     """Size the chassis' band joint from the envelope and the Parting plane.
 
@@ -208,11 +227,20 @@ def chassis_joint(
     wall, so the band beside the keys has no room for a station and the short
     sides are fastened in the free band behind the keyboard instead.
 
+    ``head_fit`` is the radial gap around the button head and its recess
+    ``depth`` clearance below the floor face (``clearance.head``).
+
     Raises ``ValueError`` when no stock screw fits the Tray column and the Deck
     insert; the data layer turns that into a HARD check.
     """
     insert = fasteners.heat_insert(joint.screw)
-    countersink = fasteners.countersink(joint.screw)
+    recess = fasteners.head_recess(
+        joint.screw,
+        joint.head,
+        fit=head_fit,
+        depth_margin=head_fit,
+        ramp_angle=head_recess.RAMP_ANGLE_DEG,
+    )
     hole = insert.printed_hole_diameter
 
     draft_tan = math.tan(math.radians(draft_angle))
@@ -223,7 +251,7 @@ def chassis_joint(
     # closed-face width; only the Tray below band_z0 is drafted.
     band_width = width
     base_width = width - 2.0 * draft_tan * band_z0
-    grip = parting_z - countersink.depth
+    grip = parting_z - recess.depth
     screw = deck_screw(joint.screw, grip)
 
     base_half_x = base_width / 2.0
@@ -254,6 +282,7 @@ def chassis_joint(
         chamfer=chamfer,
         boss=joint.boss,
         minimum_feature=minimum_feature,
+        pocket_radius=recess.pocket_radius,
     )
 
     stations: list[TrayStation] = []
@@ -281,7 +310,7 @@ def chassis_joint(
         side_inset=joint.side_inset,
         insert_hole=hole,
         insert_depth=insert.depth,
-        countersink=countersink,
+        recess=recess,
         screw=screw,
         grip=grip,
         chassis_top=chassis_top,

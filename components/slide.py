@@ -514,6 +514,7 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
         chamfer=config.corners.chamfer,
         parting=config.parting,
         joint=config.chassis_joint,
+        head_fit=config.clearance.head,
     )
     # `parting_z <= plate_bottom` is HARD (ADR-0014): the Tray/Deck Parting
     # must never cut through the Well, or the plate's bearing ring is split.
@@ -560,6 +561,9 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
         rod_clamp_width=slide.rod_clamp.width,
         joint=slide.joint,
         wall=wall,
+        chamfer=config.corners.chamfer,
+        minimum_feature=config.material.minimum_feature,
+        head_fit=config.clearance.head,
     )
 
     rod_clamp_length = slide.rod_clamp.length
@@ -687,10 +691,12 @@ def build_rod_clamp(
     rod axially.
     """
     from utilities import cad_helpers as ch
+    from utilities.fasteners import head as head_spec
     from utilities.fasteners import screw as screw_spec
 
     ch.require_cad()
     spec = screw_spec(screw)
+    spec_head = head_spec(screw, "cap")
     set_spec = screw_spec(set_screw)
     block = ch.box_centered(width, length, height)
     block = ch.translate(block, 0.0, 0.0, height / 2.0)
@@ -705,10 +711,10 @@ def build_rod_clamp(
             ch.cylinder_centered(spec.clearance, height + 2.0), x, 0.0, height / 2.0
         )
         head = ch.translate(
-            ch.cylinder_centered(spec.head_diameter, spec.head_depth),
+            ch.cylinder_centered(spec_head.diameter, spec_head.depth),
             x,
             0.0,
-            height - spec.head_depth / 2.0,
+            height - spec_head.depth / 2.0,
         )
         part = ch.cut(part, hole, head)
     rod_top = rod_raise + rod_diameter / 2.0

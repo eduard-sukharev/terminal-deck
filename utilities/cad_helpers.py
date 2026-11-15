@@ -476,6 +476,128 @@ def loft_between(
     return translate(solid, x, y, z)
 
 
+def _stadium_outline(
+    radius: float,
+    run: float,
+    segments: int = 12,
+    offset: float = 0.0,
+) -> list[tuple[float, float]]:
+    """CCW outline of a stadium (capsule) along +X.
+
+    Two semicircles of ``radius`` centred at ``x = 0`` and ``x = run``, so the
+    stadium spans ``x in [-radius, run + radius]`` and
+    ``y in [-radius, radius]``. ``offset`` moves the outline out by that much
+    in every direction; the centres do not move, because the outward offset of
+    a stadium grows its radius, not its length. ``segments`` is the number of
+    facets per semicircle, so two lofts of the same ``segments`` keep the same
+    vertex order and stay untwisted.
+    """
+    if radius <= 0.0 or run < 0.0:
+        raise ValueError("a stadium needs radius > 0 and run >= 0")
+    if segments < 2:
+        raise ValueError("a stadium needs at least 2 facets per semicircle")
+    r = radius + offset
+    if run <= 1.0e-12:
+        # Degenerate to a circle; one cap would otherwise duplicate its ends.
+        facets = 2 * segments
+        return [
+            (
+                r * math.cos(2.0 * math.pi * i / facets),
+                r * math.sin(2.0 * math.pi * i / facets),
+            )
+            for i in range(facets)
+        ]
+    steps = segments + 1
+    points: list[tuple[float, float]] = []
+    # The left cap from +Y over -X to -Y, then the right cap from -Y over +X
+    # back to +Y: counter-clockwise with the straight sides implicit.
+    for i in range(steps):
+        angle = math.pi / 2.0 + math.pi * i / segments
+        points.append((r * math.cos(angle), r * math.sin(angle)))
+    for i in range(steps):
+        angle = 1.5 * math.pi + math.pi * i / segments
+        points.append((run + r * math.cos(angle), r * math.sin(angle)))
+    return _ccw(points)
+
+
+def capsule_prism(
+    radius: float,
+    run: float,
+    z0: float,
+    z1: float,
+    x: float = 0.0,
+    y: float = 0.0,
+    segments: int = 12,
+    offset: float = 0.0,
+) -> Any:
+    """A stadium-cross-section prism spanning ``z0..z1`` (mm).
+
+    The stadium runs along +X (see :func:`_stadium_outline`); ``offset`` grows
+    the cross-section on every side, which is how a chamfered mouth is built
+    from the same outline as its pocket.
+    """
+    if z1 <= z0:
+        raise ValueError("a capsule prism needs z1 > z0")
+    return extrude_polygon(
+        _stadium_outline(radius, run, segments, offset),
+        z1 - z0,
+        x=x,
+        y=y,
+        z=(z0 + z1) / 2.0,
+    )
+
+
+def capsule_frustum(
+    bottom_radius: float,
+    bottom_run: float,
+    top_radius: float,
+    top_run: float,
+    z0: float,
+    z1: float,
+    x: float = 0.0,
+    y: float = 0.0,
+    segments: int = 12,
+) -> Any:
+    """Loft one stadium into another between ``z0`` and ``z1`` (mm).
+
+    Both outlines run along +X with the same facet count, so the ruled loft is
+    untwisted and equal radii leave a cylinder. Like :func:`loft_between`, the
+    bottom face sits at ``z0``.
+    """
+    if z1 <= z0:
+        raise ValueError("a capsule frustum needs z1 > z0")
+    return loft_between(
+        _stadium_outline(bottom_radius, bottom_run, segments),
+        _stadium_outline(top_radius, top_run, segments),
+        z1 - z0,
+        x=x,
+        y=y,
+        z=z0,
+    )
+
+
+def half_space(
+    point: tuple[float, float, float],
+    normal: tuple[float, float, float],
+    size: float = 200.0,
+) -> Any:
+    """A large box filling the half-space on the +``normal`` side of ``point``.
+
+    ``normal`` need not be unit length. ``size`` must exceed the solid it is
+    used to trim. This is the tool for a cut along a plane that is not axis
+    aligned, e.g. the 45 degree ramp over a screw pocket.
+    """
+    b3d = require_cad()
+    plane = b3d.Plane(origin=tuple(point), z_dir=tuple(normal))
+    box = b3d.Box(
+        size,
+        size,
+        size,
+        align=(b3d.Align.CENTER, b3d.Align.CENTER, b3d.Align.MIN),
+    )
+    return plane * box
+
+
 def make_compound(shapes: list[Any]) -> Any:
     """Return one unfused compound containing the solids of *shapes*.
 

@@ -101,13 +101,13 @@ def test_band_holds_the_insert_and_counts_toward_the_lid_thickness():
     assert joint.band == config.slide.joint.band
 
 
-def test_countersunk_screw_passes_the_back_and_engages_the_insert():
+def test_keyhole_screw_passes_the_back_and_engages_the_insert():
     _, config, _, budget, _ = _data()
     joint = budget.lid_joint
     assert joint.screw.size == config.slide.joint.screw
-    # Grip: from the countersink's seat to the joint plane.
+    # Grip: from the head's seat to the joint plane.
     assert joint.grip == pytest.approx(
-        config.slide.lid_back - joint.countersink.depth
+        config.slide.lid_back - joint.recess.depth
     )
     # At least one thread diameter of engagement, and not bottoming out.
     assert joint.screw.engagement >= float(joint.screw.size.lstrip("M"))

@@ -121,7 +121,7 @@ def test_screw_reaches_the_insert(data):
     _, budget, _, _ = data
     joint = budget.chassis_joint
     assert joint.screw.name == "M3x18"
-    assert joint.grip == pytest.approx(joint.parting_z - joint.countersink.depth)
+    assert joint.grip == pytest.approx(joint.parting_z - joint.recess.depth)
     assert joint.screw.engagement >= float(joint.screw.size.lstrip("M"))
     assert joint.screw.engagement <= joint.insert_depth
 
@@ -139,9 +139,9 @@ def test_column_is_a_frustum_inside_the_floor_skin(data):
         assert station.base_boss >= shank + 2.0 * minimum - 1e-6
         # The column's outer surface stays inside the Tray's floor skin.
         assert station.base_distance >= station.base_boss / 2.0 + minimum - 1e-6
-        # The countersink keeps a printable skin to the outer face.
+        # The recess keeps a printable skin to the outer face.
         assert (
-            station.base_distance - joint.countersink.diameter / 2.0
+            station.edge_margin
             >= minimum - 1e-6
         )
 
@@ -203,8 +203,8 @@ def test_every_station_has_a_screw_hole_through_the_tray(data, solids):
     for station in joint.stations:
         assert _material_at(tray, station.x, station.y, z) == pytest.approx(0)
         # The column around the hole stays solid (tested at a safe radius
-        # just outside the countersink cone).
-        offset = joint.countersink.diameter / 2.0 + 0.7
+        # just outside the recess mouth).
+        offset = joint.recess.pocket_radius + station.mouth_chamfer + 0.7
         px = station.x + station.normal[0] * offset
         py = station.y + station.normal[1] * offset
         assert _material_at(tray, px, py, z) > 0

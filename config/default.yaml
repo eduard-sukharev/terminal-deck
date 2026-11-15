@@ -20,6 +20,8 @@ clearance:
   shell: 0.35           # air gap between a component and the shell interior
   insert: 0.2           # heat-set insert hole clearance (diameter oversize)
   screw: 0.6            # minimum radial clearance around a screw head / boss
+  head: 0.2             # ordinary head in its recess: radial gap, and how far
+                        # its top face stays below the outer face (ADR-0018)
 
 screws:
   body: M2              # case body screws (fastener library)
@@ -52,7 +54,8 @@ chassis_joint:
   boss_margin: 1.5     # material between an insert hole and a free face
   station_inset: 6.5   # station centre from a drafted (X) wall's outer face
   side_inset: 4.5      # station centre from a vertical (front/rear) wall
-  screw: M3            # countersunk from below into a heat-set insert
+  screw: M3            # driven from below into a heat-set insert
+  head: button         # ordinary button head (ISO 7380) in a keyhole recess
 
 # Merged boss (ADR 0003): a boss, column, standoff or lug whose outer surface is
 # closer than `threshold_factor * wall` to a wall face is fused into that wall

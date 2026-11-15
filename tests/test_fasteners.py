@@ -1,6 +1,6 @@
 """Tests for the fastener library."""
 
-from utilities.fasteners import screw, heat_insert, SCREWS, HEAT_INSERTS
+from utilities.fasteners import head, head_recess, screw, heat_insert, SCREWS, HEAT_INSERTS
 
 
 def test_screw_sizes():
@@ -8,7 +8,7 @@ def test_screw_sizes():
         s = screw(size)
         assert s.size == size
         assert s.clearance > 0
-        assert s.head_diameter > 0
+        assert head(size).diameter > 0
 
 
 def test_screw_clearance():

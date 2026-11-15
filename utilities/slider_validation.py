@@ -1311,6 +1311,20 @@ def run_slider_checks(
         f"{joint.screw.name} engages {joint.screw.engagement:.2f} mm of the "
         f"{joint.insert_depth:.2f} mm insert (grip {joint.grip:.2f})",
     )
+    # ADR-0018: the ordinary head seats in a keyhole recess, not a countersink.
+    # The recess must print (a seat ring wide enough to bear on) and leave a
+    # printable skin to the plate's free faces.
+    report.add(
+        "slide-lid-joint-pocket",
+        joint.recess.seat >= min_feature - 1e-6
+        and min(station.edge_margin for station in joint.stations)
+        >= min_feature - 1e-6,
+        f"{joint.recess.head.kind} {joint.recess.size} pocket "
+        f"Ø{joint.recess.pocket_diameter:.2f} x {joint.recess.depth:.2f} deep, "
+        f"seat ring {joint.recess.seat:.2f} and mouth to the plate's edge "
+        f"{min(station.edge_margin for station in joint.stations):.2f} >= "
+        f"min feature {min_feature:.2f}",
+    )
     report.add(
         "slide-lid-joint-recess",
         config.bezel.recess <= slide.lid_front - min_feature + 1e-6,
@@ -1391,23 +1405,38 @@ def run_slider_checks(
     screw_clearance = fasteners.screw(cj.screw.size).clearance
     report.add(
         "slide-chassis-joint-column",
-        cj.smallest_base_boss() >= screw_clearance + 2.0 * min_feature - 1e-6,
+        cj.smallest_base_boss() >= screw_clearance + 2.0 * min_feature - 1e-6
+        and all(
+            station.base_boss
+            >= cj.recess.pocket_diameter + 2.0 * station.mouth_chamfer - 1e-6
+            for station in cj.stations
+        ),
         f"tightest Tray column {cj.smallest_base_boss():.2f} >= screw "
-        f"clearance {screw_clearance:.2f} + 2 x min feature {min_feature:.2f}",
+        f"clearance {screw_clearance:.2f} + 2 x min feature {min_feature:.2f}, "
+        f"and holds the Ø{cj.recess.pocket_diameter:.2f} recess mouth",
     )
-    floor_margin = min(
-        station.base_distance - cj.countersink.diameter / 2.0
-        for station in cj.stations
-    )
+    # ADR-0018: the head seats in a keyhole recess cut into the floor, so the
+    # mouth must keep a printable skin to the Tray's outer face and the seat
+    # ring must be wide enough to bear on.
+    floor_margin = min(station.edge_margin for station in cj.stations)
     report.add(
         "slide-chassis-joint-floor",
         floor_margin >= min_feature - 1e-6,
-        f"countersink to outer skin {floor_margin:.2f} >= min feature "
+        f"recess mouth to outer skin {floor_margin:.2f} >= min feature "
         f"{min_feature:.2f}",
     )
     report.add(
+        "slide-chassis-joint-pocket",
+        cj.recess.seat >= min_feature - 1e-6,
+        f"{cj.recess.head.kind} {cj.recess.size} pocket "
+        f"Ø{cj.recess.pocket_diameter:.2f} x {cj.recess.depth:.2f} deep, seat "
+        f"ring {cj.recess.seat:.2f} >= min feature {min_feature:.2f} "
+        f"(mouth chamfer {min(s.mouth_chamfer for s in cj.stations):.2f}"
+        f"..{max(s.mouth_chamfer for s in cj.stations):.2f})",
+    )
+    report.add(
         "slide-chassis-joint-parting",
-        cj.parting_z >= cj.countersink.depth + min_feature - 1e-6
+        cj.parting_z >= cj.recess.depth + min_feature - 1e-6
         and cj.band_z1 <= cj.chassis_top - config.wall_thickness + 1e-6,
         f"Parting plane {cj.parting_z:.2f}, band {cj.parting_z:.2f}-"
         f"{cj.band_z1:.2f} inside the chassis top {cj.chassis_top:.2f}",

@@ -37,6 +37,7 @@ class ScreenLid:
 
     def build_back(self):
         """The flat back panel: rod slots and grooves, clamp and joint holes."""
+        from geometry import head_recess
         from utilities import cad_helpers as ch
         from utilities.fasteners import heat_insert, screw as screw_spec
 
@@ -91,10 +92,12 @@ class ScreenLid:
                     )
                     body = ch.cut(body, hole)
 
-        # The band joint: a countersunk screw at every station, from the outer
-        # face, through the plate into the Bezel's insert.
+        # The band joint: a button-head screw at every station, from the outer
+        # face, through the plate into the Bezel's insert. The head seats in a
+        # keyhole recess in the plate's outer face, ramp pointing inboard
+        # (ADR-0018).
         spec = screw_spec(joint.screw.size)
-        csk = joint.countersink
+        recess = joint.recess
         holes = []
         for station in joint.stations:
             through = ch.translate(
@@ -103,33 +106,35 @@ class ScreenLid:
                 station.y,
                 (f.panel_outer_z + f.panel_inner_z) / 2.0,
             )
-            cone = ch.translate(
-                ch.frustum_centered(csk.diameter, spec.clearance, csk.depth),
-                station.x,
-                station.y,
-                f.panel_outer_z + csk.depth / 2.0,
+            keyhole = head_recess.build_cutter(
+                recess,
+                normal=station.normal,
+                mouth=station.mouth_chamfer,
+                x=station.x,
+                y=station.y,
+                z0=f.panel_outer_z,
             )
-            holes.extend((through, cone))
+            holes.extend((through, keyhole))
         body = ch.cut(body, *holes)
         # ADR-0006: the Seam's pins stand on the plate's inner face.
         body = self._add_seam_pins(body, "screen_lid_back")
         return ch.clean(body)
 
-    def build_bezel(self):
-        """The display tray: prismatic band, tapered walls, window, posts."""
+    def _outer_shell(self):
+        """The Bezel's outside: the prismatic band plus the drafted face tray.
+
+        Every feature of the Bezel has to stay inside this solid; it is what
+        the wall thickness and the outer chamfers are measured from.
+        """
         from utilities import cad_helpers as ch
 
-        ch.require_cad()
         f = self.frame
-        joint = f.lid_joint
-        wall = f.wall
         chamfer = self.config.corners.chamfer
         z0, z1, top = f.band_z0, f.band_z1, f.lid_top
 
         band = ch.box_centered(f.width, f.lid_height, z1 - z0)
         band = ch.translate(band, 0.0, f.lid_y_center, (z0 + z1) / 2.0)
-        band = ch.chamfer_vertical_edges(band, chamfer)
-        outer = band
+        outer = ch.chamfer_vertical_edges(band, chamfer)
         if top > z1:
             outer = ch.union(
                 outer,
@@ -144,6 +149,19 @@ class ScreenLid:
                     y=f.lid_y_center,
                 ),
             )
+        return outer
+
+    def build_bezel(self):
+        """The display tray: prismatic band, tapered walls, window, posts."""
+        from utilities import cad_helpers as ch
+
+        ch.require_cad()
+        f = self.frame
+        joint = f.lid_joint
+        wall = f.wall
+        z0, z1, top = f.band_z0, f.band_z1, f.lid_top
+        chamfer = self.config.corners.chamfer
+        outer = self._outer_shell()
 
         # Open cavity: the band's inside is straight, the rest follows the
         # drafted side walls, keeping the wall thickness constant. Its vertical
@@ -272,6 +290,11 @@ class ScreenLid:
         (`free_x`/`free_y` name the cavity-facing sides); the post below it
         keeps its full footprint, so the insert stays buried in the same block
         of material.
+
+        The cap is trimmed to the shell: the Bezel's outside is not prismatic
+        above the band, it draws in toward the face panel, so a cap that grew
+        straight out of the post would poke through the drafted wall (and past
+        the outer chamfer) at the corners.
         """
         from utilities import cad_helpers as ch
 
@@ -282,7 +305,7 @@ class ScreenLid:
             post, (x0 + x1) / 2.0, (y0 + y1) / 2.0, (z0 + z1) / 2.0
         )
         cap = ch.support_cap((x0, x1, y0, y1), z1, free_x=free_x, free_y=free_y)
-        return ch.union(post, cap)
+        return ch.intersect(ch.union(post, cap), self._outer_shell())
 
     def _add_seam_pins(self, body, name: str):
         """Grow the Seam's glued-filament pins into a half, before the split."""

@@ -93,6 +93,9 @@ class Clearance:
     shell: float
     insert: float
     screw: float
+    #: Radial gap around an ordinary screw head in its recess, and how far the
+    #: head's top face stays below the part's outer face (ADR-0018).
+    head: float = 0.2
 
 
 @dataclass(frozen=True)
@@ -454,13 +457,15 @@ class ChassisJoint:
     around it: the Tray is drafted from its base up to ``band_z0`` and
     prismatic from there to the plane; the Deck is prismatic all the way to
     the closed face. Twelve M3 screws are driven from below into heat-set
-    inserts in the Deck's band.
+    inserts in the Deck's band, each head seated in a keyhole recess in the
+    Tray's floor (ADR-0018: ``head`` is the head kind the recess is sized for,
+    ``clearance.head`` the fit).
 
     ``station_inset`` is measured from a drafted (X) wall's outer face: the
-    draft pulls the Tray's floor skin inward, so the column and its
-    countersink need the extra room. ``side_inset`` is measured from a
-    vertical (front/rear) wall, where the keyboard plate sits one Well
-    margin behind the outer face and the insert boss has to stay clear of it.
+    draft pulls the Tray's floor skin inward, so the column and its recess
+    need the extra room. ``side_inset`` is measured from a vertical
+    (front/rear) wall, where the keyboard plate sits one Well margin behind
+    the outer face and the insert boss has to stay clear of it.
     """
 
     band: float = 6.0
@@ -469,6 +474,7 @@ class ChassisJoint:
     station_inset: float = 6.5
     side_inset: float = 4.5
     screw: str = "M3"
+    head: str = "button"
 
     def __post_init__(self) -> None:
         if self.band <= 0 or self.boss <= 0:
@@ -761,7 +767,9 @@ class SlideJoint:
     prismatic band whose perimeter wall is locally thickened into posts at the
     ten stations (four corners, two per long side plus one on each long side's
     centreline -- the Section-Seam interlock, ADR-0015); the Back is a flat
-    plate with a countersunk screw at each station, driven from its outer face.
+    plate with a button-head screw at each station, driven from its outer face
+    into the band's insert, its head seated in a keyhole recess (ADR-0018:
+    ``head`` is the head kind, ``clearance.head`` the fit).
     """
 
     band: float = 6.0
@@ -771,6 +779,7 @@ class SlideJoint:
     corner_length: float = 20.0
     station_inset: float = 5.0
     screw: str = "M3"
+    head: str = "button"
 
     def __post_init__(self) -> None:
         if self.band <= 0 or self.boss <= 0:
@@ -1021,6 +1030,7 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
             corner_length=float(slide_joint.get("corner_length", 20.0)),
             station_inset=float(slide_joint.get("station_inset", 5.0)),
             screw=str(slide_joint.get("screw", "M3")),
+            head=str(slide_joint.get("head", "button")),
         ),
         chain=SlideChain(
             pitch=float(slide_chain.get("pitch", 10.0)),
@@ -1105,6 +1115,7 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
             station_inset=float(chassis_joint_raw.get("station_inset", 6.5)),
             side_inset=float(chassis_joint_raw.get("side_inset", 4.5)),
             screw=str(chassis_joint_raw.get("screw", "M3")),
+            head=str(chassis_joint_raw.get("head", "button")),
         ),
         merged_boss=MergedBoss(**{k: float(v) for k, v in (raw.get("merged_boss") or {}).items()}),
         edges=Edges(**{k: float(v) for k, v in (raw.get("edges") or {}).items()}),

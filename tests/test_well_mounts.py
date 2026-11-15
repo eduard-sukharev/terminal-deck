@@ -232,8 +232,9 @@ def test_the_screw_is_a_derived_stock_length(data, mounts):
     assert mounts.screw_length == 4
     assert mounts.screw_engagement == pytest.approx(2.5)
     # The head is the library's, and a 1.5 mm plate cannot recess it.
-    assert mounts.head_diameter == pytest.approx(screw.head_diameter)
-    assert mounts.head_depth == pytest.approx(screw.head_depth)
+    bolt_head = fasteners.head(_screw(config), "cap")
+    assert mounts.head_diameter == pytest.approx(bolt_head.diameter)
+    assert mounts.head_depth == pytest.approx(bolt_head.depth)
     assert (
         mounts.plate_bottom - mounts.head_depth
         < budget.chassis_joint.parting_z

@@ -398,6 +398,23 @@ def test_every_band_post_keeps_its_band_and_carries_a_45_degree_cap(data, pieces
             )
 
 
+def test_the_band_posts_stay_inside_the_bezel_outer_shell(data, pieces):
+    """The Bezel's outside draws in above the band, so the caps are cut to it.
+
+    The posts stand in the perimeter wall and their caps grow upward from the
+    band, but the wall above them is drafted (the shell narrows toward the
+    face panel) and its corners are chopped. A cap left as a straight prism
+    pokes through both, so every post's cap is trimmed to the outer shell.
+    """
+    config, _, _, frame = data
+    bezel = pieces["screen_lid_bezel"][0]
+    outer = ScreenLid(config, frame)._outer_shell()
+    outside = ch.cut(bezel, outer)
+    assert ch.volume_mm3(outside) == pytest.approx(0.0, abs=1e-6), (
+        f"{ch.volume_mm3(outside):.2f} mm^3 of the Bezel sits outside its shell"
+    )
+
+
 def test_sections_are_cut_on_each_parts_own_staggered_seam(data, pieces):
     """ADR-0015: the Tray and Deck (and Bezel and Back) never share a Seam."""
     from geometry.split import split_part

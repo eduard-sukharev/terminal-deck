@@ -51,6 +51,7 @@ class Chassis:
 
     def build_tray(self):
         """The lower bowl: drafted walls, floor, station columns, screws."""
+        from geometry import head_recess
         from utilities import cad_helpers as ch
         from utilities.fasteners import screw as screw_spec
 
@@ -109,9 +110,11 @@ class Chassis:
         # diameter at the plane.
         body = ch.union(body, *[self._column(station) for station in joint.stations])
 
-        # The screw: clearance through the column, countersunk from below.
+        # The screw: a clearance hole through the column, its ordinary button
+        # head seated in a keyhole recess cut into the floor, ramp pointing
+        # away from the nearest wall (ADR-0018).
         spec = screw_spec(joint.screw.size)
-        csk = joint.countersink
+        recess = joint.recess
         holes = []
         for station in joint.stations:
             through = ch.translate(
@@ -120,13 +123,15 @@ class Chassis:
                 station.y,
                 z1 / 2.0,
             )
-            cone = ch.translate(
-                ch.frustum_centered(csk.diameter, spec.clearance, csk.depth),
-                station.x,
-                station.y,
-                csk.depth / 2.0,
+            keyhole = head_recess.build_cutter(
+                recess,
+                normal=station.normal,
+                mouth=station.mouth_chamfer,
+                x=station.x,
+                y=station.y,
+                z0=0.0,
             )
-            holes.extend((through, cone))
+            holes.extend((through, keyhole))
         body = ch.cut(body, *holes)
 
         # ADR-0006: the Seam's glued-filament pins, grown into the half before

@@ -431,7 +431,7 @@ def test_a_cap_beyond_the_parting_headroom_is_rejected():
     })
     other_components = dict(components)
     other_components["keyboard"] = other
-    with pytest.raises(ValueError, match="Parting"):
+    with pytest.raises(ValueError, match="grip|Parting"):
         _budget(config, other_components)
 
 

@@ -39,7 +39,8 @@ slide:
     corner_clearance: 0.5    # corner post <-> Rod clamp
     corner_length: 20.0      # corner post along the side wall
     station_inset: 5.0       # station centre from the lid's outer edge
-    screw: M3                # countersunk from the Back's outer face
+    screw: M3                # driven from the Back's outer face
+    head: button             # ordinary button head (ISO 7380) in a keyhole recess
 
   bearing:                   # LM...LUU linear bushing (one per rod)
     model: LM6UU

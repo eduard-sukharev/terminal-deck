@@ -184,26 +184,41 @@ class ScreenLid:
 
         # Band posts: the four corners (outboard of the Rod clamps) and a square
         # pad at each long-side station, both merged into the perimeter wall.
+        # They keep their full depth over the band, where the insert sits, and
+        # are capped at the band's top by the 45 degree support their face-down
+        # print needs (see `_band_post`).
         posts = []
         for sx in (-1, 1):
             for sy in (-1, 1):
                 x0, x1 = joint.post_x
                 y0, y1 = joint.post_y
-                post = ch.box_centered(abs(x1 - x0), abs(y1 - y0), z1 - z0)
+                if sx < 0:
+                    x0, x1 = -x1, -x0
+                if sy < 0:
+                    y0, y1 = -y1, -y0
                 posts.append(
-                    ch.translate(
-                        post,
-                        sx * (x0 + x1) / 2.0,
-                        sy * (y0 + y1) / 2.0,
-                        (z0 + z1) / 2.0,
+                    self._band_post(
+                        x0,
+                        x1,
+                        y0,
+                        y1,
+                        free_x=(sx > 0, sx < 0),
+                        free_y=(sy > 0, sy < 0),
                     )
                 )
         for station in joint.edge_stations:
             # `station_inset` puts the pad's outer half inside the wall, so the
             # pad and the perimeter wall merge into one solid post.
-            pad = ch.box_centered(joint.boss, joint.boss, z1 - z0)
+            half = joint.boss / 2.0
             posts.append(
-                ch.translate(pad, station.x, station.y, (z0 + z1) / 2.0)
+                self._band_post(
+                    station.x - half,
+                    station.x + half,
+                    station.y - half,
+                    station.y + half,
+                    free_x=(True, True),
+                    free_y=(station.y > 0, station.y < 0),
+                )
             )
         body = ch.union(body, *posts)
 
@@ -246,6 +261,28 @@ class ScreenLid:
         # ADR-0006: the Seam's pins hang from the front panel's inner face.
         body = self._add_seam_pins(body, "screen_lid_bezel")
         return ch.clean(body)
+
+    def _band_post(self, x0, x1, y0, y1, free_x, free_y):
+        """One band post: the screw's block plus its 45 degree support cap.
+
+        The Bezel prints face down, its front panel on the bed, so the band is
+        the *last* thing printed. A post that simply stopped at the band's top
+        would print its flat top as a bare ledge hanging off the wall. The cap
+        carries that ledge at 45 degrees into the wall the post is merged into
+        (`free_x`/`free_y` name the cavity-facing sides); the post below it
+        keeps its full footprint, so the insert stays buried in the same block
+        of material.
+        """
+        from utilities import cad_helpers as ch
+
+        f = self.frame
+        z0, z1 = f.band_z0, f.band_z1
+        post = ch.box_centered(x1 - x0, y1 - y0, z1 - z0)
+        post = ch.translate(
+            post, (x0 + x1) / 2.0, (y0 + y1) / 2.0, (z0 + z1) / 2.0
+        )
+        cap = ch.support_cap((x0, x1, y0, y1), z1, free_x=free_x, free_y=free_y)
+        return ch.union(post, cap)
 
     def _add_seam_pins(self, body, name: str):
         """Grow the Seam's glued-filament pins into a half, before the split."""

@@ -1,7 +1,7 @@
 ---
 status: accepted
 amends: ADR-0010
-amended_by: ADR-0013, ADR-0014, ADR-0015, ADR-0016
+amended_by: ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017
 ---
 
 # The screen lid splits into a Bezel and a Back plate, joined by a prismatic band
@@ -45,7 +45,8 @@ Section to the *other* Back Section:
   band's underside; the band is 6.0 mm so 2 mm of material stays behind it.
   The band is solid all round (no vents; vents remain deferred).
 - Long-side stations sit at `x = ±width/6` on square **band pads** that merge
-  into the perimeter wall. They carry no extra material into the cavity.
+  into the perimeter wall. Below `band_z1` they carry no extra material into
+  the cavity; above it the print support cap does (ADR-0017).
 - Corner stations sit at `x = ±(width/2 - (insert/2 + boss_margin))`,
   `y = ±(lid_height/2 - station_inset)`.
 
@@ -83,6 +84,11 @@ the shipped width is 241.17 mm, `rod_x` is ±94.98 and the corner post spans
   derived inner chamfer (`cad_helpers.inner_corner_chamfer`), not cut square.
   A square cavity corner met the 4 mm outer chop in a knife edge on the 2 mm
   wall on all four corners.
+- **Amended by ADR-0017:** the posts stop at `band_z1` and are closed by a
+  45° support cap (`cad_helpers.support_cap`) instead of running up to the
+  panel. The Bezel prints face down, so a post's flat top would be a bare
+  ledge; the cap adds ≈ 4.2 cm³ against ≈ 15 cm³ for full-height columns, and
+  the posts keep their full depth over the band, where the insert sits.
 - The joint is a **plain butt** at `panel_inner_z`: ten screws locate it and
   the perimeter walls carry the load. There is no lap or tongue to print, and
   no undercut on either part. Both parts are flat-sliceable; `sections()` still

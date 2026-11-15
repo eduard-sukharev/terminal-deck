@@ -596,6 +596,105 @@ def extrude_profile_x(vertices_yz: list[tuple[float, float]], length: float) -> 
     return b3d.extrude(b3d.Face(wire), amount=length / 2.0, both=True)
 
 
+#: How far (mm) the support cap's blank runs past the height where its 45
+#: degree faces meet, so the boolean trims the top to a clean edge instead of
+#: leaving a zero-width face.
+_CAP_TRIM = 0.5
+
+
+def support_cap(
+    rect: tuple[float, float, float, float],
+    z0: float,
+    free_x: tuple[bool, bool] = (False, False),
+    free_y: tuple[bool, bool] = (False, False),
+) -> Any:
+    """The 45 degree cap a face-down printed boss needs under its flat top.
+
+    A boss that is merged into a wall and stops short of the part's ceiling
+    leaves a horizontal top face. Printed face down, that face is the boss's
+    *first* layer, with nothing under it but the wall it touches, so the
+    printer has to bridge a ledge instead of stacking on support (45 degrees
+    from vertical is the self-supporting limit). The cap is the material that
+    rides on the ledge: it tapers away from every **free** side (a side facing
+    the cavity) at 45 degrees until the taper runs out at the wall, so each
+    layer is carried by the one above it. A side merged into a wall stays
+    straight, and the boss keeps its full footprint below ``z0`` -- the cap
+    only replaces the ledge, it does not make the boss a full column.
+
+    Parameters
+    ----------
+    rect : tuple
+        The boss's footprint as ``(x0, x1, y0, y1)``; the cap stands on it.
+    z0 : float
+        The boss's top face -- the ledge the cap supports.
+    free_x, free_y : tuple[bool, bool]
+        Per axis, which side is free as ``(low side, high side)``. Two free
+        sides of one axis are tapered from both ends toward the middle.
+
+    Returns
+    -------
+    Shape
+        The cap solid standing on ``z0``, or an empty solid when every side is
+        merged into a wall. Union it into the boss before the shell booleans.
+    """
+    x0, x1, y0, y1 = rect
+    low_x, high_x = free_x
+    low_y, high_y = free_y
+    width, depth = x1 - x0, y1 - y0
+    # Where each axis' taper runs out: a single free side crosses the whole
+    # boss, two free sides of the same axis meet in the middle.
+    collapses = []
+    if low_x or high_x:
+        collapses.append(width if low_x != high_x else width / 2.0)
+    if low_y or high_y:
+        collapses.append(depth if low_y != high_y else depth / 2.0)
+    if not collapses:
+        return empty_solid()
+    height = min(collapses) + _CAP_TRIM
+    reach = width + depth + height + 10.0
+
+    body = box_centered(width, depth, height)
+    body = translate(body, (x0 + x1) / 2.0, (y0 + y1) / 2.0, z0 + height / 2.0)
+
+    def taper(edge: float, sign: int, along_x: bool) -> Any:
+        """The 45 degree half-space on the free side of the face at ``edge``.
+
+        ``sign`` is -1 for the low side and +1 for the high one: the face's
+        top edge rises into the boss, so the plane moves *inward* with height.
+        """
+        inner = edge - sign * height
+        outer = edge + sign * reach
+        other = (y0 - reach, y1 + reach) if along_x else (x0 - reach, x1 + reach)
+
+        def point(moving: float, fixed: float) -> tuple[float, float]:
+            return (moving, fixed) if along_x else (fixed, moving)
+
+        bottom = [
+            point(outer, other[0]),
+            point(edge, other[0]),
+            point(edge, other[1]),
+            point(outer, other[1]),
+        ]
+        top = [
+            point(outer, other[0]),
+            point(inner, other[0]),
+            point(inner, other[1]),
+            point(outer, other[1]),
+        ]
+        return loft_between(bottom, top, height, z=z0)
+
+    tools = []
+    if low_x:
+        tools.append(taper(x0, -1, along_x=True))
+    if high_x:
+        tools.append(taper(x1, 1, along_x=True))
+    if low_y:
+        tools.append(taper(y0, -1, along_x=False))
+    if high_y:
+        tools.append(taper(y1, 1, along_x=False))
+    return cut(body, *tools)
+
+
 # -- Face queries (printability, edge treatment) ------------------------------
 
 def faces(shape: Any) -> list[Any]:

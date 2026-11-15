@@ -309,6 +309,95 @@ def test_screen_lid_sections_rejoin(data, pieces):
         )
 
 
+def test_the_bezel_has_no_overhang_where_it_prints_face_down(data, pieces):
+    """The lid prints on its front face: no band post may hang a flat ledge.
+
+    The posts stop at the band's top, so -- printed face down -- their flat
+    tops are the print's first layers, with nothing under them but the wall.
+    Each one rises at 45 degrees into that wall instead (ADR-0011), so the
+    whole Bezel prints without support.
+    """
+    from geometry.printability import PrintOrientation, overhang_faces
+
+    bezel = pieces["screen_lid_bezel"][0]
+    found = overhang_faces(bezel, PrintOrientation((0.0, 0.0, 1.0)))
+    assert found == [], [
+        f"{face.area:.1f} mm^2 at {tuple(round(c, 1) for c in face.center)}"
+        for face in found
+    ]
+
+
+def test_every_band_post_keeps_its_band_and_carries_a_45_degree_cap(data, pieces):
+    """The support cap rides *on* the post: the post keeps its band's depth.
+
+    A full-height column would bury the whole 12.45 mm of cavity above the
+    band; the cap only closes the ledge, so the post still measures its full
+    footprint at the band, and above the ledge the material only starts `t`
+    further in than the free face at height `t` -- the 45 degree line.
+    """
+    _, _, _, frame = data
+    joint = frame.lid_joint
+    bezel = pieces["screen_lid_bezel"][0]
+    z1 = frame.band_z1
+    half = joint.boss / 2.0
+
+    # (name, plan rect, [(axis, free face, inward direction), ...])
+    posts = []
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            x0, x1 = sorted((sx * joint.post_x[0], sx * joint.post_x[1]))
+            y0, y1 = sorted((sy * joint.post_y[0], sy * joint.post_y[1]))
+            posts.append((
+                f"corner({sx:+d},{sy:+d})",
+                (x0, x1, y0, y1),
+                [
+                    ("x", x0 if sx > 0 else x1, float(sx)),
+                    ("y", y0 if sy > 0 else y1, float(sy)),
+                ],
+            ))
+    for station in joint.edge_stations:
+        rect = (
+            station.x - half,
+            station.x + half,
+            station.y - half,
+            station.y + half,
+        )
+        free_y = rect[2] if station.y > 0 else rect[3]
+        posts.append((
+            f"pad@{station.x:.2f},{station.y:.2f}",
+            rect,
+            [("x", rect[0], 1.0), ("y", free_y, 1.0 if station.y > 0 else -1.0)],
+        ))
+
+    for name, (x0, x1, y0, y1), free in posts:
+        cx, cy = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+        # The band is solid over the post's whole footprint, right up to the
+        # ledge the cap stands on (the insert bore is inside it).
+        assert _material_at(bezel, cx, cy, z1 - 0.3) > 0, f"{name}: hollow band"
+        for axis, face, inward in free:
+            t = 1.2
+            # Just inside the 45 degree face: solid ...
+            inside = face + inward * (t + 0.4)
+            solid = _material_at(
+                bezel,
+                inside if axis == "x" else cx,
+                inside if axis == "y" else cy,
+                z1 + t,
+            )
+            assert solid > 0, f"{name}: no cap off the {axis} free face"
+            # ... and nothing above the band nearer that face than the line.
+            outside = face + inward * (t - 0.8)
+            air = _material_at(
+                bezel,
+                outside if axis == "x" else cx,
+                outside if axis == "y" else cy,
+                z1 + t,
+            )
+            assert air == pytest.approx(0.0, abs=1e-9), (
+                f"{name}: material past the 45 degree line off the {axis} face"
+            )
+
+
 def test_sections_are_cut_on_each_parts_own_staggered_seam(data, pieces):
     """ADR-0015: the Tray and Deck (and Bezel and Back) never share a Seam."""
     from geometry.split import split_part

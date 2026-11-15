@@ -301,6 +301,19 @@ Gotchas:
   by the layout; the frame raises if the placement disagrees. The guard is a
   separate printed target (`fpc_guard`), tape-bonded to the display's back; its
   underside is what the head must clear.
+- **The Bezel's band posts are capped at 45°, not run up to the panel
+  (ADR-0017).** The Bezel prints face down (front panel on the bed), so the
+  band is printed last and a post that stopped at `band_z1` would print its
+  flat top as a bare ledge on the wall. The four corner posts and the six
+  long-side pads keep their **full depth over the 6 mm band** (the M3 insert is
+  buried there) and are closed by `cad_helpers.support_cap`: from every
+  cavity-facing side the material rises at 45° until it meets the wall, so the
+  print grows out of the wall instead of bridging. That adds ≈ 4.2 cm³ over the
+  whole Bezel; a full-height column (the Deck's rule) would add ≈ 15 cm³ and
+  bury the display cavity. The caps sit in the free band (`|y| ≥ 50`) and never
+  cross the `x = −14` Seam. The Bezel must have **no overhang face** in its
+  print orientation — `tests/test_slider_case.py` scans the built solid with
+  `overhang_faces`, which is how the ledge was caught.
 - **The band is prismatic and solid** — vents stay out of it. The band joint
   has **twelve** stations, but the corner and long-wall stations sit `side_inset`
   (4.5) from the vertical walls (boss capped at 7.80); **five** of the

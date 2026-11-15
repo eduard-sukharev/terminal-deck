@@ -1170,6 +1170,9 @@ def well_mounts(
     screw_name = _screw_size(config)
     insert = fasteners.heat_insert(screw_name)
     bolt = fasteners.screw(screw_name)
+    # The head that seats on the plate's underside: the flush-mount silhouette
+    # the M2 screws are measured against (ADR-0014).
+    bolt_head = fasteners.head(screw_name, "cap")
     bore_margin = config.merged_boss.bore_margin
     boss_margin = config.chassis_joint.boss_margin
     # The screw's head seats on the plate's underside and its shank crosses the
@@ -1550,8 +1553,8 @@ def well_mounts(
         insert_hole_diameter=hole,
         insert_depth=insert.depth,
         clearance_hole_diameter=clearance_hole,
-        head_diameter=bolt.head_diameter,
-        head_depth=bolt.head_depth,
+        head_diameter=bolt_head.diameter,
+        head_depth=bolt_head.depth,
         bore_margin=bore_margin,
         boss_margin=boss_margin,
         ear_half_width=ear_half,

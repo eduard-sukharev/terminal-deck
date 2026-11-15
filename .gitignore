@@ -31,3 +31,4 @@ generated/renders/
 /central-unit.step
 /.obsidian/
 .~*.lock
+generated/.build-cache.json

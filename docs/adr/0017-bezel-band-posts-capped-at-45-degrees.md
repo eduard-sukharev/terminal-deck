@@ -34,6 +34,13 @@ of cavity under the display that the moving head and the FPC guard use.
   and which of its four sides are free, and its height is the offset at which
   the first taper runs out. `ScreenLid._band_post` is the one place a post is
   built, so the four corners and the six pads cannot drift apart.
+- Each post is **trimmed to the Bezel's outer shell** (`ScreenLid._outer_shell`,
+  the prismatic band plus the drafted face tray). The Bezel's outside is *not*
+  prismatic above the band: it draws in toward the face panel by the draft and
+  its vertical corners are chopped by `corners.chamfer`. A cap that grew
+  straight out of a post therefore left the shell at all four corners —
+  15.86 mm³ poking through the drafted wall and past the outer chamfer, a
+  straight-sided ridge standing out of a tapering surface.
 - The rest of the Bezel is unchanged: `band_z0`/`band_z1`, the stations, the
   insert holes, the window, the pocket and the Seam all read as before.
 
@@ -44,6 +51,10 @@ of cavity under the display that the moving head and the FPC guard use.
   `(0, 0, 1)`); the ten ledges were the only faces it reported, and they are
   gone. That is asserted as a test (`tests/test_slider_case.py`) rather than a
   data-layer HARD check, because it needs the built solid.
+- The Bezel is now entirely inside its own outer shell, which is asserted
+  separately (`test_the_band_posts_stay_inside_the_bezel_outer_shell`): it is
+  the shell's surface the caps end on, so no post can stand proud of the
+  drafted wall or the chamfered corner.
 - The added material is ≈ **4.2 cm³** over the whole Bezel (four corner caps at
   1.02 cm³, six pad caps at ≈ 0.09 cm³ once the part inside the wall is
   discounted) against ≈ 15 cm³ for full-height columns.

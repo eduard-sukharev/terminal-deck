@@ -55,11 +55,14 @@ boss design, build-volume checks).
 
 ```bash
 make data                    # data layer only (config → components → layout → validation)
-make data-slider             # slider data stage (budget + slider checks)
-make slider                  # slider CAD + exports (first-generation shell)
 make all                     # full CAD + exports (STEP/STL/SVG/glTF to generated/)
+make chassis                 # Tray + Deck + their left/right Sections (no lid)
+make screen_lid              # Bezel + Back + their left/right Sections (no chassis)
+make chassis_tray            # one piece + its Sections, e.g. chassis_deck,
+make screen_lid_bezel        #   screen_lid_back (each builds nothing else)
 make test                    # pytest
 make check                   # py_compile all modules (run after `make data`)
+make rebuild                 # force a full rebuild (ignores the build cache)
 make clean                   # remove generated files and __pycache__
 
 # equivalent direct invocations
@@ -79,6 +82,20 @@ chassis and screen lid.
 **Edge treatment runs per Section** (after the lossless rejoin check): OCC can
 segfault on a chamfer, so `cad_helpers` runs each attempt in a child process
 (`utilities/_cad_worker.py`); a failing edge is skipped with a SOFT warning.
+
+**Builds are incremental** (`utilities/build_cache.py`). Every exported target
+is fingerprinted from the inputs that can move it — the pipeline sources (frame,
+budget, placements), the `config/` tree and the layout recipe, plus the modules
+that build that piece (`PART_SOURCES`) — and its exports are reused when the
+fingerprint and all three artifacts (STEP/STL/glTF) are unchanged: the solid is
+neither built nor written. So editing `case/screen_lid.py` rebuilds the lid, its
+Sections and the assemblies that embed it, and leaves the chassis alone; a
+no-change `make all` takes seconds instead of minutes. The cache is
+`generated/.build-cache.json` (git-ignored); `make rebuild` / `NO_CACHE=1` /
+`--no-cache` force a rebuild and still refresh it, `--metrics` bypasses reuse
+(it needs every selected target built), and `make clean` removes it. Sections
+fingerprint together with their whole piece, and the assembled targets
+(`assembly`, `assembly_opened`) depend on both halves.
 
 **Selective build targets** (`--targets`, comma-separated), implemented set:
 
@@ -308,12 +325,16 @@ Gotchas:
   long-side pads keep their **full depth over the 6 mm band** (the M3 insert is
   buried there) and are closed by `cad_helpers.support_cap`: from every
   cavity-facing side the material rises at 45° until it meets the wall, so the
-  print grows out of the wall instead of bridging. That adds ≈ 4.2 cm³ over the
-  whole Bezel; a full-height column (the Deck's rule) would add ≈ 15 cm³ and
-  bury the display cavity. The caps sit in the free band (`|y| ≥ 50`) and never
-  cross the `x = −14` Seam. The Bezel must have **no overhang face** in its
-  print orientation — `tests/test_slider_case.py` scans the built solid with
-  `overhang_faces`, which is how the ledge was caught.
+  print grows out of the wall instead of bridging. Every post is then **cut to
+  `_outer_shell()`** — the Bezel's outside is drafted above the band and its
+  corners are chopped, so an unclipped cap pokes through both at all four
+  corners. That adds ≈ 4.2 cm³ over the whole Bezel; a full-height column (the
+  Deck's rule) would add ≈ 15 cm³ and bury the display cavity. The caps sit in
+  the free band (`|y| ≥ 50`) and never cross the `x = −14` Seam. The Bezel must
+  have **no overhang face** in its print orientation and nothing outside its
+  outer shell — `tests/test_slider_case.py` scans the built solid with
+  `overhang_faces` and subtracts the shell, which is how the ledge and then the
+  protruding caps were caught.
 - **The band is prismatic and solid** — vents stay out of it. The band joint
   has **twelve** stations, but the corner and long-wall stations sit `side_inset`
   (4.5) from the vertical walls (boss capped at 7.80); **five** of the

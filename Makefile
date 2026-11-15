@@ -8,12 +8,26 @@
 #                   #   (Tray/Deck and their left/right Sections)
 #   make screen_lid # screen-lid shell + display + driver AND its cuts
 #                   #   (Bezel/Back and their left/right Sections)
+#   make chassis_tray       # one chassis piece AND its left/right Sections
+#   make chassis_deck       #   (neither builds the screen lid)
+#   make screen_lid_bezel   # one lid piece AND its left/right Sections
+#   make screen_lid_back    #   (neither builds the chassis)
 #   make slide      # guide rods + LM...LUU bearings
 #   make keyboard_plate  # bare switch plate AND its left/right Sections
 #   make assembly   # closed assembly
 #   make assembly_opened  # open pose (lid slid by the travel)
 #   make components # per-component debug STLs only
 #   make build TARGETS=assembly,chassis  # selected targets
+#
+# Builds are incremental: every target is fingerprinted from its inputs (the
+# pipeline sources, the config tree, the layout recipe and the modules that
+# build that piece) and its exports are reused when nothing moved. Editing one
+# piece rebuilds that piece and the assemblies that embed it, nothing else;
+# `make all` with no changes takes seconds. The cache lives in
+# generated/.build-cache.json; `make rebuild` ignores it and `make clean`
+# removes it.
+#   make rebuild    # force a full rebuild of $(TARGETS), ignoring the cache
+#   make build NO_CACHE=1  # same, per invocation
 #   make test       # run pytest
 #   make check      # py_compile all modules
 #   make render     # SVG (keyboard plate) + PNG previews of generated STLs
@@ -43,21 +57,34 @@ RENDER_ELEV ?= 45
 RENDER_AZIM ?= -90
 TARGETS  ?= all
 IGNORE_VALIDATION ?=
+NO_CACHE ?=
+CACHE_FILE ?= .build-cache.json
 
 # Convenience targets ship the whole part AND its printable cuts, matching what
 # `make all` produces for that sub-assembly (ADR-0015): the shell, its left/right
-# reference halves, and each real Section.
-CHASSIS_TARGETS  := chassis,chassis_left,chassis_right,chassis_tray,chassis_tray_left,chassis_tray_right,chassis_deck,chassis_deck_left,chassis_deck_right
-LID_TARGETS      := screen_lid,screen_lid_left,screen_lid_right,screen_lid_bezel,screen_lid_bezel_left,screen_lid_bezel_right,screen_lid_back,screen_lid_back_left,screen_lid_back_right
+# reference halves, and each real Section. `chassis` and `screen_lid` are
+# disjoint sets, so either half rebuilds without touching the other; the
+# per-piece targets (`chassis_tray`, `chassis_deck`, `screen_lid_bezel`,
+# `screen_lid_back`) go one level finer, again with their own Sections.
+TRAY_TARGETS     := chassis_tray,chassis_tray_left,chassis_tray_right
+DECK_TARGETS     := chassis_deck,chassis_deck_left,chassis_deck_right
+BEZEL_TARGETS    := screen_lid_bezel,screen_lid_bezel_left,screen_lid_bezel_right
+BACK_TARGETS     := screen_lid_back,screen_lid_back_left,screen_lid_back_right
+CHASSIS_TARGETS  := chassis,chassis_left,chassis_right,$(TRAY_TARGETS),$(DECK_TARGETS)
+LID_TARGETS      := screen_lid,screen_lid_left,screen_lid_right,$(BEZEL_TARGETS),$(BACK_TARGETS)
 PLATE_TARGETS    := keyboard_plate,keyboard_plate_left,keyboard_plate_right
 
-.PHONY: env env-remove render render_svg render_stl verify data data-slider slider all build test check clean display chassis screen_lid slide keyboard_plate assembly assembly_opened components
+.PHONY: env env-remove render render_svg render_stl verify data all build rebuild test check clean display chassis chassis_tray chassis_deck screen_lid screen_lid_bezel screen_lid_back slide keyboard_plate assembly assembly_opened components
 
 ifneq ($(strip $(IGNORE_VALIDATION)),)
 IGNORE_VALIDATION_FLAG := --ignore-validation
 else
 IGNORE_VALIDATION_FLAG :=
 endif
+
+# Recursive on purpose: `rebuild` sets NO_CACHE as a target-specific variable,
+# which only an expanded-at-recipe-time reference picks up.
+NO_CACHE_FLAG = $(if $(strip $(NO_CACHE)),--no-cache,)
 
 # Create the conda env only if it does not exist; stamp re-runs pip when requirements change.
 env: .env-stamp
@@ -78,43 +105,71 @@ data build test check render_svg render_stl: env
 data:
 	$(PYTHON) $(MAIN) --config $(CONFIG) --layout $(LAYOUT) --steps data $(IGNORE_VALIDATION_FLAG)
 
-# Explicit slider data stage (same as the default).
-data-slider:
-	$(PYTHON) $(MAIN) --config $(CONFIG) --layout slider --steps data $(IGNORE_VALIDATION_FLAG)
-
-# Slider CAD + exports (first-generation shell).
-slider:
-	$(PYTHON) $(MAIN) --config $(CONFIG) --layout slider --steps all --targets $(TARGETS) $(IGNORE_VALIDATION_FLAG)
+# One shared recipe: the convenience targets below assign TARGETS per goal and
+# run it themselves. A common `build` prerequisite would be made only once, so
+# `make chassis screen_lid` would silently skip the second target.
+define BUILD_CMD
+$(PYTHON) $(MAIN) --config $(CONFIG) --layout $(LAYOUT) --steps all --targets $(TARGETS) $(IGNORE_VALIDATION_FLAG) $(NO_CACHE_FLAG)
+endef
 
 build:
-	$(PYTHON) $(MAIN) --config $(CONFIG) --layout $(LAYOUT) --steps all --targets $(TARGETS) $(IGNORE_VALIDATION_FLAG)
+	$(BUILD_CMD)
+
+# Force a full rebuild of $(TARGETS) (or `make rebuild TARGETS=chassis`).
+rebuild: NO_CACHE = 1
+rebuild: build
 
 all: TARGETS = all
-all: build
+all: env
+	$(BUILD_CMD)
 
 display: TARGETS = display
-display: build
+display: env
+	$(BUILD_CMD)
 
 chassis: TARGETS = $(CHASSIS_TARGETS)
-chassis: build
+chassis: env
+	$(BUILD_CMD)
+
+chassis_tray: TARGETS = $(TRAY_TARGETS)
+chassis_tray: env
+	$(BUILD_CMD)
+
+chassis_deck: TARGETS = $(DECK_TARGETS)
+chassis_deck: env
+	$(BUILD_CMD)
 
 screen_lid: TARGETS = $(LID_TARGETS)
-screen_lid: build
+screen_lid: env
+	$(BUILD_CMD)
+
+screen_lid_bezel: TARGETS = $(BEZEL_TARGETS)
+screen_lid_bezel: env
+	$(BUILD_CMD)
+
+screen_lid_back: TARGETS = $(BACK_TARGETS)
+screen_lid_back: env
+	$(BUILD_CMD)
 
 slide: TARGETS = slide
-slide: build
+slide: env
+	$(BUILD_CMD)
 
 keyboard_plate: TARGETS = $(PLATE_TARGETS)
-keyboard_plate: build
+keyboard_plate: env
+	$(BUILD_CMD)
 
 assembly: TARGETS = assembly
-assembly: build
+assembly: env
+	$(BUILD_CMD)
 
 assembly_opened: TARGETS = assembly_opened
-assembly_opened: build
+assembly_opened: env
+	$(BUILD_CMD)
 
 components: TARGETS = components
-components: build
+components: env
+	$(BUILD_CMD)
 
 test:
 	$(PYTHON) -m pytest
@@ -154,5 +209,6 @@ verify:
 
 clean:
 	rm -rf $(GENERATED)/step/*.step $(GENERATED)/stl/*.stl $(GENERATED)/svg/*.svg $(GENERATED)/gltf/*.gltf
+	rm -f $(GENERATED)/$(CACHE_FILE)
 	rm -rf $(GENERATED)/png
 	rm -rf __pycache__ */__pycache__ */*/__pycache__

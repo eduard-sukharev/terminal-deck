@@ -60,6 +60,11 @@ conda activate cyberdeck
 
 # generate the build (STEP + STL + SVG)
 python main.py --config config/default.yaml --steps all
+
+# builds are incremental: a target is reused when its sources, the config and
+# its exports are unchanged (see utilities/build_cache.py), so re-running only
+# rebuilds what moved. `--no-cache` (or `make rebuild`) forces a full rebuild,
+# and `make clean` drops the cache along with the exports.
 ```
 
 ## Status
@@ -72,8 +77,8 @@ The target form is a **slider** (ADR-0009/0010): a 140 mm closed face height,
 a screen lid sliding on two guide rods over a chassis, and a 40% keyboard
 revealed by the slide. The **data skeleton and the first-generation CAD shell**
 are implemented: `python main.py --layout slider --steps data` derives and
-validates the 140/56/283 budget from the real components, and `make all` /
-`make slider` builds and exports the chassis, screen lid, guide rods, printed
+validates the 140/56/283 budget from the real components, and `make all`
+builds and exports the chassis, screen lid, guide rods, printed
 Rod clamps and Bearing clamps, and both the closed and open assembly (the lid,
 rods and Rod clamps slid by the travel) as STEP/STL/glTF, each shell piece split
 into two Sections on its own staggered Seam (ADR-0015) and registered by

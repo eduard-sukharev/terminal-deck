@@ -19,6 +19,7 @@ import datetime
 import json
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
 
@@ -32,6 +33,7 @@ from components.usb_breakout import UsbBreakout
 from geometry.ribs import rib_height
 from layouts import LAYOUTS, make_layout
 from layouts.layout_constrained import ConstraintLayout
+from utilities.build_cache import CACHE_FILE_NAME
 from utilities.config_loader import Config, load_config
 from utilities.file_metadata import apply as apply_fs_metadata
 from utilities.validation import ValidationReport, run_all
@@ -159,6 +161,7 @@ class BuildPipeline:
         targets: str,
         ignore_validation: bool,
         metrics_path: str | None = None,
+        use_cache: bool = True,
     ) -> None:
         """The slider's data stage: budget, checks and the placement envelope.
 
@@ -219,7 +222,7 @@ class BuildPipeline:
             return
         self._run_slider_cad(
             config, components, placements, budget, targets,
-            ignore_validation, metrics_path,
+            ignore_validation, metrics_path, use_cache,
         )
 
     def _run_slider_cad(
@@ -231,6 +234,7 @@ class BuildPipeline:
         targets: str,
         ignore_validation: bool,
         metrics_path: str | None = None,
+        use_cache: bool = True,
     ) -> None:
         """Build and export the first-generation slider case (issue #3)."""
         from assemblies.assembly import Assembly, select_placements
@@ -243,125 +247,14 @@ class BuildPipeline:
             build_linear_bearing,
             build_rod_clamp,
         )
-        from exports import EXPORTERS
+        from exports import EXPORTERS, GENERATED_DIR
         from utilities import cad_helpers as ch
+        from utilities.build_cache import BuildCache
 
         ch.require_cad()
         frame = SliderFrame.from_data(config, budget, components, placements)
-        chassis = Chassis(config, frame)
-        chassis_tray = chassis.build_tray()
-        chassis_deck = chassis.build_deck()
-        chassis_shell = ch.make_compound([chassis_tray, chassis_deck])
-
-        lid = ScreenLid(config, frame)
-        lid_bezel = lid.build_bezel()
-        lid_back = lid.build_back()
-        lid_shell = ch.make_compound([lid_bezel, lid_back])
-        # The FPC guard is a separate printed plate, bonded to the display's
-        # back: build it in the display's frame, then place it on the panel.
-        guard = ch.translate(
-            lid.build_fpc_guard(), frame.display_x, frame.display_y, frame.display_z0
-        )
-
-        rods = [
-            ch.translate(
-                build_guide_rod(config.slide.rod.diameter, frame.rod_length),
-                side * frame.rod_x,
-                frame.rod_y,
-                frame.rod_z,
-            )
-            for side in (-1, 1)
-        ]
-        rod_clamps = [
-            ch.translate(
-                build_rod_clamp(
-                    config.slide.rod.diameter,
-                    frame.rod_raise,
-                    frame.rod_clamp_len,
-                    frame.rod_clamp_height,
-                    frame.rod_clamp_width,
-                    config.slide.rod_clamp.screw,
-                    frame.rod_clamp_screw_span,
-                    config.slide.rod_clamp.set_screw,
-                ),
-                side * frame.rod_x,
-                center_y,
-                frame.panel_inner_z,
-            )
-            for side in (-1, 1)
-            for center_y in frame.rod_clamp_y
-        ]
-        bearing_clamps = [
-            ch.translate(
-                build_bearing_clamp(
-                    frame.bearing_outer,
-                    config.slide.clamp_wall,
-                    frame.rod_raise,
-                    frame.clamp_len,
-                    frame.foot_length,
-                    frame.foot_thickness,
-                    frame.foot_top,
-                    config.slide.bearing_clamp.screw,
-                    config.slide.bearing_clamp.screw_span_y,
-                    config.slide.bearing_clamp.corner_chamfer,
-                    config.slide.bearing_clamp.top_chamfer,
-                ),
-                side * frame.rod_x,
-                frame.clamp_center_y,
-                frame.panel_inner_z,
-            )
-            for side in (-1, 1)
-        ]
-        bearings = [
-            ch.translate(
-                build_linear_bearing(
-                    frame.bearing_outer, frame.bearing_bore, frame.bearing_length
-                ),
-                side * frame.rod_x,
-                frame.clamp_center_y,
-                frame.rod_z,
-            )
-            for side in (-1, 1)
-        ]
-        rods_compound = ch.make_compound(rods)
-        rod_clamps_compound = ch.make_compound(rod_clamps)
-        bearings_compound = ch.make_compound(bearings)
-        bearing_clamps_compound = ch.make_compound(bearing_clamps)
-        fixed_hardware = ch.make_compound(bearings + bearing_clamps)
-        slide = ch.make_compound(rods + rod_clamps + bearings + bearing_clamps)
-
-        assembly = Assembly(placements, config)
-        role_map = {id(component): role for role, component in components.items()}
-        chassis_roles = ("keyboard", "sbc", "controller")
-        lid_roles = ("display", "driver")
-        chassis_parts = select_placements(
-            placements, {components[r] for r in chassis_roles if r in components}
-        )
-        lid_parts = select_placements(
-            placements, {components[r] for r in lid_roles if r in components}
-        )
-        chassis_with_parts = ch.make_compound(
-            [chassis_shell] + [assembly.build_subset([p]) for p in chassis_parts]
-        )
-        lid_with_parts = ch.make_compound(
-            [lid_shell, rods_compound, rod_clamps_compound, guard]
-            + [assembly.build_subset([p]) for p in lid_parts]
-        )
-        assembly_solid = ch.make_compound(
-            [chassis_with_parts, lid_with_parts, fixed_hardware]
-        )
-        travel = budget.travel
-        assembly_opened = ch.make_compound(
-            [
-                chassis_with_parts,
-                ch.translate(lid_with_parts, 0.0, travel, 0.0),
-                fixed_hardware,
-            ]
-        )
-
-        plate = components["keyboard"].build_plate()
+        wall = config.wall.thickness
         split = config.slide.split
-        from geometry.split import split_part
 
         if "keyboard_plate" in split:
             print(
@@ -377,9 +270,9 @@ class BuildPipeline:
                     "the Back plate) separately"
                 )
 
-        wall = config.wall.thickness
-
         def sections_of(name: str, shape, depth: float):
+            from geometry.split import split_part
+
             spec = split.get(name)
             if spec is None:
                 raise SystemExit(
@@ -393,91 +286,356 @@ class BuildPipeline:
                 )
             return pieces
 
-        # ADR-0015: each shell piece has its own Seam, so the Tray/Deck and
-        # Bezel/Back pairs are staggered instead of sharing one cut.
-        tray_left, tray_right = sections_of("chassis_tray", chassis_tray, frame.depth)
-        deck_left, deck_right = sections_of("chassis_deck", chassis_deck, frame.depth)
-        bezel_left, bezel_right = sections_of(
-            "screen_lid_bezel", lid_bezel, frame.lid_height
-        )
-        back_left, back_right = sections_of(
-            "screen_lid_back", lid_back, frame.lid_height
-        )
-        # The whole-half reference exports are compounds of the real pieces, so
-        # they match what actually prints.
-        chassis_left = ch.make_compound([tray_left, deck_left])
-        chassis_right = ch.make_compound([tray_right, deck_right])
-        lid_left = ch.make_compound([bezel_left, back_left])
-        lid_right = ch.make_compound([bezel_right, back_right])
-        plate_left, plate_right = components["keyboard"].plate_sections()
+        # Every solid is built on demand and memoised, so a target builds only
+        # what it exports: `make chassis` never touches the screen lid,
+        # `make screen_lid` never touches the chassis, and a per-piece target
+        # (chassis_tray, screen_lid_bezel, ...) builds just that piece and its
+        # Sections.
+        memory: dict[str, object] = {}
 
-        seam = components["keyboard"].plate_model().seam
-        print(
-            "[pipeline] keyboard plate Seam, front to back: "
-            + " -> ".join(
-                f"({x:.2f}, {y:.2f})"
-                for x, y in seam.polyline(components["keyboard"].plate_model().metadata.height)
-            )
+        def once(key: str, build_fn):
+            if key not in memory:
+                memory[key] = build_fn()
+            return memory[key]
+
+        assembly = Assembly(placements, config)
+        role_map = {id(component): role for role, component in components.items()}
+        chassis_roles = ("keyboard", "sbc", "controller")
+        lid_roles = ("display", "driver")
+        chassis_parts = select_placements(
+            placements,
+            {components[r] for r in chassis_roles if r in components},
         )
+        lid_parts = select_placements(
+            placements, {components[r] for r in lid_roles if r in components}
+        )
+
+        # --- chassis pieces ---------------------------------------------------
+        def chassis_obj():
+            return once("_chassis", lambda: Chassis(config, frame))
+
+        def tray():
+            return once("chassis_tray", lambda: chassis_obj().build_tray())
+
+        def deck():
+            return once("chassis_deck", lambda: chassis_obj().build_deck())
+
+        def tray_sections():
+            return once(
+                "_tray_sections",
+                lambda: sections_of("chassis_tray", tray(), frame.depth),
+            )
+
+        def deck_sections():
+            return once(
+                "_deck_sections",
+                lambda: sections_of("chassis_deck", deck(), frame.depth),
+            )
+
+        def chassis_shell():
+            return once(
+                "_chassis_shell", lambda: ch.make_compound([tray(), deck()])
+            )
+
+        # --- screen lid pieces ------------------------------------------------
+        def lid_obj():
+            return once("_lid", lambda: ScreenLid(config, frame))
+
+        def bezel():
+            return once("screen_lid_bezel", lambda: lid_obj().build_bezel())
+
+        def back():
+            return once("screen_lid_back", lambda: lid_obj().build_back())
+
+        def bezel_sections():
+            return once(
+                "_bezel_sections",
+                lambda: sections_of(
+                    "screen_lid_bezel", bezel(), frame.lid_height
+                ),
+            )
+
+        def back_sections():
+            return once(
+                "_back_sections",
+                lambda: sections_of("screen_lid_back", back(), frame.lid_height),
+            )
+
+        def lid_shell():
+            return once("_lid_shell", lambda: ch.make_compound([bezel(), back()]))
+
+        def guard():
+            # The FPC guard is a separate printed plate, bonded to the
+            # display's back: build it in the display's frame, then place it on
+            # the panel.
+            return once(
+                "fpc_guard",
+                lambda: ch.translate(
+                    lid_obj().build_fpc_guard(),
+                    frame.display_x,
+                    frame.display_y,
+                    frame.display_z0,
+                ),
+            )
+
+        # --- guide hardware ---------------------------------------------------
+        def rod_clamp_part():
+            return once(
+                "rod_clamp",
+                lambda: build_rod_clamp(
+                    config.slide.rod.diameter,
+                    frame.rod_raise,
+                    frame.rod_clamp_len,
+                    frame.rod_clamp_height,
+                    frame.rod_clamp_width,
+                    config.slide.rod_clamp.screw,
+                    frame.rod_clamp_screw_span,
+                    config.slide.rod_clamp.set_screw,
+                ),
+            )
+
+        def bearing_clamp_part():
+            return once(
+                "bearing_clamp",
+                lambda: build_bearing_clamp(
+                    frame.bearing_outer,
+                    config.slide.clamp_wall,
+                    frame.rod_raise,
+                    frame.clamp_len,
+                    frame.foot_length,
+                    frame.foot_thickness,
+                    frame.foot_top,
+                    config.slide.bearing_clamp.screw,
+                    config.slide.bearing_clamp.screw_span_y,
+                    config.slide.bearing_clamp.corner_chamfer,
+                    config.slide.bearing_clamp.top_chamfer,
+                ),
+            )
+
+        def rods():
+            return once(
+                "_rods",
+                lambda: [
+                    ch.translate(
+                        build_guide_rod(
+                            config.slide.rod.diameter, frame.rod_length
+                        ),
+                        side * frame.rod_x,
+                        frame.rod_y,
+                        frame.rod_z,
+                    )
+                    for side in (-1, 1)
+                ],
+            )
+
+        def rod_clamps():
+            return once(
+                "_rod_clamps",
+                lambda: [
+                    ch.translate(
+                        rod_clamp_part(),
+                        side * frame.rod_x,
+                        center_y,
+                        frame.panel_inner_z,
+                    )
+                    for side in (-1, 1)
+                    for center_y in frame.rod_clamp_y
+                ],
+            )
+
+        def bearings():
+            return once(
+                "_bearings",
+                lambda: [
+                    ch.translate(
+                        build_linear_bearing(
+                            frame.bearing_outer,
+                            frame.bearing_bore,
+                            frame.bearing_length,
+                        ),
+                        side * frame.rod_x,
+                        frame.clamp_center_y,
+                        frame.rod_z,
+                    )
+                    for side in (-1, 1)
+                ],
+            )
+
+        def bearing_clamps():
+            return once(
+                "_bearing_clamps",
+                lambda: [
+                    ch.translate(
+                        bearing_clamp_part(),
+                        side * frame.rod_x,
+                        frame.clamp_center_y,
+                        frame.panel_inner_z,
+                    )
+                    for side in (-1, 1)
+                ],
+            )
+
+        def rods_compound():
+            return once("_rods_compound", lambda: ch.make_compound(rods()))
+
+        def rod_clamps_compound():
+            return once(
+                "_rod_clamps_compound", lambda: ch.make_compound(rod_clamps())
+            )
+
+        def bearings_compound():
+            return once("_bearings_compound", lambda: ch.make_compound(bearings()))
+
+        def bearing_clamps_compound():
+            return once(
+                "_bearing_clamps_compound",
+                lambda: ch.make_compound(bearing_clamps()),
+            )
+
+        def fixed_hardware():
+            return once(
+                "_fixed_hardware",
+                lambda: ch.make_compound(bearings() + bearing_clamps()),
+            )
+
+        def slide():
+            return once(
+                "slide",
+                lambda: ch.make_compound(
+                    rods() + rod_clamps() + bearings() + bearing_clamps()
+                ),
+            )
+
+        # --- sub-assemblies ---------------------------------------------------
+        def chassis_with_parts():
+            return once(
+                "chassis",
+                lambda: ch.make_compound(
+                    [chassis_shell()]
+                    + [assembly.build_subset([p]) for p in chassis_parts]
+                ),
+            )
+
+        def lid_with_parts():
+            return once(
+                "screen_lid",
+                lambda: ch.make_compound(
+                    [
+                        lid_shell(),
+                        rods_compound(),
+                        rod_clamps_compound(),
+                        guard(),
+                    ]
+                    + [assembly.build_subset([p]) for p in lid_parts]
+                ),
+            )
+
+        def assembly_solid():
+            return once(
+                "assembly",
+                lambda: ch.make_compound(
+                    [chassis_with_parts(), lid_with_parts(), fixed_hardware()]
+                ),
+            )
+
+        def assembly_opened():
+            return once(
+                "assembly_opened",
+                lambda: ch.make_compound(
+                    [
+                        chassis_with_parts(),
+                        ch.translate(lid_with_parts(), 0.0, budget.travel, 0.0),
+                        fixed_hardware(),
+                    ]
+                ),
+            )
+
+        def display():
+            return once(
+                "display",
+                lambda: ch.make_compound(
+                    [assembly.build_subset([p]) for p in lid_parts]
+                ),
+            )
+
+        # --- keyboard plate ---------------------------------------------------
+        def plate():
+            return once(
+                "keyboard_plate", lambda: components["keyboard"].build_plate()
+            )
+
+        def plate_sections():
+            def build():
+                model = components["keyboard"].plate_model()
+                print(
+                    "[pipeline] keyboard plate Seam, front to back: "
+                    + " -> ".join(
+                        f"({x:.2f}, {y:.2f})"
+                        for x, y in model.seam.polyline(model.metadata.height)
+                    )
+                )
+                return components["keyboard"].plate_sections()
+
+            return once("_plate_sections", build)
 
         parts = {
             "assembly": assembly_solid,
             "assembly_opened": assembly_opened,
             "chassis": chassis_with_parts,
-            "chassis_left": chassis_left,
-            "chassis_right": chassis_right,
-            "chassis_tray": chassis_tray,
-            "chassis_tray_left": tray_left,
-            "chassis_tray_right": tray_right,
-            "chassis_deck": chassis_deck,
-            "chassis_deck_left": deck_left,
-            "chassis_deck_right": deck_right,
+            "chassis_left": lambda: once(
+                "chassis_left",
+                lambda: ch.make_compound(
+                    [tray_sections()[0], deck_sections()[0]]
+                ),
+            ),
+            "chassis_right": lambda: once(
+                "chassis_right",
+                lambda: ch.make_compound(
+                    [tray_sections()[1], deck_sections()[1]]
+                ),
+            ),
+            "chassis_tray": tray,
+            "chassis_tray_left": lambda: tray_sections()[0],
+            "chassis_tray_right": lambda: tray_sections()[1],
+            "chassis_deck": deck,
+            "chassis_deck_left": lambda: deck_sections()[0],
+            "chassis_deck_right": lambda: deck_sections()[1],
             "screen_lid": lid_with_parts,
-            "screen_lid_left": lid_left,
-            "screen_lid_right": lid_right,
-            "screen_lid_bezel": lid_bezel,
-            "screen_lid_bezel_left": bezel_left,
-            "screen_lid_bezel_right": bezel_right,
-            "screen_lid_back": lid_back,
-            "screen_lid_back_left": back_left,
-            "screen_lid_back_right": back_right,
+            "screen_lid_left": lambda: once(
+                "screen_lid_left",
+                lambda: ch.make_compound(
+                    [bezel_sections()[0], back_sections()[0]]
+                ),
+            ),
+            "screen_lid_right": lambda: once(
+                "screen_lid_right",
+                lambda: ch.make_compound(
+                    [bezel_sections()[1], back_sections()[1]]
+                ),
+            ),
+            "screen_lid_bezel": bezel,
+            "screen_lid_bezel_left": lambda: bezel_sections()[0],
+            "screen_lid_bezel_right": lambda: bezel_sections()[1],
+            "screen_lid_back": back,
+            "screen_lid_back_left": lambda: back_sections()[0],
+            "screen_lid_back_right": lambda: back_sections()[1],
             "slide": slide,
             "fpc_guard": guard,
-            "rod_clamp": build_rod_clamp(
-                config.slide.rod.diameter,
-                frame.rod_raise,
-                frame.rod_clamp_len,
-                frame.rod_clamp_height,
-                frame.rod_clamp_width,
-                config.slide.rod_clamp.screw,
-                frame.rod_clamp_screw_span,
-                config.slide.rod_clamp.set_screw,
-            ),
-            "bearing_clamp": build_bearing_clamp(
-                frame.bearing_outer,
-                config.slide.clamp_wall,
-                frame.rod_raise,
-                frame.clamp_len,
-                frame.foot_length,
-                frame.foot_thickness,
-                frame.foot_top,
-                config.slide.bearing_clamp.screw,
-                config.slide.bearing_clamp.screw_span_y,
-                config.slide.bearing_clamp.corner_chamfer,
-                config.slide.bearing_clamp.top_chamfer,
-            ),
+            "rod_clamp": rod_clamp_part,
+            "bearing_clamp": bearing_clamp_part,
             "keyboard_plate": plate,
-            "keyboard_plate_left": plate_left,
-            "keyboard_plate_right": plate_right,
-            "display": ch.make_compound(
-                [assembly.build_subset([p]) for p in lid_parts]
-            ),
+            "keyboard_plate_left": lambda: plate_sections()[0],
+            "keyboard_plate_right": lambda: plate_sections()[1],
+            "display": display,
         }
 
         tokens = [token.strip() for token in targets.split(",") if token.strip()]
         if "all" in tokens:
             tokens = list(parts) + ["components"]
-        selected: dict[str, object] = {}
+
+        # Selection is by name; the solid is only built when the target is
+        # stale (see the export loop below), so an unchanged piece costs nothing.
+        builders: dict[str, Callable[[], object]] = {}
         for token in tokens:
             if token == "components":
                 # Only the components the slider actually places. The battery
@@ -489,17 +647,17 @@ class BuildPipeline:
                 for role, component in components.items():
                     if role not in placed_roles:
                         continue
-                    try:
-                        selected[f"component_{role}"] = component.build()
-                    except NotImplementedError:
-                        continue
+                    builders[f"component_{role}"] = (
+                        lambda c=component: c.build()
+                    )
             elif token.startswith("comp:"):
                 role = token.split(":", 1)[1]
                 if role not in components:
                     raise ValueError(f"unknown component role {role!r}")
-                selected[f"component_{role}"] = components[role].build()
+                component = components[role]
+                builders[f"component_{role}"] = lambda c=component: c.build()
             elif token in parts:
-                selected[token] = parts[token]
+                builders[token] = parts[token]
             else:
                 raise ValueError(
                     f"unknown slider target {token!r}; expected one of "
@@ -522,96 +680,129 @@ class BuildPipeline:
             "keyboard_plate_right",
         )
         volume = (220.0, 220.0, 256.0)
-        failures = []
-        for name in printable:
-            if name not in selected:
-                continue
-            x, y, z = ch.bounding_box_mm(selected[name])
-            ok = x <= volume[0] + 1e-6 and y <= volume[1] + 1e-6 and z <= volume[2] + 1e-6
-            print(
-                f"[pipeline] {name}: {x:.1f} x {y:.1f} x {z:.1f} mm "
-                f"{'fits' if ok else 'EXCEEDS'} the build volume"
-            )
-            if not ok:
-                failures.append(name)
-        if failures and not ignore_validation:
-            raise SystemExit(
-                f"[pipeline] aborted: Sections exceed the build volume: {failures}"
-            )
 
-        gltf_assembly = assembly.build_colored(
-            placements=placements,
-            role_map=role_map,
-            extra_parts=[
-                ("chassis_tray", chassis_tray),
-                ("chassis_deck", chassis_deck),
-                ("screen_lid_bezel", lid_bezel),
-                ("screen_lid_back", lid_back),
-                ("guide_rod", rods_compound),
-                ("rod_clamp", rod_clamps_compound),
-                ("fpc_guard", guard),
-                ("linear_bearing", bearings_compound),
-                ("bearing_clamp", bearing_clamps_compound),
-            ],
-        )
-        gltf_chassis = assembly.build_colored(
-            placements=chassis_parts,
-            role_map=role_map,
-            extra_parts=[
-                ("chassis_tray", chassis_tray),
-                ("chassis_deck", chassis_deck),
-                ("linear_bearing", bearings_compound),
-                ("bearing_clamp", bearing_clamps_compound),
-            ],
-        )
-        gltf_lid = assembly.build_colored(
-            placements=lid_parts,
-            role_map=role_map,
-            extra_parts=[
-                ("screen_lid_bezel", lid_bezel),
-                ("screen_lid_back", lid_back),
-                ("guide_rod", rods_compound),
-                ("rod_clamp", rod_clamps_compound),
-                ("fpc_guard", guard),
-            ],
-        )
+        # The four assembled targets get a per-component coloured glTF; every
+        # other target exports its solid as-is.
+        def gltf_shape(name: str, solid):
+            if name == "assembly":
+                return assembly.build_colored(
+                    placements=placements,
+                    role_map=role_map,
+                    extra_parts=[
+                        ("chassis_tray", tray()),
+                        ("chassis_deck", deck()),
+                        ("screen_lid_bezel", bezel()),
+                        ("screen_lid_back", back()),
+                        ("guide_rod", rods_compound()),
+                        ("rod_clamp", rod_clamps_compound()),
+                        ("fpc_guard", guard()),
+                        ("linear_bearing", bearings_compound()),
+                        ("bearing_clamp", bearing_clamps_compound()),
+                    ],
+                )
+            if name == "assembly_opened":
+                open_transform = {
+                    id(components[role]): _move_y
+                    for role in ("display", "driver")
+                    if role in components
+                }
+                return assembly.build_colored(
+                    placements=placements,
+                    role_map=role_map,
+                    transform=open_transform,
+                    extra_parts=[
+                        ("chassis_tray", tray()),
+                        ("chassis_deck", deck()),
+                        ("screen_lid_bezel", _move_y(bezel())),
+                        ("screen_lid_back", _move_y(back())),
+                        ("guide_rod", _move_y(rods_compound())),
+                        ("rod_clamp", _move_y(rod_clamps_compound())),
+                        ("fpc_guard", _move_y(guard())),
+                        ("linear_bearing", bearings_compound()),
+                        ("bearing_clamp", bearing_clamps_compound()),
+                    ],
+                )
+            if name == "chassis":
+                return assembly.build_colored(
+                    placements=chassis_parts,
+                    role_map=role_map,
+                    extra_parts=[
+                        ("chassis_tray", tray()),
+                        ("chassis_deck", deck()),
+                        ("linear_bearing", bearings_compound()),
+                        ("bearing_clamp", bearing_clamps_compound()),
+                    ],
+                )
+            if name == "screen_lid":
+                return assembly.build_colored(
+                    placements=lid_parts,
+                    role_map=role_map,
+                    extra_parts=[
+                        ("screen_lid_bezel", bezel()),
+                        ("screen_lid_back", back()),
+                        ("guide_rod", rods_compound()),
+                        ("rod_clamp", rod_clamps_compound()),
+                        ("fpc_guard", guard()),
+                    ],
+                )
+            return solid
 
         def _move_y(solid):
             return ch.translate(solid, 0.0, budget.travel, 0.0)
 
-        open_transform = {
-            id(components[role]): _move_y
-            for role in ("display", "driver")
-            if role in components
-        }
-        gltf_opened = assembly.build_colored(
-            placements=placements,
-            role_map=role_map,
-            transform=open_transform,
-            extra_parts=[
-                ("chassis_tray", chassis_tray),
-                ("chassis_deck", chassis_deck),
-                ("screen_lid_bezel", _move_y(lid_bezel)),
-                ("screen_lid_back", _move_y(lid_back)),
-                ("guide_rod", _move_y(rods_compound)),
-                ("rod_clamp", _move_y(rod_clamps_compound)),
-                ("fpc_guard", _move_y(guard)),
-                ("linear_bearing", bearings_compound),
-                ("bearing_clamp", bearing_clamps_compound),
-            ],
+        # A target is reused when its inputs and its three exports are unchanged:
+        # nothing is built and nothing is written, so editing one piece only
+        # rebuilds that piece (and the assemblies that embed it).
+        cache = BuildCache(
+            GENERATED_DIR / CACHE_FILE_NAME,
+            reuse=use_cache and metrics_path is None,
         )
-        gltf_special = {
-            "assembly": gltf_assembly,
-            "assembly_opened": gltf_opened,
-            "chassis": gltf_chassis,
-            "screen_lid": gltf_lid,
-        }
+        if use_cache and metrics_path is not None:
+            print(
+                "[pipeline] geometry cache disabled: --metrics needs every "
+                "selected target built"
+            )
 
         provenance = self._provenance()
         metrics: dict[str, object] = {}
         if metrics_path is not None:
             from utilities.metrics import shape_metrics
-        for name, solid in selected.items():
+
+        reused = 0
+        for name, build in builders.items():
+            artifacts = [
+                EXPORTERS[fmt]().output_path(f"cyberdeck_{name}")
+                for fmt in ("step", "stl", "gltf")
+            ]
+            if cache.is_fresh(name, artifacts):
+                reused += 1
+                print(f"[pipeline] {name}: unchanged, keeping its exports")
+                continue
+
+            try:
+                solid = build()
+            except NotImplementedError:
+                continue
+            if solid is None:
+                continue
+
+            if name in printable:
+                x, y, z = ch.bounding_box_mm(solid)
+                fits = (
+                    x <= volume[0] + 1e-6
+                    and y <= volume[1] + 1e-6
+                    and z <= volume[2] + 1e-6
+                )
+                print(
+                    f"[pipeline] {name}: {x:.1f} x {y:.1f} x {z:.1f} mm "
+                    f"{'fits' if fits else 'EXCEEDS'} the build volume"
+                )
+                if not fits and not ignore_validation:
+                    raise SystemExit(
+                        "[pipeline] aborted: Section exceeds the build "
+                        f"volume: {name}"
+                    )
+
             if metrics_path is not None:
                 metrics[name] = shape_metrics(solid)
             x, y, z = ch.bounding_box_mm(solid)
@@ -623,15 +814,24 @@ class BuildPipeline:
                 exporter = EXPORTERS[fmt]()
                 exporter.metadata = provenance
                 path = exporter.output_path(f"cyberdeck_{name}")
-                obj = gltf_special.get(name, solid) if fmt == "gltf" else solid
+                obj = gltf_shape(name, solid) if fmt == "gltf" else solid
                 exporter.export(obj, path)
                 if path.exists() and not apply_fs_metadata(provenance, path):
                     print(f"[pipeline] warning: could not write fs metadata for {path}")
                 print(f"[pipeline] exported {name} -> {path}")
+            cache.record(name, artifacts)
+            cache.save()
+
+        if reused:
+            print(
+                f"[pipeline] {reused} of {len(builders)} target(s) unchanged "
+                f"since the last build ({CACHE_FILE_NAME})"
+            )
+
         if metrics_path is not None:
             metrics["_pipeline"] = {
                 "layout": self.layout_name,
-                "targets": sorted(selected),
+                "targets": sorted(builders),
             }
             Path(metrics_path).write_text(
                 json.dumps(metrics, indent=2, sort_keys=True)
@@ -659,6 +859,7 @@ class BuildPipeline:
         targets: str = "all",
         ignore_validation: bool = False,
         metrics_path: str | None = None,
+        use_cache: bool = True,
     ) -> None:
         """Execute the pipeline up to ``steps``.
 
@@ -689,6 +890,13 @@ class BuildPipeline:
             selected, every component solid) to this path. Used to record or
             check a golden-master geometry baseline across refactors; has no
             effect on the exported files themselves.
+        use_cache : bool
+            Reuse a target's exports when its inputs (the pipeline sources, the
+            configuration tree, the layout recipe and the modules that build
+            that piece) and its three artifacts are unchanged. Set this to
+            ``False`` to force a full rebuild (``--no-cache`` / ``make
+            rebuild``); it is also ignored when ``metrics_path`` is set, since
+            the metrics need every selected target built.
         """
         config = self.load_config()
         print(f"[pipeline] config: {self.config_path} ({self.topics})")
@@ -761,7 +969,7 @@ class BuildPipeline:
         if self.layout_name == "slider":
             self._run_slider_data(
                 config, components, placements, steps, targets,
-                ignore_validation, metrics_path,
+                ignore_validation, metrics_path, use_cache,
             )
             return
 
@@ -834,6 +1042,13 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
              "mass per target) to PATH. Used for golden-master regression "
              "checks, e.g. across the CadQuery -> build123d port.",
     )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="rebuild every selected target even when its inputs and exports "
+             "are unchanged (the incremental build cache lives in "
+             f"generated/{CACHE_FILE_NAME}).",
+    )
     return parser.parse_args(argv)
 
 
@@ -850,6 +1065,7 @@ def main(argv: list[str] | None = None) -> int:
             targets=args.targets,
             ignore_validation=args.ignore_validation,
             metrics_path=args.metrics,
+            use_cache=not args.no_cache,
         )
     except NotImplementedError as exc:
         print(f"[pipeline] CAD stage not yet implemented: {exc}", file=sys.stderr)

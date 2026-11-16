@@ -8,13 +8,15 @@ corners:
   chamfer: 4            # 45 deg chamfer on the outer case corners (chamfer-first, no fillets outside)
 
 draft:
-  angle: 7.0            # degrees from vertical on the X side walls: the Tray
-                        # widens from its base up to its prismatic band (the
-                        # Deck is prismatic), the Screen lid widens from its
-                        # face panel down to the back panel, so the two halves
-                        # are widest where they meet. The front and rear end
-                        # walls stay vertical (the guide span and rod end clamps
-                        # are pinned to the 140 mm face budget).
+  lid: 7.0              # degrees from vertical on the screen lid's X side
+                        # walls: the lid widens from its face panel down to the
+                        # back panel, so the two halves are widest where they
+                        # meet. The Tray's side walls are *vertical* (ADR-0019):
+                        # the accessory rail bolts to a flat, square face, and a
+                        # drafted wall would put the rail on a slope. The front
+                        # and rear end walls are vertical too (the guide span
+                        # and rod end clamps are pinned to the 140 mm face
+                        # budget); they leave the table with the base taper.
 
 clearance:
   shell: 0.35           # air gap between a component and the shell interior
@@ -42,20 +44,26 @@ parting:
   max: 20.0
 
 # Chassis Tray <-> Deck band joint (ADR-0012). The chassis splits at the
-# Parting plane; the band is split evenly around it: the Tray is drafted below
-# its half of the band (up to band_z0) and prismatic through it, the Deck is
-# prismatic all the way to the closed face. Twelve M3 screws are driven from
-# below through the Tray floor into heat-set inserts in the Deck's band: four
-# corners, three per long side, one per short side. The outer skin is plain:
-# no relief is cut into the band (ADR-0016).
+# Parting plane; the band is split evenly around it: the Tray is prismatic from
+# its base to the plane (ADR-0019 removed its draft), the Deck is prismatic all
+# the way to the closed face. Twelve M3 screws are driven from below through the
+# Tray floor into heat-set inserts in the Deck's band: four corners, three per
+# long side, one per short side. The outer skin is plain: no relief is cut into
+# the band (ADR-0016).
 chassis_joint:
   band: 6.0            # band split 3 mm each side of the Parting plane
   boss: 10.0           # insert boss diameter at the plane (capped per station)
   boss_margin: 1.5     # material between an insert hole and a free face
-  station_inset: 6.5   # station centre from a drafted (X) wall's outer face
+  station_inset: 6.5   # station centre from a vertical (X) wall's outer face
   side_inset: 4.5      # station centre from a vertical (front/rear) wall
   screw: M3            # driven from below into a heat-set insert
   head: button         # ordinary button head (ISO 7380) in a keyhole recess
+  taper_angle: 15.0    # base taper on the vertical front/rear walls: draft
+                       # angle from vertical (ADR-0019); runs from the table up
+                       # to the band's bottom, the cavity following so the wall
+                       # keeps its thickness; it dies into a pad at every
+                       # station so the head recesses keep their ring
+  taper_runout: 3.0    # how far that taper fades into a station pad
 
 # Merged boss (ADR 0003): a boss, column, standoff or lug whose outer surface is
 # closer than `threshold_factor * wall` to a wall face is fused into that wall

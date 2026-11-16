@@ -182,7 +182,7 @@ class ScreenLid:
         if cavity_z1 > z1:
             top_width = (
                 f.lid_face_width
-                + 2.0 * ch.draft_inset(f.draft_angle, f.lid_front)
+                + 2.0 * ch.draft_inset(f.lid_draft_angle, f.lid_front)
                 - 2.0 * wall
             )
             cavity = ch.union(

@@ -22,6 +22,7 @@ from typing import Any
 from routing.cable_routing import CONNECTOR_HDMI, MIN_BEND_RADIUS_MM
 
 from components.keycap_set import CAP_PLATE_GAP
+from geometry.base_taper import base_taper
 from geometry.chassis_joint import chassis_joint as chassis_band_joint
 from geometry.joint import lid_joint
 from utilities import fasteners
@@ -186,6 +187,7 @@ class SlideBudget:
     lid_joint: Any
     chassis_top: float
     chassis_joint: Any
+    base_taper: Any
     bearing_model: str
     bearing_length: float
     bearing_per_rod: int
@@ -485,17 +487,18 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
     )
     thickness = chassis_thickness + slide.lid_clearance + lid_thickness
 
-    # -- Width: the content plus the drafted side wall --------------------
+    # -- Width: the content plus the lid's drafted side wall --------------
     # The guide hardware is inboard now, so nothing but the display sets the
-    # width. The lid's X side walls are drafted: the cavity narrows from the
-    # prismatic band toward the face panel, so the side pod has to include the
-    # draft inset over the display's height.
+    # width. The *lid's* X side walls are drafted (the Tray's are vertical,
+    # ADR-0019): the cavity narrows from the prismatic band toward the face
+    # panel, so the side pod has to include the draft inset over the display's
+    # height. The allowance stays a lid term, never a chassis one.
     display_top = display_cavity + display.height
     cavity_z1 = lid_thickness - slide.lid_front  # the front panel's inner face
     taper_height = max(
         0.0, min(display_top, cavity_z1) - slide.joint.band
     )
-    draft_allowance = math.tan(math.radians(config.draft.angle)) * taper_height
+    draft_allowance = math.tan(math.radians(config.draft.lid)) * taper_height
     side_pod = wall + shell + draft_allowance
     # The keyboard plate is wider than the display (ADR-0014: it grew to bear
     # on the Well ring), so the Well plate is the width driver; the display is
@@ -509,7 +512,6 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
         depth=chassis_height,
         chassis_top=chassis_thickness,
         content_y1=-chassis_height / 2.0 + keyboard_top,
-        draft_angle=config.draft.angle,
         minimum_feature=config.material.minimum_feature,
         chamfer=config.corners.chamfer,
         parting=config.parting,
@@ -524,6 +526,9 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
             f"{chassis_band.parting_z:.2f} > plate_bottom {plate_z:.2f} "
             "(ADR-0014 requires the Parting below the plate)"
         )
+    # The base taper on the Tray's vertical end walls (ADR-0019): sized from
+    # the band joint's head recesses, which it has to step around.
+    taper = base_taper(config, chassis_band)
     # `usable_half` is the inner wall at the content's plane: what the layout
     # may fill before the shell clearance runs out.
     usable_half = width / 2.0 - side_pod
@@ -641,6 +646,7 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
         lid_joint=joint,
         chassis_top=chassis_thickness,
         chassis_joint=chassis_band,
+        base_taper=taper,
         bearing_model=bearing.model,
         bearing_length=bearing.length,
         bearing_per_rod=bearing.per_rod,

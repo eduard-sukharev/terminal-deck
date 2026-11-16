@@ -110,25 +110,20 @@ def _width_at(shape, z):
     return ch.bounding_box_mm(ch.intersect(shape, slab))[0]
 
 
-def test_side_walls_are_drafted_toward_the_closed_face(data, solids):
-    """The Tray widens from its base to its band; the Deck is prismatic."""
+def test_the_tray_is_prismatic_and_the_lid_is_drafted(data, solids):
+    """ADR-0019: the Tray's X walls are vertical; the lid keeps its draft.
+
+    The accessory rail bolts to the Tray's side face, so it must be flat and
+    square: the Tray is one width from the table to the closed face. The lid
+    still widens from its face panel down to the back panel -- it is the half
+    that tapers, and the two halves still match at the closed face.
+    """
     _, _, _, frame = data
     chassis, lid = solids
-    assert 5.0 <= frame.draft_angle <= 10.0
+    assert 5.0 <= frame.lid_draft_angle <= 10.0
 
-    c_base = _width_at(chassis, 0.5)
-    c_top = _width_at(chassis, frame.chassis_top - 0.5)
-    assert c_top > c_base + 1.0
-    taper_half = ch.draft_inset(frame.draft_angle, 0.5)
-    assert c_base == pytest.approx(
-        frame.chassis_base_width + 2.0 * taper_half, abs=0.1
-    )
-    # The Deck (from the Parting plane up) is prismatic: it stays at the
-    # closed-face width instead of flaring back out.
-    assert c_top == pytest.approx(frame.width, abs=0.1)
-    assert _width_at(chassis, frame.chassis_band_z0 + 0.5) == pytest.approx(
-        frame.width, abs=0.1
-    )
+    for z in (0.5, frame.chassis_band_z0 + 0.5, frame.chassis_top - 0.5):
+        assert _width_at(chassis, z) == pytest.approx(frame.width, abs=0.1)
 
     l_bottom = _width_at(lid, frame.lid_bottom + 0.5)
     l_top = _width_at(lid, frame.lid_bottom + frame.lid_thickness - 0.5)
@@ -140,18 +135,18 @@ def test_side_walls_are_drafted_toward_the_closed_face(data, solids):
     assert _width_at(lid, frame.band_z0 + 0.5) == pytest.approx(
         frame.width, abs=0.1
     )
+    taper_half = ch.draft_inset(frame.lid_draft_angle, 0.5)
     assert l_top == pytest.approx(
         frame.lid_face_width + 2.0 * taper_half, abs=0.1
     )
 
 
-def test_drafted_walls_keep_their_thickness(data, solids):
-    """The cavity follows the drafted outer face, so no wall thins out.
+def test_the_walls_keep_their_thickness(data, solids):
+    """The cavity is the outer skin offset by one wall at every height.
 
-    A cavity lofted between the nominal widths instead of the drafted ones
-    would eat the side walls toward the Deck: the probe just inside the
-    outer face must stay solid at every height and the probe a wall further
-    in must be in the cavity.
+    With the Tray prismatic (ADR-0019) the cavity cannot drift from the outer
+    face: the probe just inside the face stays solid and the probe a wall
+    further in is in the cavity.
     """
     config, _, _, frame = data
     chassis, _ = solids
@@ -168,11 +163,11 @@ def test_drafted_walls_keep_their_thickness(data, solids):
 
 
 def _chamfer_faces(shape):
-    """The flat 45 degree faces of the drafted outside corners.
+    """The flat 45 degree faces of the chamfered outside corners.
 
-    The drafted side walls tilt each chamfer slightly out of vertical, so the
-    test keys on the plan-view signature (equal |nx| and |ny|) rather than a
-    zero Z component.
+    The lid's drafted side walls tilt its chamfers slightly out of vertical,
+    so the test keys on the plan-view signature (equal |nx| and |ny|) rather
+    than a zero Z component.
     """
     found = []
     for face in ch.faces(shape):
@@ -205,8 +200,8 @@ def test_outer_corners_are_chamfered_not_filleted(data, solids):
     zdeck = frame.chassis_top - config.wall.thickness / 2
     for z in (zmid, zdeck):
         assert _material_at(chassis, hx - 0.3, hy - 0.3, z) == pytest.approx(0)
-    # The wall just inboard of the chamfer stays (at zmid the drafted outer
-    # face is already inside the nominal half-width, hence hx - 3.0).
+    # The wall just inboard of the chamfer stays (hx - 3.0 keeps clear of the
+    # 4 mm chop on the 2 mm wall).
     assert _material_at(chassis, hx - 3.0, hy - 6.0, zmid) > 0
 
     zc = frame.lid_bottom + frame.lid_thickness / 2

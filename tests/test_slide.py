@@ -82,9 +82,10 @@ def test_slider_layout_is_centred_on_the_chassis():
 # ── budget ─────────────────────────────────────────────────────────────
 
 
-def test_case_draft_is_configured_and_inside_the_requested_range():
+def test_lid_draft_is_configured_and_inside_the_requested_range():
     _, config, components, _, _ = _data()
-    assert 5.0 <= config.draft.angle <= 10.0
+    # ADR-0019: only the lid is drafted; the Tray's side walls are vertical.
+    assert 5.0 <= config.draft.lid <= 10.0
     budget = _budget(config, components)
     assert budget.draft_allowance > 0.0
     # The guide hardware is inboard, under the display, so the side pod is the
@@ -108,7 +109,8 @@ def test_width_derives_from_the_content_and_the_drafted_cavity():
     budget = _budget(config, components)
 
     # Every term of the side pod is derived: the draft inset follows the
-    # display's top height inside the tapered lid cavity.
+    # display's top height inside the tapered *lid* cavity (the Tray's X walls
+    # are vertical, ADR-0019, so no chassis draft enters the width).
     assert 0.0 < budget.draft_allowance < 3.0
     # The keyboard plate is the wider content now (ADR-0014: the plate grew to
     # bear on the Well ring), so it drives the width; the display is only the

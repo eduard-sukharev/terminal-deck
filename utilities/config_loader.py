@@ -71,21 +71,22 @@ class Corners:
 
 @dataclass(frozen=True)
 class Draft:
-    """Draft on the case's side walls (degrees from vertical).
+    """Draft on the screen lid's X side walls (degrees from vertical).
 
-    The Tray widens from its base up to its prismatic band (the Deck is
-    prismatic); the Screen lid widens
-    from its face panel down to the back panel, so the two halves are widest
-    where they meet. Only the X side walls are drafted: the front/rear end
+    The Tray's side walls are **vertical** (ADR-0019): the accessory rail bolts
+    to a flat, square face, and a drafted wall would put the rail on a slope.
+    The lid keeps its taper -- it widens from its face panel down to the back
+    panel, so the two halves are widest where they meet. The front/rear end
     walls stay vertical because the guide span and the rod end clamps are
-    pinned to the 140 mm face-height budget.
+    pinned to the 140 mm face-height budget; the Tray's end walls leave the
+    table with the base taper instead (``chassis_joint.taper_angle``).
     """
 
-    angle: float = 7.0
+    lid: float = 7.0
 
     def __post_init__(self) -> None:
-        if not 0.0 <= self.angle < 45.0:
-            raise ValueError("draft.angle must be in [0, 45) degrees")
+        if not 0.0 <= self.lid < 45.0:
+            raise ValueError("draft.lid must be in [0, 45) degrees")
 
 
 @dataclass(frozen=True)
@@ -454,18 +455,21 @@ class ChassisJoint:
     """The chassis Tray <-> Deck band joint (ADR-0012).
 
     The chassis splits at the Parting plane. The ``band`` is split evenly
-    around it: the Tray is drafted from its base up to ``band_z0`` and
-    prismatic from there to the plane; the Deck is prismatic all the way to
-    the closed face. Twelve M3 screws are driven from below into heat-set
-    inserts in the Deck's band, each head seated in a keyhole recess in the
-    Tray's floor (ADR-0018: ``head`` is the head kind the recess is sized for,
+    around it: the Tray is prismatic from its base to the plane (ADR-0019
+    removed its X draft) and the Deck is prismatic all the way to the closed
+    face. Twelve M3 screws are driven from below into heat-set inserts in the
+    Deck's band, each head seated in a keyhole recess in the Tray's floor
+    (ADR-0018: ``head`` is the head kind the recess is sized for,
     ``clearance.head`` the fit).
 
-    ``station_inset`` is measured from a drafted (X) wall's outer face: the
-    draft pulls the Tray's floor skin inward, so the column and its recess
-    need the extra room. ``side_inset`` is measured from a vertical
-    (front/rear) wall, where the keyboard plate sits one Well margin behind
-    the outer face and the insert boss has to stay clear of it.
+    ``station_inset`` and ``side_inset`` are both measured from a *vertical*
+    wall's outer face now: the X walls no longer pull the floor skin inward, so
+    a station's margin is a plain plan distance. ``taper_angle`` /
+    ``taper_runout`` size the base taper on the vertical front/rear walls
+    (ADR-0019): the taper runs from the table up to the band's bottom as a
+    draft (the cavity follows, so the wall keeps its thickness) and dies into
+    a pad at every station, so no head recess loses its ring and no column
+    stands proud of the tapered face.
     """
 
     band: float = 6.0
@@ -475,6 +479,8 @@ class ChassisJoint:
     side_inset: float = 4.5
     screw: str = "M3"
     head: str = "button"
+    taper_angle: float = 15.0
+    taper_runout: float = 3.0
 
     def __post_init__(self) -> None:
         if self.band <= 0 or self.boss <= 0:
@@ -483,6 +489,10 @@ class ChassisJoint:
             raise ValueError("chassis_joint.boss_margin must be positive")
         if self.station_inset <= 0 or self.side_inset <= 0:
             raise ValueError("chassis_joint insets must be positive")
+        if not 0.0 <= self.taper_angle < 45.0:
+            raise ValueError("chassis_joint.taper_angle must be in [0, 45) degrees")
+        if self.taper_runout <= 0.0:
+            raise ValueError("chassis_joint.taper_runout must be positive")
 
 
 @dataclass(frozen=True)
@@ -1116,6 +1126,8 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
             side_inset=float(chassis_joint_raw.get("side_inset", 4.5)),
             screw=str(chassis_joint_raw.get("screw", "M3")),
             head=str(chassis_joint_raw.get("head", "button")),
+            taper_angle=float(chassis_joint_raw.get("taper_angle", 15.0)),
+            taper_runout=float(chassis_joint_raw.get("taper_runout", 3.0)),
         ),
         merged_boss=MergedBoss(**{k: float(v) for k, v in (raw.get("merged_boss") or {}).items()}),
         edges=Edges(**{k: float(v) for k, v in (raw.get("edges") or {}).items()}),

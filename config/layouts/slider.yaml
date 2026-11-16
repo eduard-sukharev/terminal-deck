@@ -13,7 +13,7 @@
 
 constraints:
   # ── Enclosure hint. Width = the slide budget (the wider of the display and
-  #    keyboard plus the drafted side walls); depth
+  #    keyboard plus the lid's drafted side walls); depth
   #    = the slide budget's closed face (the lid's guide span), so the chassis
   #    rear wall is flush with the closed lid instead of the lid overhanging
   #    it. The hint only pins the wall-relative resolvers.

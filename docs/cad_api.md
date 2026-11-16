@@ -33,7 +33,7 @@ load configuration -> load components -> place layout -> validate placement
 | Method | Consumes | Produces |
 |--------|----------|----------|
 | `Chassis.build()` | config, frame | assembled chassis: Tray + Deck compound |
-| `Chassis.build_tray()` | config, frame | lower bowl: taper to `band_z0`, prismatic band, floor, screw columns |
+| `Chassis.build_tray()` | config, frame | lower bowl: prismatic walls, 15° base taper on the end walls, floor, straight screw columns (ADR-0019) |
 | `Chassis.build_deck()` | config, frame | purely prismatic Deck: keyboard Well, seats, insert bosses |
 | `Chassis.tray_sections()` / `deck_sections()` | — | each half's printable Sections, on that piece's configured Seam |
 | `ScreenLid.build()` | config, frame | assembled lid: Bezel + Back plate as a compound |

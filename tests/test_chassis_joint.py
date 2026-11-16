@@ -95,7 +95,6 @@ def test_stations_mirror_about_both_centreplanes(data):
 def test_parting_plane_and_band_are_derived(data):
     config, budget, frame, _ = data
     joint = budget.chassis_joint
-    draft = math.tan(math.radians(config.draft.angle))
     assert joint.parting_z == pytest.approx(frame.parting_z)
     assert joint.parting_z == pytest.approx(
         min(
@@ -107,12 +106,10 @@ def test_parting_plane_and_band_are_derived(data):
     assert joint.band_z0 == pytest.approx(joint.parting_z - joint.band / 2.0)
     assert joint.band_z1 == pytest.approx(joint.parting_z + joint.band / 2.0)
     assert joint.band_z1 < budget.chassis_top - config.wall_thickness
-    # The Deck (and therefore the band across the joint) is prismatic at the
-    # closed-face width; only the Tray below band_z0 is drafted.
+    # Both halves are prismatic (ADR-0019): the Tray no longer drafts inward,
+    # so the base and the band are the closed-face width.
     assert joint.band_width == pytest.approx(budget.width)
-    assert joint.base_width == pytest.approx(
-        budget.width - 2.0 * draft * joint.band_z0
-    )
+    assert joint.base_width == pytest.approx(budget.width)
     assert frame.chassis_base_width == pytest.approx(joint.base_width)
     assert frame.chassis_band_width == pytest.approx(joint.band_width)
 
@@ -126,7 +123,7 @@ def test_screw_reaches_the_insert(data):
     assert joint.screw.engagement <= joint.insert_depth
 
 
-def test_column_is_a_frustum_inside_the_floor_skin(data):
+def test_column_stays_inside_the_floor_skin(data):
     config, budget, _, _ = data
     joint = budget.chassis_joint
     minimum = config.material.minimum_feature
@@ -166,23 +163,51 @@ def test_tray_and_deck_meet_at_the_parting_plane(data, solids):
     )
 
 
-def test_tray_is_tapered_then_prismatic_and_the_deck_is_prismatic(data, solids):
-    config, _, frame, _ = data
+def test_the_tray_and_the_deck_are_prismatic(data, solids):
+    """ADR-0019: the Tray's X walls are vertical, so the silhouette is straight.
+
+    The only taper left on the Tray is the base draft on its end walls, and
+    that only leans the depth (the cavity follows, so the wall keeps its
+    thickness); the X silhouette is one width from the table to the closed
+    face.
+    """
+    config, budget, frame, _ = data
     tray, deck = solids
-    # Tray: drafted from the base to band_z0, prismatic from band_z0 to the
-    # Parting plane.
-    assert _width_at(tray, 0.5) == pytest.approx(
-        frame.chassis_base_width
-        + 2.0 * ch.draft_inset(config.draft.angle, 0.5),
-        abs=0.05,
-    )
-    assert _width_at(tray, frame.chassis_band_z0 + 0.5) == pytest.approx(
-        frame.width, abs=0.05
-    )
-    assert _width_at(tray, frame.chassis_band_z0 - 0.5) < frame.width - 0.05
+    taper = budget.base_taper
+    assert taper.height == pytest.approx(frame.chassis_band_z0)
+    assert taper.height < frame.parting_z
+    for z in (0.5, frame.chassis_band_z0 + 0.5, frame.parting_z - 0.5):
+        assert _width_at(tray, z) == pytest.approx(frame.width, abs=0.05)
     # Deck: one prismatic block, with no flare back out toward the face.
     for z in (frame.parting_z + 0.5, frame.chassis_top / 2.0 + 5.0, frame.chassis_top - 0.5):
         assert _width_at(deck, z) == pytest.approx(frame.width, abs=0.05)
+
+
+def test_the_tray_end_walls_leave_the_table_with_a_base_taper(data, solids):
+    """ADR-0019: the vertical end walls read as a taper up to the band.
+
+    Between the station pads the outer face leans out over ``taper.height``;
+    above it, and inside a pad, the face is the full depth again.
+    """
+    _, budget, frame, _ = data
+    tray, _ = solids
+    taper = budget.base_taper
+    half = frame.depth / 2.0
+    # A point on a taper run, clear of every stop circle.
+    x = sum(taper.segments[0]) / 2.0
+    z = taper.height / 2.0
+    face = taper.face_y(z)
+    assert face < half - 0.3
+    assert _material_at(tray, x, face - 0.4, z) > 0
+    assert _material_at(tray, x, face + 0.4, z) == pytest.approx(0)
+    # Above the taper the full depth is back.
+    assert _material_at(tray, x, half - 0.4, taper.height + 0.5) > 0
+    # The pads keep the full face at the table.
+    station = next(
+        s for s in budget.chassis_joint.stations
+        if abs(abs(s.y) - (half - budget.chassis_joint.side_inset)) < 1e-9
+    )
+    assert _material_at(tray, station.x, half - 0.4, taper.height / 2.0) > 0
 
 
 def test_tray_and_deck_are_valid_and_rejoin(solids):

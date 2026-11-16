@@ -173,9 +173,9 @@ carries four of the plate's eight M2 stations.
 _Avoid:_ "centre cut", "straight split".
 
 **Tray** — The Chassis's floor and walls (bosses, ribs, vents, cutouts) below
-the Parting plane: drafted from its base up to `band_z0`, then a prismatic
-half-band to the plane. Carries the twelve frustum columns the Deck's screws
-pass through into the Deck's insert bosses.
+the Parting plane: prismatic from its base to the plane (ADR-0019), with its
+vertical end walls leaving the table in a 15° base taper. Carries the twelve
+straight columns the Deck's screws pass through into the Deck's insert bosses.
 _Avoid:_ "base" (retired clamshell term).
 
 **Deck** — The Chassis's purely prismatic top half: the keyboard Well, the
@@ -186,8 +186,8 @@ bosses.
 **Parting plane** — The horizontal plane where the Deck meets the Tray,
 part-way up the Chassis walls, so the Deck has a flat face and a wall skirt.
 Across it a prismatic 6 mm band carries the joint, split 3 mm on each half:
-the side draft continues only below the Tray's half-band (the Deck is purely
-prismatic). Twelve M3 countersunk screws come up from below.
+both halves are prismatic (ADR-0019). Twelve M3 countersunk screws come up from
+below.
 _Avoid:_ "seam" for the Tray/Deck joint — a Seam joins Sections of one part.
 
 **Scallop** — A shallow (10 × 0.8 mm) relief cut into the outside wall at

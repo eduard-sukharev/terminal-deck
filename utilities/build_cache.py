@@ -55,6 +55,7 @@ PIPELINE_SOURCES: tuple[str, ...] = (
 _CHASSIS_SOURCES: tuple[str, ...] = (
     "case/chassis.py",
     "case/slider_frame.py",
+    "geometry/base_taper.py",
     "geometry/chassis_joint.py",
     "geometry/joint.py",
     "geometry/ribs.py",

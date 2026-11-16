@@ -1,7 +1,7 @@
 ---
 status: accepted
 amends: ADR-0003
-amended_by: ADR-0015, ADR-0016
+amended_by: ADR-0015, ADR-0016, ADR-0019
 ---
 
 # The chassis splits into a Tray and a Deck, joined at a prismatic band
@@ -23,6 +23,9 @@ The chassis now splits at the Parting plane like the lid's band joint:
   prismatic** all the way from the plane to the closed face (`32.3`). Only the
   lower half of the silhouette tapers — the Deck and the closed face stay
   straight. The front and rear (Y) walls are vertical, exactly as before.
+  *(ADR-0019 made the Tray's X walls vertical too, so both halves are now
+  prismatic and the base width equals the band width; the Tray's end walls
+  carry a 15° base chamfer with a pad at every station.)*
 - Because the band and the whole Deck are prismatic, the **band width is the
   full closed-face width** (`238.917` after ADR-0013; it was `292.392`), not a
   contracted width at the plane; the base is the drafted width at `band_z0`
@@ -66,7 +69,8 @@ longer mirror about the Y centreplane.
 
 - `station_inset` (6.5 mm) places a station from a **drafted X wall**: the
   draft pulls the floor skin inward, so the column's countersink needs the
-  extra room. `side_inset` (4.5 mm) places it from a **vertical front/rear
+  extra room. *(ADR-0019: the wall is vertical now, so this is a plain plan
+  distance and the floor skin is the band's skin.)* `side_inset` (4.5 mm) places it from a **vertical front/rear
   wall**, where the keyboard plate sits one Well margin inboard and the insert
   boss has to stay clear of it. The long-side stations also sit at `x =
   ±band_width/6`, clear of both the SBC's corners and the Well.
@@ -79,6 +83,9 @@ longer mirror about the Y centreplane.
   the tapered skin at `z = 0` and merge into the prismatic band wall above
   `band_z0`. At the drafted X-wall stations the floor only allows **Ø8.57**,
   growing to Ø10 at the plane. No clipping, no separate merged-boss pass.
+  *(ADR-0019: with every wall vertical, `base_boss == boss` — the columns are
+  straight, and this frustum path remains only for a station that is tighter at
+  the floor than at the band.)*
 
 ## The screw
 

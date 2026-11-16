@@ -4,7 +4,7 @@
 # printed Rod clamps; between the clamps a through-slot in the back panel lets
 # the Bearing clamps — printed clamps that straddle the panel and are seated in
 # the chassis deck — slide as the lid moves. The rods sit *under* the display
-# (ADR-0013), so the width is the content plus a thin drafted wall and the lid
+# (ADR-0013), so the width is the content plus the lid's thin drafted wall and the lid
 # thickness carries the moving head and a printed FPC guard. The face height is
 # the binding constraint, so every value here is checked against
 # `face_height_limit` by the data layer.

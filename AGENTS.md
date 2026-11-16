@@ -12,8 +12,9 @@ parametricity, reusability.
 
 > **Status.** `docs/form_factor.md`, `CONTEXT.md` and ADR-0009/0010/0011/0012
 > plus ADR-0013 (rods under the display), ADR-0014 (the walled Well and the
-> plate mounted to its lower faces) and ADR-0015 (per-piece staggered Section
-> Seams) define the slider. The data skeleton
+> plate mounted to its lower faces), ADR-0015 (per-piece staggered Section
+> Seams) and ADR-0019 (the Tray's vertical side walls and its end-wall base
+> taper) define the slider. The data skeleton
 > and the CAD shell are implemented: `--layout slider` (the only layout) derives
 > the budget and builds/exports the chassis (Tray + Deck, split at the band
 > joint), screen lid (Bezel + Back plate, split at the band joint), the printed
@@ -149,8 +150,9 @@ intuition. Wire-up lives in `main.py` (`BuildPipeline`, `run()`).
   solids at their placements; `case.slider_frame.SliderFrame` derives the
   world-frame dimensions from the layout + budget; `case.chassis.Chassis`
   builds the two halves at the Parting plane (ADR-0012): `build_tray()` is the
-  drafted bowl (taper from the base to `band_z0`, prismatic band to the plane)
-  and the twelve frustum screw columns;
+  prismatic bowl (ADR-0019: vertical X walls, a 15° base draft on the end
+  walls that runs up to the band's bottom and steps around the station pads —
+  `geometry/base_taper.py`) and the twelve straight screw columns;
   `build_deck()` is the purely prismatic Deck: the keyboard Well, the two
   bearing-clamp seats (merged seat blocks with foot pockets) and the insert
   bosses; `build()` returns their compound; `tray_sections()` /
@@ -169,7 +171,8 @@ intuition. Wire-up lives in `main.py` (`BuildPipeline`, `run()`).
   `geometry/*` hold the primitives (the two band joints live in
   `geometry/joint.py` and `geometry/chassis_joint.py`, the Well/plate pattern in
   `geometry/well_mounts.py`, the Seam cut in `geometry/split.py`, the Seam pins
-  in `geometry/seam_joint.py`). The drag-chain channel, vents and connector
+  in `geometry/seam_joint.py`, and the Tray's base taper in
+  `geometry/base_taper.py`). The drag-chain channel, vents and connector
   cutouts are the next refinement.
 - `geometry/well_mounts.py` is the single source for the Well and the plate's
   mounting pattern (ADR-0014): the plate frame (the keyboard's 180° placement),
@@ -304,14 +307,16 @@ Gotchas:
   wall, a seat wall or a station inset and `rod_x` follows — do not pin it. The
   slot, the Deck seats, the pockets, the Rod clamps and the lid band post all
   read `rod_x`.
-- **The width is the content plus the drafted side wall, nothing else.** The
-  content is now the **keyboard plate (233.25)**, not the 231 mm panel: it
+- **The width is the content plus the lid's drafted side wall, nothing else.**
+  The content is now the **keyboard plate (233.25)**, not the 231 mm panel: it
   bears on the Well ring, so it sets the case at **241.17 mm** =
-  233.25 + 2 × 3.96 side pod (wall 2.00 + shell 0.35 + draft 1.61). Nothing
+  233.25 + 2 × 3.96 side pod (wall 2.00 + shell 0.35 + lid draft 1.61). The
+  Tray's X walls are vertical (ADR-0019: the accessory rail bolts to them), so
+  no chassis draft enters the width. Nothing
   lives beside the keyboard: the lid band post is inboard of the cavity wall
   (`rod_x + rod_clamp.width/2 + corner_clearance`) and `slide.joint.corner_post`
-  is retired. The draft inset is measured over the display's height, not the
-  hardware envelope.
+  is retired. The lid's draft inset is measured over the display's height, not
+  the hardware envelope.
 - **The lid's thickness is the Z stack under the panel.** `head crown 9.0 +
   component gap 1.5 + sag 0.5 + FPC guard 1.6 = 12.6` cavity, so lid 24.45 and
   device 57.75. The display is placed at `panel_inner + budget.display_cavity`
@@ -345,11 +350,16 @@ Gotchas:
   behind the keyboard. At this width a Tray column at mid-side would run through
   the plate.
 - **The chassis splits at the Parting plane, band-only (ADR-0012).** The 6 mm
-  band is split 3 mm each side of `parting_z`: the Tray is drafted from its
-  base up to `band_z0` and prismatic from there to the plane, the Deck is
-  prismatic all the way to the closed face. The band width is therefore the
-  full closed-face width (`width`), and the base is the drafted width at
-  `band_z0`.
+  band is split 3 mm each side of `parting_z`, and **both halves are
+  prismatic** (ADR-0019 removed the Tray's draft): the band width, the base
+  width and the closed-face width are one number (`width`). The Tray's vertical
+  end walls carry a 15° base taper from the table up to the band's bottom
+  (`chassis_joint.taper_angle` / `taper_runout`, `geometry/base_taper.py`) —
+  a draft, so the cavity follows and the wall keeps its thickness —
+  suppressed inside a `Ø14.50` pad around every wall station so no head recess
+  loses its ring and no column stands proud. Its four HARD checks are
+  `chassis-taper-draft`, `-band`, `-pad`, `-stop` in
+  `utilities/slider_validation`.
   **Twelve** M3 × 18 come up from below (`parting_z − countersink` = 14.65 grip)
   into
   heat-set inserts in the Deck's band bosses; each boss is a **full-height
@@ -358,11 +368,13 @@ Gotchas:
   down and a boss that stopped at the insert (4 + 1.5 margin) would overhang
   off the band's wall. The two centreline long-wall stations are ADR-0015's Seam
   interlock (see below). The stations are sized per wall:
-  `station_inset` 6.5 from a drafted X wall (the floor skin pulls inward),
+  `station_inset` 6.5 from the vertical X wall,
   `side_inset` 4.5 from a vertical front/rear wall (the keyboard plate). The
   boss is capped at `min(10, 2·(surface − min_feature))` — the long sides only
-  afford **7.8 mm** — and the Tray column is a *frustum* down to what the floor
-  skin allows (≈ Ø8.57), never a full-diameter straight boss. The outer band
+  afford **7.8 mm** — and every wall is vertical, so the Tray column is a
+  straight boss of that diameter (`base_boss == boss`); `_column` keeps the
+  frustum path for a station whose floor margin is tighter than its band
+  margin. The outer band
   is **plain**: no relief is cut into it (ADR-0016 removed ADR-0012's
   scallops).
   Do not widen the insets: the 2.3 mm insert skin at the long sides and the
@@ -436,14 +448,16 @@ Gotchas:
   The at-Seam M2 stations' clearance is the named knob
   `keyboard.mounting.seam_slack: 4.0` (4.0 + ear 2.60 + min feature 0.60 = the
   pinned `seam_clearance` 7.20).
-- **The X side walls are drafted** (`draft.angle`, 5–10°): the Tray widens
-  from its base up to its band, and the lid widens from its face panel down to
-  the back panel; the Deck is prismatic, so both halves are widest at the
-  closed face. The front/rear end walls
-  stay vertical — drafting them would eat the rod end-clamp clearance inside
-  the 140 mm guide span. The slide budget adds `draft_allowance` to the side
-  pod so the guide hardware keeps its shell clearance as the lid cavity
-  narrows toward the face.
+- **Only the lid's X side walls are drafted** (`draft.lid`, 5–10°): it widens
+  from its face panel down to the back panel. The **Tray's X walls are
+  vertical** (ADR-0019: the accessory rail bolts to a flat, square face), and
+  so is the Deck, so the two halves are widest at the closed face and the Tray
+  is one width from the table up. The front/rear end walls
+  stay vertical too — drafting them would eat the rod end-clamp clearance inside
+  the 140 mm guide span — and the Tray's end walls leave the table with a 15°
+  base taper instead (`geometry/base_taper.py`). The slide budget adds the
+  lid's `draft_allowance` to the side pod so the guide hardware keeps its shell
+  clearance as the lid cavity narrows toward the face.
 - The face is flat and the keyboard has no slope: do not add a
   `deck.slope`-style angle or a tilting mount. The slide is pure +Y
   translation.

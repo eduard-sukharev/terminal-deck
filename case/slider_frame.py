@@ -54,7 +54,7 @@ class SliderFrame:
 
     width: float
     depth: float
-    draft_angle: float
+    lid_draft_angle: float
     chassis_base_width: float
     lid_face_width: float
     chassis_top: float
@@ -63,6 +63,7 @@ class SliderFrame:
     chassis_band_z1: float
     chassis_band_width: float
     chassis_joint: Any
+    base_taper: Any
     lid_height: float
     lid_bottom: float
     lid_thickness: float
@@ -169,12 +170,13 @@ class SliderFrame:
         joint = budget.lid_joint
         band_z0 = panel_inner_z
         band_z1 = panel_inner_z + joint.band
-        # X side-wall draft: the Tray is widest at its prismatic band, the lid
-        # widest at its back panel, so the two halves match at the closed face
-        # and taper away from it. The Deck and both joint bands are prismatic;
-        # only the Tray below its band and the lid above its band taper.
-        draft_angle = config.draft.angle
-        draft_tan = math.tan(math.radians(draft_angle))
+        # X side-wall draft: the Tray's are vertical (ADR-0019: the accessory
+        # rail needs a flat face), the lid's widen from the face panel down to
+        # the back panel, so the two halves match at the closed face. The Deck
+        # and both joint bands are prismatic; only the lid above its band
+        # tapers.
+        lid_draft_angle = config.draft.lid
+        draft_tan = math.tan(math.radians(lid_draft_angle))
         taper_height = lid_thickness - slide.lid_back - joint.band
         lid_face_width = budget.width - 2.0 * draft_tan * max(taper_height, 0.0)
         if min(chassis_base_width, lid_face_width) <= 0.0:
@@ -258,7 +260,7 @@ class SliderFrame:
         return cls(
             width=budget.width,
             depth=budget.chassis_height,
-            draft_angle=draft_angle,
+            lid_draft_angle=lid_draft_angle,
             chassis_base_width=chassis_base_width,
             lid_face_width=lid_face_width,
             chassis_top=chassis_top,
@@ -267,6 +269,7 @@ class SliderFrame:
             chassis_band_z1=chassis_band_z1,
             chassis_band_width=chassis_band_width,
             chassis_joint=chassis_joint,
+            base_taper=budget.base_taper,
             lid_height=budget.lid_height,
             lid_bottom=lid_bottom,
             lid_thickness=lid_thickness,

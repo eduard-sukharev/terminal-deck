@@ -26,7 +26,7 @@ interface is functional (accessories) and is not part of the printed shell.
 |---|---|---|
 | Face height (closed) | **140.00 mm, HARD** | travel + bearing + rod clamps + lid bezel |
 | Thickness | **57.75 mm, derived** | keyboard/SBC chassis + lid (head + guard + panel + driver) |
-| Width | **241.17 mm, derived** | keyboard plate 233.25 + a drafted side wall each side |
+| Width | **241.17 mm, derived** | keyboard plate 233.25 + the lid's drafted side wall each side |
 
 The thickness and width were revised by ADR-0013: the guide rods moved under the
 display, which removed the side pods (292.39 → 238.92) and added the moving
@@ -122,14 +122,18 @@ to tilt it.**
 * **Tray + Deck** at a horizontal Parting plane (ADR-0003): Tray = floor,
   walls, ribs, vents, connector cutouts; Deck = the top surface with the
   keyboard Well. The 6 mm joint band is split 3 mm on each half.
-* **Drafted side walls** — the X side walls taper at `draft.angle` (5–10°),
-  but only in the **Tray**, from its base up to `band_z0` (≈ 13 mm). The Tray
-  is prismatic from `band_z0` to the Parting plane, and the **Deck is purely
-  prismatic** all the way to the closed face, so the upper silhouette stays
-  straight. The lid is prismatic at its back panel and band, and tapers only
-  above them toward the face panel, so the two halves meet at the closed face
-  at the full width. The front/rear end walls stay vertical: the guide span
-  and rod end clamps are pinned to the 140 mm face budget.
+* **Vertical Tray walls, drafted lid** — the **Tray's X side walls are
+  vertical** (ADR-0019: the accessory rail bolts to a flat, square face), and
+  so is the **Deck** all the way to the closed face, so the chassis is one
+  width from the table up. The lid is the half that tapers: prismatic at its
+  back panel and band, and drafted at `draft.lid` (5–10°) only above them
+  toward the face panel, so the two halves meet at the closed face at the full
+  width. The front/rear end walls stay vertical on both halves: the guide span
+  and rod end clamps are pinned to the 140 mm face budget. The Tray's end walls
+  still read as a taper — a 15° base taper that runs from the table up to the
+  band's bottom, as a draft (the cavity follows, so the wall keeps its
+  thickness), dying into a pad at every band station
+  (`geometry/base_taper.py`).
 * **Keyboard Well** — a walled recess in the Deck: a 2.0 mm-thick ring of
   walls around a rectangular **Cutout**, descending from the Deck's top face
   (32.30) to the plate's top face (17.80), a 14.50 mm-deep Well. The keycaps
@@ -241,8 +245,8 @@ to tilt it.**
 * The lid's Back plate is screwed into the Bezel's band (ten countersunk
   M3 from the Back's outer face into heat-set inserts). The chassis splits the
   same way (ADR-0012): at the Parting plane a **prismatic band** carries the
-  joint, split 3 mm on each half. Only the Tray below `band_z0` is drafted
-  (7°); the Tray's half-band and the whole Deck are prismatic, and twelve
+  joint, split 3 mm on each half. Both halves are prismatic (ADR-0019; the
+  Tray's end walls carry a base taper only), and twelve
   countersunk M3 × 18 from below thread into heat-set inserts in the Deck's
   band bosses (four corners, three per long side incl. one on the centreline,
   one per short side). The outer band is plain — no relief is cut into it

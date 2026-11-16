@@ -534,27 +534,35 @@ Everything derives from this.
 
 # Draft
 
-The X side walls are drafted by `config.draft.angle` (5–10° from vertical).
-The Tray widens from its base up to its prismatic half-band; the Deck is
-prismatic all the way to the closed face. The Screen lid widens from its face
-panel down to the Back plate. The two halves are therefore widest where they
-meet on the closed face.
+Only the **Screen lid's** X side walls are drafted, by `config.draft.lid`
+(5–10° from vertical): the lid widens from its face panel down to the Back
+plate, so it is widest at the closed face.
 
-The chassis' 6 mm joint band is **prismatic on both halves** (ADR-0012), split
-3 mm each side of the Parting plane: the Tray's draft stops at `band_z0`, and
-the Deck carrying the keyboard Well is straight through to the face.
+The **Tray's X side walls are vertical** (ADR-0019): the accessory rail bolts
+to them, and a rail needs a flat, square face. The Deck is prismatic too, so
+the chassis is one width from the table to the closed face and the two halves
+still meet at full width. The chassis' 6 mm joint band is therefore prismatic
+on both halves (ADR-0012).
+
+The Tray's front/rear end walls are vertical as well, and they leave the table
+in a **base taper**: a `chassis_joint.taper_angle` (15°) draft that runs from
+the table up to the bottom of the joint band (`geometry/base_taper.py`,
+ADR-0019), so the slope stops 3 mm below the Parting plane. The cavity follows
+the same line, one wall in, so the wall keeps its thickness over the whole
+slope; the taper is suppressed inside a pad around every band station, which
+keeps the head recesses' 0.85 mm ring and swallows the station columns.
 
 The Screen lid's Back plate and its Band joint are **prismatic** (ADR-0011):
 the lid is at full width from `panel_outer_z` up to `band_z1`, and only the
 Bezel above the band tapers to the display face. That keeps the Bezel/Back
 joint in straight walls.
 
-Only the X side walls are drafted. The front and rear end walls stay vertical:
-the guide span and the rod end clamps are pinned to the 140 mm face-height
-budget, and drafting them would eat that clearance.
+The front and rear end walls stay vertical on the lid too: the guide span and
+the rod end clamps are pinned to the 140 mm face-height budget, and drafting
+them would eat that clearance.
 
-The slide budget adds `draft_allowance` to the side pod, so the display keeps
-its shell clearance as the lid cavity narrows toward the face. The guide
+The slide budget adds the lid's `draft_allowance` to the side pod, so the
+display keeps its shell clearance as the lid cavity narrows toward the face. The guide
 hardware is inboard, under the display (ADR-0013), so it no longer sets the
 width; the draft inset is measured over the display's height
 (`min(display back + height, lid top − front panel) − band`), not over the

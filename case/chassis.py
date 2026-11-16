@@ -1,16 +1,19 @@
 """Slider chassis: a Tray and a Deck joined at the Parting plane (ADR-0012).
 
 The chassis splits at the Parting plane (ADR 0003). The ``band`` is split
-evenly around the plane: the Tray is drafted from its base up to ``band_z0``
-and prismatic from there to the plane; the Deck is prismatic all the way to
-the closed face. Only the lower half of the silhouette tapers, so the base
-width and the closed face follow from that.
+evenly around the plane: the Tray is prismatic from its base to the plane
+(ADR-0019 removed its X draft so the accessory rail can bolt to a flat face)
+and the Deck is prismatic all the way to the closed face, so the base width and
+the closed face are one number. The Tray's vertical end walls leave the table
+with a base taper that runs up to the band's bottom -- a draft, so the cavity
+follows the outer face -- and dies into a pad at every station
+(:mod:`geometry.base_taper`).
 
-* The **Tray** is the lower bowl: tapered outer walls up to the joint band,
-  then a prismatic band to the Parting plane, a wall-thick floor, and a
-  frustum column at each of the twelve fastener stations. An M3 screw is driven
-  from below through a countersink in the floor, up the column, and across the
-  plane into a heat-set insert in the Deck.
+* The **Tray** is the lower bowl: vertical X walls to the Parting plane, a
+  wall-thick floor, and a straight column at each of the twelve fastener
+  stations. An M3 screw is driven from below through a countersink in the
+  floor, up the column, and across the plane into a heat-set insert in the
+  Deck.
 * The **Deck** is purely prismatic from the Parting plane to the closed face:
   the keyboard Well (a wall-thick ring around the keycap Cutout, descending to
   the plate's top face, with the plate's eight M2 insert bosses merged into its
@@ -50,8 +53,10 @@ class Chassis:
         return ch.make_compound([self.build_tray(), self.build_deck()])
 
     def build_tray(self):
-        """The lower bowl: drafted walls, floor, station columns, screws."""
+        """The lower bowl: vertical walls, floor, station columns, screws."""
         from geometry import head_recess
+        from geometry.base_taper import build_cutter as taper_cutter
+        from geometry.base_taper import build_fill as taper_fill
         from utilities import cad_helpers as ch
         from utilities.fasteners import screw as screw_spec
 
@@ -60,50 +65,45 @@ class Chassis:
         joint = f.chassis_joint
         wall = f.wall
         chamfer = self.config.corners.chamfer
-        z_band = f.chassis_band_z0
         z1 = f.parting_z
-        base_w = f.chassis_base_width
         band_w = f.chassis_band_width
 
-        # Tapered skin from the base up to the band, then prismatic to the
-        # Parting plane where it meets the Deck at the same width.
-        outer = ch.tapered_box(
-            base_w, f.depth, band_w, f.depth, 0.0, z_band, chamfer=chamfer
-        )
-        outer = ch.union(
-            outer,
-            ch.tapered_box(
-                band_w, f.depth, band_w, f.depth, z_band, z1, chamfer=chamfer
+        # ADR-0019: the Tray is prismatic from its base to the Parting plane.
+        # Its X walls are vertical because the accessory rail bolts to a flat,
+        # square face; the silhouette does not taper. The end walls still read
+        # as a taper, cut below as a base draft that steps around the station
+        # pads.
+        outer = ch.translate(
+            ch.chamfer_vertical_edges(
+                ch.box_centered(band_w, f.depth, z1), chamfer
             ),
+            0.0,
+            0.0,
+            z1 / 2.0,
         )
         # The cavity is the outer skin offset by one wall. It starts one wall
-        # above the table (the floor), follows the draft up to the band and is
-        # prismatic with it to the plane. Its corners carry the inner chamfer
-        # so the corner wall stays one `wall` thick behind the outer chop.
-        bottom_inset = ch.draft_inset(f.draft_angle, wall)
+        # above the table (the floor) and runs prismatic to the plane. Its
+        # corners carry the inner chamfer so the corner wall stays one `wall`
+        # thick behind the outer chop.
         cavity_chamfer = ch.inner_corner_chamfer(chamfer, wall)
-        cavity = ch.tapered_box(
-            base_w + 2.0 * bottom_inset - 2.0 * wall,
-            f.depth - 2.0 * wall,
-            band_w - 2.0 * wall,
-            f.depth - 2.0 * wall,
-            wall,
-            z_band,
-            chamfer=cavity_chamfer,
-        )
-        cavity = ch.union(
-            cavity,
-            ch.tapered_box(
-                band_w - 2.0 * wall,
-                f.depth - 2.0 * wall,
-                band_w - 2.0 * wall,
-                f.depth - 2.0 * wall,
-                z_band,
-                z1,
-                chamfer=cavity_chamfer,
+        cavity = ch.translate(
+            ch.chamfer_vertical_edges(
+                ch.box_centered(band_w - 2.0 * wall, f.depth - 2.0 * wall, z1 - wall),
+                cavity_chamfer,
             ),
+            0.0,
+            0.0,
+            (z1 + wall) / 2.0,
         )
         body = ch.cut(outer, cavity)
+
+        # The base taper on the vertical front/rear walls (ADR-0019): a wedge
+        # from the table up to the band's bottom, suppressed inside a pad around
+        # every station. It is a draft, not a chamfer on the floor's edge -- the
+        # same wedge goes back inside the cavity, so the wall keeps its
+        # thickness instead of thinning toward the table.
+        body = ch.cut(body, taper_cutter(f.base_taper))
+        body = ch.union(body, taper_fill(f.base_taper))
 
         # A column at every station, from the floor up to the plane. The
         # frustum tapers from what the floor skin allows to the insert boss
@@ -346,12 +346,21 @@ class Chassis:
 
     # -- joint features --------------------------------------------------
     def _column(self, station: Any):
-        """One Tray column: frustum from the floor skin to the plane boss."""
+        """One Tray column: a straight boss from the floor to the plane.
+
+        Every Tray wall is vertical now (ADR-0019), so the floor skin is the
+        band's skin and the column no longer has to taper: it is the station's
+        boss diameter top to bottom. The frustum path stays for a station
+        whose floor margin is tighter than its band margin.
+        """
         from utilities import cad_helpers as ch
 
         f = self.frame
         height = f.parting_z
-        column = ch.frustum_centered(station.base_boss, station.boss, height)
+        if station.base_boss >= station.boss - 1e-9:
+            column = ch.cylinder_centered(station.boss, height)
+        else:
+            column = ch.frustum_centered(station.base_boss, station.boss, height)
         return ch.translate(column, station.x, station.y, height / 2.0)
 
     # -- Deck features ---------------------------------------------------

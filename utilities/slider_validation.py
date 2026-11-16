@@ -390,19 +390,90 @@ def _add_plate_checks(
 def _tray_cavity_half(config: Any, budget: Any, z: float) -> tuple[float, float]:
     """The Tray's inner half-width and half-depth at height ``z`` (mm).
 
-    The Tray is drafted below ``band_z0`` and prismatic above it; the front and
-    rear end walls stay vertical. The narrowest cavity over a feature's Z span
-    is therefore at the span's lowest height.
+    The Tray's X walls are vertical and so is its cavity there (ADR-0019); the
+    front/rear end walls carry a base taper that runs up to the band's bottom,
+    and the cavity follows it, so the half-depth is the narrowest one over the
+    feature's Z span -- the caller passes that span's lowest height.
     """
-    from utilities.cad_helpers import draft_inset
-
-    joint = budget.chassis_joint
     wall = config.wall_thickness
-    if z >= joint.band_z0:
-        outer = budget.width
-    else:
-        outer = joint.base_width + 2.0 * draft_inset(config.draft.angle, z)
-    return outer / 2.0 - wall, budget.chassis_height / 2.0 - wall
+    taper = budget.base_taper
+    return budget.width / 2.0 - wall, taper.inner_face_y(z)
+
+
+def _add_taper_checks(report: ValidationReport, config: Any, budget: Any) -> None:
+    """HARD: the Tray's end-wall base taper drafts the wall and keeps its pads.
+
+    ADR-0019 keeps the Tray's X walls vertical (the rail's face) and gives the
+    vertical front/rear walls a base taper that runs from the table up to the
+    band's bottom. It is a **draft**, not a chamfer on the floor's edge: the
+    outer face and the cavity face move together, so the wall keeps its
+    thickness. Three things make that legitimate:
+
+    * the taper stops at the band's bottom, so no station's insert or recess
+      lands on a slope and the band stays prismatic;
+    * every pad keeps a printable ring outside the head recess it protects and
+      is wide enough to swallow the station's column, which the tapered cavity
+      would otherwise leave standing proud of the outer face;
+    * the stop circles leave a real taper run along the wall (a pad that
+      swallowed the whole wall would just be a square foot again).
+    """
+    taper = budget.base_taper
+    joint = budget.chassis_joint
+    min_feature = config.material.minimum_feature
+
+    report.add(
+        "chassis-taper-draft",
+        0.0 < taper.inset < taper.inner_face_y(0.0),
+        f"base taper {taper.angle:.1f} deg over {taper.height:.2f} mm insets "
+        f"{taper.inset:.2f} on the outer face *and* the cavity face: the wall "
+        f"keeps {taper.wall:.2f} mm and the cavity still reaches "
+        f"{taper.inner_face_y(0.0):.2f} mm at the table",
+    )
+    report.add(
+        "chassis-taper-band",
+        taper.height <= joint.band_z0 + 1e-6,
+        f"taper height {taper.height:.2f} <= the Tray's band bottom "
+        f"{joint.band_z0:.2f} ({joint.parting_z - taper.height:.2f} mm below "
+        f"the Parting plane)",
+    )
+    wall_y = taper.half_depth - joint.side_inset
+    wall_stations = [
+        station
+        for station in joint.stations
+        if abs(abs(station.y) - wall_y) <= 1e-9
+    ]
+    ring = min(
+        taper.pad_radius - joint.recess.pocket_radius - station.mouth_chamfer
+        for station in wall_stations
+    )
+    coverage = min(
+        taper.stop_radius - station.boss / 2.0 for station in wall_stations
+    )
+    report.add(
+        "chassis-taper-pad",
+        ring >= min_feature - 1e-6
+        and coverage >= min_feature - 1e-6
+        and taper.stop_radius > taper.pad_radius,
+        f"pad Ø{2.0 * taper.pad_radius:.2f} (stop Ø"
+        f"{2.0 * taper.stop_radius:.2f}) leaves {ring:.2f} >= min feature "
+        f"{min_feature:.2f} outside the Ø{joint.recess.pocket_radius * 2.0:.2f} "
+        f"recess mouth and covers each Ø{max(s.boss for s in wall_stations):.2f} "
+        f"column by {coverage:.2f} at all {len(wall_stations)} wall stations",
+    )
+    runs = [x1 - x0 for x0, x1 in taper.segments]
+    margins = [
+        min(x0 + taper.wall_half_x, taper.wall_half_x - x1)
+        for x0, x1 in taper.segments
+    ]
+    shortest = min(runs) if runs else 0.0
+    nearest = min(margins) if margins else 0.0
+    report.add(
+        "chassis-taper-stop",
+        bool(runs) and shortest >= min_feature - 1e-6
+        and nearest >= min_feature - 1e-6,
+        f"{len(runs)} taper runs, shortest {shortest:.2f} mm; nearest stop "
+        f"{nearest:.2f} mm inside the wall end >= min feature {min_feature:.2f}",
+    )
 
 
 def _head_verdict(
@@ -1536,6 +1607,7 @@ def run_slider_checks(
     )
     _add_seam_checks(report, config, budget, mounts)
     _add_seam_pin_checks(report, config, budget, placements, mounts)
+    _add_taper_checks(report, config, budget)
 
     report.goals["closed-face-height"] = budget.closed_face_height
     report.goals["open-face-height"] = budget.open_face_height

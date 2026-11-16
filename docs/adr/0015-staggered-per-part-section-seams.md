@@ -210,6 +210,7 @@ are still configured.
 ## Open measurements
 
 - The 45° jog relies on the Tray's floor being flat at the seam: the tray is
-  drafted below `band_z0` and the jog lies in the band, so no `TODO: measure`
-  is opened. The step's cosmetic corner radius (if added) would be
+  prismatic below `band_z0` (ADR-0019 removed its draft; its only taper is the
+  base chamfer on the end walls, well below the jog) and the jog lies in the
+  band, so no `TODO: measure` is opened. The step's cosmetic corner radius (if added) would be
   `geometry/edge_treatment.round_seam_corners`.

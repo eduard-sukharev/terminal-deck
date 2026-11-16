@@ -1,11 +1,12 @@
 """The chassis Tray <-> Deck band joint (ADR-0012).
 
 The chassis splits at the Parting plane (ADR 0003). The ``band`` is split
-evenly around the plane: the Tray is drafted from its base up to ``band_z0``
-and prismatic from ``band_z0`` to the Parting plane; the Deck is prismatic all
-the way from the plane to the closed face. Only the lower half of the
-silhouette tapers; the Deck and the closed face stay straight. This is the
-chassis counterpart of the lid's Bezel <-> Back band joint (ADR-0011).
+evenly around the plane: the Tray is prismatic from its base up to the Parting
+plane (ADR-0019 removed its X draft -- the accessory rail needs a flat, square
+face) and so is the Deck all the way to the closed face. The silhouette does
+not taper; the base taper on the front/rear walls lives in
+:mod:`geometry.base_taper`. This is the chassis counterpart of the lid's
+Bezel <-> Back band joint (ADR-0011).
 
 Twelve M3 screws are driven from below, through a **keyhole recess** in the
 Tray's floor and a column standing on that floor, into a heat-set insert in a
@@ -20,11 +21,11 @@ The centreline long-wall stations are ADR-0015's interlock: the Tray's Seam and
 the Deck's Seam run past it on opposite sides, so the screw ties the two
 staggered cuts together.
 
-Because the Tray is drafted, a straight column of the full boss diameter
-cannot both stay inside the Tray's outer skin at the floor and merge into the
-prismatic band's wall at the plane. The column is therefore a frustum: the
-boss diameter at the plane, tapering to whatever the floor skin allows. The
-station diameters are derived per station from the local wall, never assumed.
+Every wall is vertical now, so the floor skin is exactly the band's skin: the
+column is a straight boss from the floor to the Parting plane and its diameter
+is only capped by the plan distance from the station to the nearest free face
+(``2 * (margin - minimum_feature)``). The station diameters are derived per
+station from the local wall, never assumed.
 
 Pure data: no CAD import, so the data layer can size and check the joint
 before the case is built.
@@ -126,7 +127,7 @@ class ChassisJoint:
         return min(station.boss for station in self.stations)
 
     def smallest_base_boss(self) -> float:
-        """The tightest Tray column at the floor (the drafted X walls)."""
+        """The tightest Tray column at the floor (the short walls next to it)."""
         return min(station.base_boss for station in self.stations)
 
 
@@ -146,9 +147,9 @@ def _station(
 ) -> TrayStation:
     """Size one station from the wall it sits against.
 
-    The band (and therefore the station's ``surface``) is prismatic; the Tray's
-    drafted X walls only pull the floor skin inward, which is what
-    ``base_distance`` (and with it the recess's ``margin``) measures.
+    The band (and therefore the station's ``surface``) is prismatic and the
+    Tray's walls are vertical (ADR-0019), so ``surface`` and the floor margin
+    measure the same plan distance.
     """
     if kind == "side":
         normal = (0.0, math.copysign(1.0, y))
@@ -173,8 +174,7 @@ def _station(
         # tightest of the three is what the boss may grow to.
         surface = min(chamfer_surface, band_half_x - ax, band_half_y - ay)
 
-    # At the floor the drafted X walls have receded toward the station by the
-    # full draft inset; the Y walls are still where they were. This is the
+    # Every wall is vertical, so the floor skin is the band's skin: this is the
     # margin the column *and* the head recess in the floor are measured
     # against, so the two are sized from one number.
     base_chamfer = (base_half_x + base_half_y - chamfer - ax - ay) * math.sqrt(0.5)
@@ -207,7 +207,6 @@ def chassis_joint(
     depth: float,
     chassis_top: float,
     content_y1: float,
-    draft_angle: float,
     minimum_feature: float,
     chamfer: float,
     parting: object,
@@ -216,16 +215,15 @@ def chassis_joint(
 ) -> ChassisJoint:
     """Size the chassis' band joint from the envelope and the Parting plane.
 
-    The band is split evenly around the Parting plane: ``band_z0`` is where the
-    Tray's draft ends and its prismatic band begins, ``band_z1`` is the top of
-    the Deck's prismatic band (halfway up the Deck, in practice). Because the
-    Deck is prismatic, the band width is the full closed-face width and the
-    base is the drafted width at ``band_z0`` rather than at the table.
+    The band is split evenly around the Parting plane: ``band_z0`` is the
+    bottom of the Tray's half, ``band_z1`` is the top of the Deck's (halfway up
+    the Deck, in practice). Both halves are prismatic (ADR-0019), so the band
+    width *and* the base width are the full closed-face width.
 
     ``content_y1`` is the plan Y of the tallest content's rear edge (the
-    keyboard): the case is only as wide as the display plus a thin drafted
-    wall, so the band beside the keys has no room for a station and the short
-    sides are fastened in the free band behind the keyboard instead.
+    keyboard): the case is only as wide as the content plus a thin wall, so the
+    band beside the keys has no room for a station and the short sides are
+    fastened in the free band behind the keyboard instead.
 
     ``head_fit`` is the radial gap around the button head and its recess
     ``depth`` clearance below the floor face (``clearance.head``).
@@ -243,14 +241,13 @@ def chassis_joint(
     )
     hole = insert.printed_hole_diameter
 
-    draft_tan = math.tan(math.radians(draft_angle))
     parting_z = parting_height(parting, chassis_top)
     band_z0 = parting_z - joint.band / 2.0
     band_z1 = parting_z + joint.band / 2.0
-    # The Deck (and therefore the band across the joint) is prismatic at the
-    # closed-face width; only the Tray below band_z0 is drafted.
+    # Both halves are prismatic (ADR-0019): the Tray no longer drafts inward
+    # from its band, so its base is the closed-face width as well.
     band_width = width
-    base_width = width - 2.0 * draft_tan * band_z0
+    base_width = width
     grip = parting_z - recess.depth
     screw = deck_screw(joint.screw, grip)
 

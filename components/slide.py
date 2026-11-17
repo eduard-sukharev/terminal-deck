@@ -514,6 +514,7 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
         content_y1=-chassis_height / 2.0 + keyboard_top,
         minimum_feature=config.material.minimum_feature,
         chamfer=config.corners.chamfer,
+        wall=wall,
         parting=config.parting,
         joint=config.chassis_joint,
         head_fit=config.clearance.head,

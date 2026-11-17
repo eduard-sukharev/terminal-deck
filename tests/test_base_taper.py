@@ -91,20 +91,16 @@ def test_the_pads_keep_the_head_recesses_their_ring(data):
         s for s in joint.stations if abs(abs(s.y) - wall_y) < 1e-9
     ]
     assert len(wall_stations) == 10
-    # The pad stops the taper before the recess mouth, whatever the mouth's
-    # own 45 degree ramp needs.
+    # The pad stops the taper before the access cone mouth (ADR-0021).
     assert taper.pad_radius == pytest.approx(
-        joint.recess.pocket_radius
-        + max(s.mouth_chamfer for s in wall_stations)
-        + minimum
+        max(s.mouth_radius for s in wall_stations) + minimum
     )
     assert taper.stop_radius == pytest.approx(
         taper.pad_radius + config.chassis_joint.taper_runout
     )
     for station in wall_stations:
         assert (
-            taper.pad_radius
-            >= joint.recess.pocket_radius + station.mouth_chamfer + minimum - 1e-9
+            taper.pad_radius >= station.mouth_radius + minimum - 1e-9
         )
         # The tapered cavity would leave the station's column proud of the
         # outer face; the pad (the taper's suppression circle) must swallow it.

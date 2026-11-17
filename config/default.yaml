@@ -57,12 +57,15 @@ chassis_joint:
   station_inset: 6.5   # station centre from a vertical (X) wall's outer face
   side_inset: 4.5      # station centre from a vertical (front/rear) wall
   screw: M3            # driven from below into a heat-set insert
-  head: button         # ordinary button head (ISO 7380) in a keyhole recess
+  head: button         # ordinary button head (ISO 7380) buried one wall below
+                       # the Parting plane in a deep conical access cavity
+                       # (ADR-0021; the lid's band joint keeps ADR-0018's
+                       # keyhole)
   taper_angle: 15.0    # base taper on the vertical front/rear walls: draft
                        # angle from vertical (ADR-0019); runs from the table up
                        # to the band's bottom, the cavity following so the wall
                        # keeps its thickness; it dies into a pad at every
-                       # station so the head recesses keep their ring
+                       # station so the access cones keep their lip (ADR-0021)
   taper_runout: 3.0    # how far that taper fades into a station pad
 
 # Merged boss (ADR 0003): a boss, column, standoff or lug whose outer surface is

@@ -444,8 +444,7 @@ def _add_taper_checks(report: ValidationReport, config: Any, budget: Any) -> Non
         if abs(abs(station.y) - wall_y) <= 1e-9
     ]
     ring = min(
-        taper.pad_radius - joint.recess.pocket_radius - station.mouth_chamfer
-        for station in wall_stations
+        taper.pad_radius - station.mouth_radius for station in wall_stations
     )
     coverage = min(
         taper.stop_radius - station.boss / 2.0 for station in wall_stations
@@ -457,8 +456,9 @@ def _add_taper_checks(report: ValidationReport, config: Any, budget: Any) -> Non
         and taper.stop_radius > taper.pad_radius,
         f"pad Ø{2.0 * taper.pad_radius:.2f} (stop Ø"
         f"{2.0 * taper.stop_radius:.2f}) leaves {ring:.2f} >= min feature "
-        f"{min_feature:.2f} outside the Ø{joint.recess.pocket_radius * 2.0:.2f} "
-        f"recess mouth and covers each Ø{max(s.boss for s in wall_stations):.2f} "
+        f"{min_feature:.2f} outside the Ø"
+        f"{2.0 * max(s.mouth_radius for s in wall_stations):.2f} access cone "
+        f"mouth and covers each Ø{max(s.boss for s in wall_stations):.2f} "
         f"column by {coverage:.2f} at all {len(wall_stations)} wall stations",
     )
     runs = [x1 - x0 for x0, x1 in taper.segments]
@@ -1626,36 +1626,54 @@ def run_slider_checks(
         "slide-chassis-joint-column",
         cj.smallest_base_boss() >= screw_clearance + 2.0 * min_feature - 1e-6
         and all(
-            station.base_boss
-            >= cj.recess.pocket_diameter + 2.0 * station.mouth_chamfer - 1e-6
+            station.base_boss / 2.0 >= station.mouth_radius + min_feature - 1e-6
+            and station.strict_boss / 2.0
+            >= cj.recess.pocket_radius + min_feature - 1e-6
+            and station.base_boss >= station.strict_boss - 1e-9
             for station in cj.stations
         ),
         f"tightest Tray column {cj.smallest_base_boss():.2f} >= screw "
         f"clearance {screw_clearance:.2f} + 2 x min feature {min_feature:.2f}, "
-        f"and holds the Ø{cj.recess.pocket_diameter:.2f} recess mouth",
+        f"and the access cone (mouth Ø"
+        f"{2.0 * min(s.mouth_radius for s in cj.stations):.2f}.."
+        f"{2.0 * max(s.mouth_radius for s in cj.stations):.2f}) and the head "
+        f"pocket Ø{cj.recess.pocket_diameter:.2f} each keep {min_feature:.2f} "
+        f"of column at every station",
     )
-    # ADR-0018: the head seats in a keyhole recess cut into the floor, so the
-    # mouth must keep a printable skin to the Tray's outer face and the seat
-    # ring must be wide enough to bear on.
+    # ADR-0021: the head is buried one wall below the Parting plane, reached
+    # down a cone whose mouth keeps a printable lip to the outer skin; the
+    # head's seat ring must be wide enough to bear on.
+    skin = cj.skin
+    report.add(
+        "slide-chassis-joint-seat",
+        abs(cj.recess.z_seat - (cj.parting_z - config.wall_thickness)) <= 1e-6
+        and skin >= config.wall_thickness - 1e-6
+        and cj.grip >= min_feature - 1e-6,
+        f"head seat at {cj.recess.z_seat:.2f} leaves {skin:.2f} = one wall "
+        f"{config.wall_thickness:.2f} to the Parting plane "
+        f"{cj.parting_z:.2f}, grip {cj.grip:.2f} >= min feature "
+        f"{min_feature:.2f}",
+    )
     floor_margin = min(station.edge_margin for station in cj.stations)
     report.add(
         "slide-chassis-joint-floor",
-        floor_margin >= min_feature - 1e-6,
-        f"recess mouth to outer skin {floor_margin:.2f} >= min feature "
-        f"{min_feature:.2f}",
+        floor_margin >= 2.0 * min_feature - 1e-6,
+        f"access cone mouth to outer skin {floor_margin:.2f} >= 2 x min "
+        f"feature {2.0 * min_feature:.2f} (the pier's wall at the floor)",
     )
     report.add(
         "slide-chassis-joint-pocket",
         cj.recess.seat >= min_feature - 1e-6,
-        f"{cj.recess.head.kind} {cj.recess.size} pocket "
-        f"Ø{cj.recess.pocket_diameter:.2f} x {cj.recess.depth:.2f} deep, seat "
-        f"ring {cj.recess.seat:.2f} >= min feature {min_feature:.2f} "
-        f"(mouth chamfer {min(s.mouth_chamfer for s in cj.stations):.2f}"
-        f"..{max(s.mouth_chamfer for s in cj.stations):.2f})",
+        f"{cj.recess.head.kind} {cj.recess.size} head pocket "
+        f"Ø{cj.recess.pocket_diameter:.2f} x {cj.recess.head.depth:.2f} deep at "
+        f"z {cj.recess.z_neck:.2f}..{cj.recess.z_seat:.2f}, seat ring "
+        f"{cj.recess.seat:.2f} >= min feature {min_feature:.2f} (cone mouth "
+        f"Ø{2.0 * min(s.mouth_radius for s in cj.stations):.2f}"
+        f"..{2.0 * max(s.mouth_radius for s in cj.stations):.2f})",
     )
     report.add(
         "slide-chassis-joint-parting",
-        cj.parting_z >= cj.recess.depth + min_feature - 1e-6
+        cj.skin >= min_feature - 1e-6
         and cj.band_z1 <= cj.chassis_top - config.wall_thickness + 1e-6,
         f"Parting plane {cj.parting_z:.2f}, band {cj.parting_z:.2f}-"
         f"{cj.band_z1:.2f} inside the chassis top {cj.chassis_top:.2f}",

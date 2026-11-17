@@ -127,8 +127,9 @@ class Chassis:
         body = ch.union(body, *[self._column(station) for station in joint.stations])
 
         # The screw: a clearance hole through the column, its ordinary button
-        # head seated in a keyhole recess cut into the floor, ramp pointing
-        # away from the nearest wall (ADR-0018).
+        # head buried at the top of a deep conical access cavity (ADR-0021).
+        # The seat sits one wall below the Parting plane and the cone widens to
+        # the floor face, so the driver enters straight along the axis.
         spec = screw_spec(joint.screw.size)
         recess = joint.recess
         holes = []
@@ -139,15 +140,13 @@ class Chassis:
                 station.y,
                 z1 / 2.0,
             )
-            keyhole = head_recess.build_cutter(
+            cavity = head_recess.build_deep_cutter(
                 recess,
-                normal=station.normal,
-                mouth=station.mouth_chamfer,
+                mouth_radius=station.mouth_radius,
                 x=station.x,
                 y=station.y,
-                z0=0.0,
             )
-            holes.extend((through, keyhole))
+            holes.extend((through, cavity))
         body = ch.cut(body, *holes)
 
         # The rail's own holes: the pocket the washer puck sits in and the M4
@@ -376,22 +375,30 @@ class Chassis:
 
     # -- joint features --------------------------------------------------
     def _column(self, station: Any):
-        """One Tray column: a straight boss from the floor to the plane.
+        """One Tray column: conical below the cone's neck, strict above.
 
-        Every Tray wall is vertical now (ADR-0019), so the floor skin is the
-        band's skin and the column no longer has to taper: it is the station's
-        boss diameter top to bottom. The frustum path stays for a station
-        whose floor margin is tighter than its band margin.
+        Below the access cone's neck (ADR-0021) the column is a frustum from
+        its floor footprint down to the strict diameter, its outer wall running
+        conical beside the cavity; from the neck to the Parting plane it is a
+        plain cylinder with strict dimensions around the head pocket and the
+        screw hole.
         """
         from utilities import cad_helpers as ch
 
         f = self.frame
         height = f.parting_z
-        if station.base_boss >= station.boss - 1e-9:
-            column = ch.cylinder_centered(station.boss, height)
-        else:
-            column = ch.frustum_centered(station.base_boss, station.boss, height)
-        return ch.translate(column, station.x, station.y, height / 2.0)
+        z_neck = f.chassis_joint.recess.z_neck
+        cone = ch.frustum_centered(
+            station.base_boss, station.strict_boss, z_neck
+        )
+        cone = ch.translate(cone, station.x, station.y, z_neck / 2.0)
+        strict = ch.cylinder_centered(
+            station.strict_boss, height - z_neck
+        )
+        strict = ch.translate(
+            strict, station.x, station.y, z_neck + (height - z_neck) / 2.0
+        )
+        return ch.union(cone, strict)
 
     # -- accessory rail ---------------------------------------------------
     def _rail_mounts(self):

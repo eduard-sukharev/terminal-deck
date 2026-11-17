@@ -8,10 +8,12 @@ not taper; the base taper on the front/rear walls lives in
 :mod:`geometry.base_taper`. This is the chassis counterpart of the lid's
 Bezel <-> Back band joint (ADR-0011).
 
-Twelve M3 screws are driven from below, through a **keyhole recess** in the
-Tray's floor and a column standing on that floor, into a heat-set insert in a
-boss in the Deck's band (ADR-0018: an ordinary button head seats in a
-counterbored pocket with a 45 degree lift-out ramp, not a flush countersink):
+Twelve M3 screws are driven from below, through a **deep conical recess** in
+the Tray's floor and a column standing on that floor, into a heat-set insert
+in a boss in the Deck's band (ADR-0021: the button head is buried at the top
+of the cavity, one wall below the Parting plane, and the driver reaches it
+down a cone that widens to the floor face -- no keyhole ramp, ADR-0018's
+profile stays the lid's):
 
 * four corners,
 * three per long side (front and rear walls) -- one of them on the centreline,
@@ -22,10 +24,21 @@ the Deck's Seam run past it on opposite sides, so the screw ties the two
 staggered cuts together.
 
 Every wall is vertical now, so the floor skin is exactly the band's skin: the
-column is a straight boss from the floor to the Parting plane and its diameter
-is only capped by the plan distance from the station to the nearest free face
-(``2 * (margin - minimum_feature)``). The station diameters are derived per
-station from the local wall, never assumed.
+column runs straight from the floor to the Parting plane and its diameter is
+capped by the plan distance from the station to the nearest free face
+(``2 * (margin - minimum_feature)``). All stations share one boss diameter --
+the tightest station's own cap (the long-wall stations', pinned by the
+keyboard plate) -- so a station standing in free space does not grow fatter
+than the wall beside the keys requires.
+
+The access cone's mouth stays one minimum feature inside the station's column
+footprint, so the pier keeps a thick ring at the floor (``margin - mouth`` = the
+skin lip plus one minimum feature where the margin binds) instead of a knife
+edge. From the cone's neck to the Parting plane the column is cylindrical with
+strict dimensions (the head pocket plus one minimum feature a side); below the
+neck both the cavity and the column's outer wall run conical, the column as a
+frustum from its floor footprint down to the strict diameter. The head pocket
+and its seat stay inside the column.
 
 Pure data: no CAD import, so the data layer can size and check the joint
 before the case is built.
@@ -59,15 +72,22 @@ class TrayStation:
     boss: float
     #: Column diameter on the Tray floor (never larger than :attr:`boss`).
     base_boss: float
+    #: Column diameter in the strict zone above the access cone's neck (the
+    #: head pocket and the skin under the Parting plane): the pocket plus two
+    #: minimum features, cylindrical while the head and the screw need exact
+    #: surroundings (ADR-0021).
+    strict_boss: float
     #: Distance from the station to the Tray's outer skin at the floor.
     base_distance: float
     #: Plan margin to the nearest free face of the floor skin -- what the
-    #: head recess's mouth is measured against (``base_distance``'s twin; the
-    #: floor skin is where the recess is cut).
+    #: recess's mouth is measured against (``base_distance``'s twin; the floor
+    #: skin is where the recess is cut).
     margin: float
-    #: The 45 degree chamfer that fairs the recess mouth (mm).
-    mouth_chamfer: float
-    #: Material left between the recess mouth and that free face (mm).
+    #: The access cone's radius at the floor face (mm) -- one minimum feature
+    #: inside the column's floor footprint, so the pier keeps a thick ring.
+    mouth_radius: float
+    #: Material left between the access cone mouth and that free face (mm) --
+    #: the pier's wall at the floor.
     edge_margin: float
 
     @property
@@ -94,7 +114,7 @@ class ChassisJoint:
     side_inset: float
     insert_hole: float
     insert_depth: float
-    recess: fasteners.HeadRecess
+    recess: head_recess.DeepRecess
     screw: DeckScrew
     grip: float
     chassis_top: float
@@ -105,6 +125,11 @@ class ChassisJoint:
     base_width: float
     depth: float
     stations: tuple[TrayStation, ...]
+
+    @property
+    def skin(self) -> float:
+        """Material between the head's seat and the Parting plane (mm)."""
+        return self.parting_z - self.recess.z_seat
 
     @property
     def corner_stations(self) -> tuple[TrayStation, ...]:
@@ -131,7 +156,7 @@ class ChassisJoint:
         return min(station.base_boss for station in self.stations)
 
 
-def _station(
+def _station_plan(
     x: float,
     y: float,
     kind: str,
@@ -141,15 +166,14 @@ def _station(
     base_half_x: float,
     base_half_y: float,
     chamfer: float,
-    boss: float,
-    minimum_feature: float,
-    pocket_radius: float,
-) -> TrayStation:
-    """Size one station from the wall it sits against.
+) -> tuple[tuple[float, float], float, float]:
+    """Position one station: its outward normal and plan distances.
 
-    The band (and therefore the station's ``surface``) is prismatic and the
-    Tray's walls are vertical (ADR-0019), so ``surface`` and the floor margin
-    measure the same plan distance.
+    Returns ``(normal, surface, margin)`` -- the distances to the band's outer
+    face and to the Tray's outer skin at the floor. The band (and therefore the
+    station's ``surface``) is prismatic and the Tray's walls are vertical
+    (ADR-0019), so ``surface`` and the floor margin measure the same plan
+    distance.
     """
     if kind == "side":
         normal = (0.0, math.copysign(1.0, y))
@@ -179,11 +203,51 @@ def _station(
     # against, so the two are sized from one number.
     base_chamfer = (base_half_x + base_half_y - chamfer - ax - ay) * math.sqrt(0.5)
     margin = min(base_half_x - ax, base_half_y - ay, base_chamfer)
+    return normal, surface, margin
+
+
+def _station(
+    x: float,
+    y: float,
+    kind: str,
+    *,
+    band_half_x: float,
+    band_half_y: float,
+    base_half_x: float,
+    base_half_y: float,
+    chamfer: float,
+    boss: float,
+    minimum_feature: float,
+    pocket_radius: float,
+) -> TrayStation:
+    """Size one station from the wall it sits against.
+
+    ``boss`` is the shared cap (see :func:`chassis_joint`), not the config's
+    upper bound: every station's boss is the same diameter.
+    """
+    normal, surface, margin = _station_plan(
+        x,
+        y,
+        kind,
+        band_half_x=band_half_x,
+        band_half_y=band_half_y,
+        base_half_x=base_half_x,
+        base_half_y=base_half_y,
+        chamfer=chamfer,
+    )
 
     # The boss may grow until its surface reaches the outer skin; the column
     # additionally has to stay inside the Tray's skin at the floor.
     station_boss = min(boss, 2.0 * (surface - minimum_feature))
     base_boss = min(station_boss, 2.0 * (margin - minimum_feature))
+    # ADR-0021: the access cone's mouth stays one minimum feature inside the
+    # column's floor footprint, so the pier keeps a thick ring at the floor
+    # (`margin - mouth_radius` = the skin lip + one minimum feature where the
+    # margin binds) instead of dying into a knife edge.
+    mouth_radius = base_boss / 2.0 - minimum_feature
+    # Above the cone's neck the column is cylindrical with strict dimensions:
+    # the head pocket plus one minimum feature a side, no more.
+    strict_boss = 2.0 * (pocket_radius + minimum_feature)
     return TrayStation(
         x=x,
         y=y,
@@ -192,12 +256,11 @@ def _station(
         surface=surface,
         boss=station_boss,
         base_boss=base_boss,
+        strict_boss=strict_boss,
         base_distance=margin,
         margin=margin,
-        mouth_chamfer=head_recess.mouth_chamfer(
-            pocket_radius, margin, minimum_feature
-        ),
-        edge_margin=head_recess.edge_margin(pocket_radius, margin, minimum_feature),
+        mouth_radius=mouth_radius,
+        edge_margin=margin - mouth_radius,
     )
 
 
@@ -209,6 +272,7 @@ def chassis_joint(
     content_y1: float,
     minimum_feature: float,
     chamfer: float,
+    wall: float,
     parting: object,
     joint: object,
     head_fit: float,
@@ -225,30 +289,32 @@ def chassis_joint(
     band beside the keys has no room for a station and the short sides are
     fastened in the free band behind the keyboard instead.
 
-    ``head_fit`` is the radial gap around the button head and its recess
-    ``depth`` clearance below the floor face (``clearance.head``).
+    ``head_fit`` is the radial gap around the button head (``clearance.head``).
 
-    Raises ``ValueError`` when no stock screw fits the Tray column and the Deck
+    ADR-0021: the head is buried at the top of a deep conical access cavity --
+    its seat sits one ``wall`` below the Parting plane, so exactly one wall of
+    material is left over it, and the screw's grip is that same wall. Raises
+    ``ValueError`` when no stock screw fits the Tray column and the Deck
     insert; the data layer turns that into a HARD check.
     """
     insert = fasteners.heat_insert(joint.screw)
-    recess = fasteners.head_recess(
+    parting_z = parting_height(parting, chassis_top)
+    z_seat = parting_z - wall
+    recess = head_recess.deep_recess(
         joint.screw,
         joint.head,
         fit=head_fit,
-        depth_margin=head_fit,
-        ramp_angle=head_recess.RAMP_ANGLE_DEG,
+        z_seat=z_seat,
     )
     hole = insert.printed_hole_diameter
 
-    parting_z = parting_height(parting, chassis_top)
     band_z0 = parting_z - joint.band / 2.0
     band_z1 = parting_z + joint.band / 2.0
     # Both halves are prismatic (ADR-0019): the Tray no longer drafts inward
     # from its band, so its base is the closed-face width as well.
     band_width = width
     base_width = width
-    grip = parting_z - recess.depth
+    grip = parting_z - recess.z_seat
     screw = deck_screw(joint.screw, grip)
 
     base_half_x = base_width / 2.0
@@ -271,37 +337,55 @@ def chassis_joint(
             f"(band {band_width:.2f} x {depth:.2f} mm)"
         )
 
-    common = dict(
+    plan: list[tuple[float, float, str]] = []
+
+    def plan_add(x: float, y: float, kind: str) -> None:
+        for sx in ((-1, 1) if x else (1,)):
+            for sy in ((-1, 1) if y else (1,)):
+                plan.append((sx * x, sy * y, kind))
+
+    plan_add(x_edge, y_wall, "corner")
+    plan_add(x_mid, y_wall, "side")
+    # ADR-0015: one more station per long wall, on the centreline. The Tray's
+    # Seam and the Deck's Seam pass on either side of it, so this screw is what
+    # cross-ties the two staggered cuts: its insert boss belongs to one Deck
+    # half and its Tray column to the other Tray half.
+    plan_add(0.0, y_wall, "side")
+    # The end stations mirror about the X centreplane alone: the free band
+    # behind the keyboard exists only at one end.
+    for sx in (-1, 1):
+        plan.append((sx * x_edge, y_end, "end"))
+
+    # Every boss is one diameter: the shared cap is the tightest station's own
+    # maximum (the long-wall stations', pinned by the keyboard plate at
+    # `side_inset`), so the free-standing end stations do not grow fatter just
+    # because empty space allows it.
+    plan_common = dict(
         band_half_x=band_half_x,
         band_half_y=depth_half,
         base_half_x=base_half_x,
         base_half_y=depth_half,
         chamfer=chamfer,
-        boss=joint.boss,
+    )
+    boss_cap = min(
+        joint.boss,
+        min(
+            2.0 * (_station_plan(x, y, kind, **plan_common)[2] - minimum_feature)
+            for x, y, kind in plan
+        ),
+    )
+
+    common = dict(
+        plan_common,
+        boss=boss_cap,
         minimum_feature=minimum_feature,
         pocket_radius=recess.pocket_radius,
     )
-
-    stations: list[TrayStation] = []
-
-    def add(x: float, y: float, kind: str) -> None:
-        for sx in ((-1, 1) if x else (1,)):
-            for sy in ((-1, 1) if y else (1,)):
-                stations.append(_station(sx * x, sy * y, kind, **common))
-
-    add(x_edge, y_wall, "corner")
-    add(x_mid, y_wall, "side")
-    # ADR-0015: one more station per long wall, on the centreline. The Tray's
-    # Seam and the Deck's Seam pass on either side of it, so this screw is what
-    # cross-ties the two staggered cuts: its insert boss belongs to one Deck
-    # half and its Tray column to the other Tray half.
-    add(0.0, y_wall, "side")
-    for sx in (-1, 1):
-        stations.append(_station(sx * x_edge, y_end, "end", **common))
+    stations = [_station(x, y, kind, **common) for x, y, kind in plan]
 
     return ChassisJoint(
         band=joint.band,
-        boss=joint.boss,
+        boss=boss_cap,
         boss_margin=joint.boss_margin,
         station_inset=joint.station_inset,
         side_inset=joint.side_inset,

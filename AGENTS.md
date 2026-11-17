@@ -15,7 +15,8 @@ parametricity, reusability.
 > plate mounted to its lower faces), ADR-0015 (per-piece staggered Section
 > Seams), ADR-0019 (the Tray's vertical side walls and its end-wall base
 > taper) and ADR-0020 (the printed accessory rail on those walls) define the
-> slider. The data skeleton
+> slider, and ADR-0021 (deep conical head recesses for the Tray's band screws)
+> deepens its screws. The data skeleton
 > and the CAD shell are implemented: `--layout slider` (the only layout) derives
 > the budget and builds/exports the chassis (Tray + Deck, split at the band
 > joint), screen lid (Bezel + Back plate, split at the band joint), the printed
@@ -377,13 +378,28 @@ Gotchas:
   end walls carry a 15° base taper from the table up to the band's bottom
   (`chassis_joint.taper_angle` / `taper_runout`, `geometry/base_taper.py`) —
   a draft, so the cavity follows and the wall keeps its thickness —
-  suppressed inside a `Ø14.50` pad around every wall station so no head recess
-  loses its ring and no column stands proud. Its four HARD checks are
+  suppressed inside a `Ø13.80` stop circle (pad + runout) around every wall
+  station so no access cone loses its lip and no column stands proud. Its four
+  HARD checks are
   `chassis-taper-draft`, `-band`, `-pad`, `-stop` in
   `utilities/slider_validation`.
-  **Twelve** M3 × 18 come up from below (`parting_z − countersink` = 14.65 grip)
+  **Twelve** M3 × 6 come up from below (`grip` = one wall = 2.00)
   into
-  heat-set inserts in the Deck's band bosses; each boss is a **full-height
+  heat-set inserts in the Deck's band bosses. The heads are buried one wall
+  below the Parting plane in a **deep conical access cavity** (ADR-0021): the
+  button head seats at `z_seat = parting_z − wall` = 14.15 (Ø6.10 pocket ×
+  1.65 deep, seat ring 1.45), and the driver reaches it down a cone whose
+  mouth stays one minimum feature inside the column's floor footprint
+  (`mouth_radius = base_boss/2 − min_feature`: Ø6.60 at the long walls,
+  Ø8.80 at the ends, half-angles 1.1° / 6.1°) — the pier's wall at the floor
+  is `margin − mouth_radius` = 1.20 (never a knife edge), the cone prints
+  without a ramp, and the driver enters straight along the screw axis. The
+  Tray column is a **strict cylinder Ø7.30** (pocket + 2 × min_feature) from
+  the cone's neck (z 12.50) to the Parting plane, and a **frustum below** the
+  neck from Ø7.80 at the floor down to the strict diameter — conical outer
+  wall beside the cavity. The Deck's insert boss stays a straight full-height
+  cylinder. ADR-0018's keyhole stays the lid's band joint.
+  Each boss is a **full-height
   column** from the Parting plane up to the Deck's inner ceiling
   (`chassis_top − wall` = 30.30, 14.15 tall), because the Deck prints face
   down and a boss that stopped at the insert (4 + 1.5 margin) would overhang

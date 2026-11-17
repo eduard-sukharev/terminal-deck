@@ -15,12 +15,13 @@ keeps its thickness over the whole taper instead of thinning to a knife edge at
 the table.
 
 The **pad** around every station is what makes that legal. The band joint's
-head recesses sit in the floor right beside those walls and are sized to leave a
-0.85 mm ring; the taper would break it, and the station's column (which carries
-the screw from the floor to the plane) would stand proud of the tapered face.
-Suppressing the taper within a circle of ``stop_radius`` around each station
-bolts both back -- the pad keeps the full face at the recess and swallows the
-column -- and the circle's arc is the rounded stop the wall is drawn with.
+access cone mouths sit in the floor right beside those walls, so the taper
+would break the floor's lip around them, and the station's column (which
+carries the screw from the floor to the plane) would stand proud of the tapered
+face. Suppressing the taper within a circle of ``stop_radius`` around each
+station bolts both back -- the pad keeps the full face at the cone mouth and
+swallows the column -- and the circle's arc is the rounded stop the wall is
+drawn with.
 
 Everything here is pure data -- the plan of the taper, its segments along the
 wall and the pad circles -- so the drawings, the checks and the CAD agree; only
@@ -148,11 +149,10 @@ def base_taper(config: Any, joint: Any) -> BaseTaper:
     angle = settings.taper_angle
     height = joint.band_z0
     inset = math.tan(math.radians(angle)) * height
-    pocket_radius = joint.recess.pocket_radius
-    mouth = max(station.mouth_chamfer for station in stations)
-    # The pad keeps one minimum feature of material outside the recess mouth,
-    # so the floor's countersink never breaks into the tapered face.
-    pad_radius = pocket_radius + mouth + minimum_feature
+    mouth = max(station.mouth_radius for station in stations)
+    # The pad keeps one minimum feature of material outside the access cone
+    # mouth (ADR-0021), so the floor's lip never breaks into the tapered face.
+    pad_radius = mouth + minimum_feature
     stop_radius = pad_radius + settings.taper_runout
 
     # Where a stop circle crosses the tapered face at the table: the taper

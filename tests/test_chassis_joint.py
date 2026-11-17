@@ -115,12 +115,20 @@ def test_parting_plane_and_band_are_derived(data):
 
 
 def test_screw_reaches_the_insert(data):
-    _, budget, _, _ = data
+    """ADR-0021: the head is buried one wall below the Parting plane.
+
+    The grip is therefore exactly one wall -- not the whole floor depth -- so
+    the shortest M3 stock length that still fills the insert is the M3x6.
+    """
+    config, budget, _, _ = data
     joint = budget.chassis_joint
-    assert joint.screw.name == "M3x18"
-    assert joint.grip == pytest.approx(joint.parting_z - joint.recess.depth)
-    assert joint.screw.engagement >= float(joint.screw.size.lstrip("M"))
-    assert joint.screw.engagement <= joint.insert_depth
+    assert joint.grip == pytest.approx(config.wall_thickness)
+    assert joint.recess.z_seat == pytest.approx(
+        joint.parting_z - config.wall_thickness
+    )
+    assert joint.screw.name == "M3x6"
+    assert joint.screw.engagement <= joint.insert_depth + 1e-9
+    assert joint.screw.engagement >= float(joint.screw.size.lstrip("M")) - 1e-9
 
 
 def test_column_stays_inside_the_floor_skin(data):
@@ -227,12 +235,85 @@ def test_every_station_has_a_screw_hole_through_the_tray(data, solids):
     z = frame.parting_z / 2.0
     for station in joint.stations:
         assert _material_at(tray, station.x, station.y, z) == pytest.approx(0)
-        # The column around the hole stays solid (tested at a safe radius
-        # just outside the recess mouth).
-        offset = joint.recess.pocket_radius + station.mouth_chamfer + 0.7
+    # The column around the hole stays solid just outside the cone mouth,
+    # probed near the floor where the frustum is at its widest (an end
+    # station's column can stand free of the X wall -- the probe must sit
+    # inside the column, not in the wall).
+    z_floor = 0.5
+    for station in joint.stations:
+        offset = station.mouth_radius + 0.3
         px = station.x + station.normal[0] * offset
         py = station.y + station.normal[1] * offset
-        assert _material_at(tray, px, py, z) > 0
+        assert _material_at(tray, px, py, z_floor) > 0
+
+
+def test_the_deep_cone_buries_the_head_and_widens_to_the_floor(data, solids):
+    """ADR-0021: the head seats one wall below the Parting plane.
+
+    The access cavity is one wall deep above the head (the skin), the head
+    pocket is empty down to the seat, and the cone widens from the pocket's
+    neck to the floor face, keeping one minimum feature inside the column's
+    footprint so the pier's wall at the floor is thick (never a knife edge).
+    """
+    config, budget, _, _ = data
+    joint = budget.chassis_joint
+    tray, _ = solids
+    recess = joint.recess
+    station = joint.side_stations[0]
+    assert station.mouth_radius == pytest.approx(
+        station.base_boss / 2.0 - config.material.minimum_feature
+    )
+    # Radially outward from the screw axis, in unit X.
+    def at(radius, z):
+        return _material_at(tray, station.x + radius, station.y, z)
+
+    # The seat ring between the clearance hole and the pocket wall carries the
+    # head; the skin above it is exactly one wall and never cut through.
+    ring = (fasteners.screw(joint.screw.size).clearance / 2.0 + recess.pocket_radius) / 2.0
+    assert at(ring, recess.z_seat - 0.2) == pytest.approx(0)
+    assert at(ring, recess.z_seat + config.wall_thickness / 2.0) > 0
+    # The pocket is empty; below the neck the cone has widened past it, so a
+    # narrow probe at one radius reads material at the neck and void at the
+    # floor.
+    def narrow(radius, z):
+        probe = ch.translate(
+            ch.box_centered(0.1, 0.1, 0.1), station.x + radius, station.y, z
+        )
+        return ch.volume_mm3(ch.intersect(tray, probe))
+
+    between = (recess.pocket_radius + station.mouth_radius) / 2.0
+    assert narrow(between, recess.z_neck - 0.4) > 0
+    assert narrow(between, 0.3) == pytest.approx(0)
+    # The pier's wall at the floor: material just outside the mouth, empty
+    # well inside it.
+    assert at(station.mouth_radius + 0.45, 0.3) > 0
+    assert at(station.mouth_radius - 0.45, 0.3) == pytest.approx(0)
+
+
+def test_the_column_is_strict_above_the_neck(data, solids):
+    """ADR-0021: from the cone's neck to the plane the column is a plain
+    cylinder with strict dimensions (pocket + one minimum feature a side),
+    below the neck a frustum down to the floor footprint."""
+    config, budget, _, _ = data
+    joint = budget.chassis_joint
+    tray, _ = solids
+    minimum = config.material.minimum_feature
+    for station in joint.stations:
+        assert station.strict_boss == pytest.approx(
+            2.0 * (joint.recess.pocket_radius + minimum)
+        )
+        assert station.base_boss >= station.strict_boss - 1e-9
+    # The cone's cavity below the neck stays inside the frustum: at the floor
+    # the wall between the cone and the column footprint is one minimum
+    # feature, so the pier there is the skin lip plus that feature.
+    station = joint.side_stations[0]
+    assert station.edge_margin == pytest.approx(
+        station.margin - station.base_boss / 2.0 + minimum
+    )
+    # The cavity is empty right down to the floor face along the axis.
+    assert _material_at(
+        tray, station.x, station.y, joint.recess.z_neck - 0.5
+    ) == pytest.approx(0)
 
 
 def test_every_station_has_an_insert_hole_in_the_deck(data, solids):

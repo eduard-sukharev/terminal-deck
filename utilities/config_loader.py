@@ -757,16 +757,41 @@ class SlideChain:
 
 @dataclass(frozen=True)
 class SlideRail:
-    """Picatinny-compatible accessory interface: pockets only, no printed rail."""
+    """The accessory rail on the Tray's vertical X walls (ADR-0020).
+
+    Two M4 stations per side, each a local pad with a square pocket for a
+    printed washer puck that captures a DIN 562 square nut. The rail itself is
+    printed from the same stations: ``width`` is the MIL-STD-1913 rail width
+    across the wall (21.2 mm, wider than the Tray's wall, so it overhangs --
+    the device stands on its lower edges), ``height`` its thickness off the
+    wall, ``pitch`` the slot pitch of the profile that comes later, and
+    ``station_spacing`` the distance between the two stations of a side (it
+    must be a whole number of pitches, which also lands both stations on the
+    profile's bridge centres). ``fit`` is the slip fit of the printed puck in
+    its pad pocket; the nut's own fit comes from the fastener library.
+    """
 
     interface: str = "picatinny"
-    nut: str = "M4"
-    pocket_depth: float = 5.0
+    stations: int = 2
+    station_spacing: float = 60.0
+    width: float = 21.2
+    height: float = 5.0
     pitch: float = 10.0
+    screw: str = "M4"
+    head: str = "button"
+    nut: str = "M4"
+    fit: float = 0.2
 
     def __post_init__(self) -> None:
-        if self.pocket_depth <= 0 or self.pitch <= 0:
-            raise ValueError("slide.rail pocket depth/pitch must be positive")
+        if self.stations < 2 or self.stations % 2:
+            raise ValueError(
+                "slide.rail.stations must be an even number >= 2 (the "
+                "stations are mirrored fore and aft of the wall's centre)"
+            )
+        if min(self.station_spacing, self.width, self.height, self.pitch) <= 0:
+            raise ValueError("slide.rail sizes must be positive")
+        if self.fit < 0:
+            raise ValueError("slide.rail.fit must be >= 0")
 
 
 @dataclass(frozen=True)
@@ -1050,9 +1075,15 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
         ),
         rail=SlideRail(
             interface=str(slide_rail.get("interface", "picatinny")),
-            nut=str(slide_rail.get("nut", "M4")),
-            pocket_depth=float(slide_rail.get("pocket_depth", 5.0)),
+            stations=int(slide_rail.get("stations", 2)),
+            station_spacing=float(slide_rail.get("station_spacing", 60.0)),
+            width=float(slide_rail.get("width", 21.2)),
+            height=float(slide_rail.get("height", 5.0)),
             pitch=float(slide_rail.get("pitch", 10.0)),
+            screw=str(slide_rail.get("screw", "M4")),
+            head=str(slide_rail.get("head", "button")),
+            nut=str(slide_rail.get("nut", "M4")),
+            fit=float(slide_rail.get("fit", 0.2)),
         ),
         split=slide_split,
         seam_pin_sites={

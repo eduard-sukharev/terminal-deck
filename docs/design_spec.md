@@ -28,7 +28,7 @@ Avoid:
 * LEDs everywhere
 * Meshtastic
 * SDR
-* decorative cyberpunk elements (including decorative picatinny rails and antennas; the accessory rail interface is functional, not printed)
+* decorative cyberpunk elements (including decorative picatinny rails and antennas; the accessory rail itself is a functional, printed part with a MIL-STD-1913 width -- ADR-0020 -- not decoration)
 
 Priorities:
 
@@ -538,8 +538,8 @@ Only the **Screen lid's** X side walls are drafted, by `config.draft.lid`
 (5–10° from vertical): the lid widens from its face panel down to the Back
 plate, so it is widest at the closed face.
 
-The **Tray's X side walls are vertical** (ADR-0019): the accessory rail bolts
-to them, and a rail needs a flat, square face. The Deck is prismatic too, so
+The **Tray's X side walls are vertical** (ADR-0019): the printed accessory rail
+bolts to them (ADR-0020), and a rail needs a flat, square face. The Deck is prismatic too, so
 the chassis is one width from the table to the closed face and the two halves
 still meet at full width. The chassis' 6 mm joint band is therefore prismatic
 on both halves (ADR-0012).

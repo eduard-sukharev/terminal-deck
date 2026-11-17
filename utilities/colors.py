@@ -41,6 +41,8 @@ COMPONENT_COLORS: dict[str, Color] = {
     "linear_bearing": (0.45, 0.47, 0.50, 1.0),  # LM...LUU bushings
     "bearing_clamp": (0.16, 0.48, 0.24, 1.0),   # printed bearing clamps (green)
     "fpc_guard": (0.86, 0.42, 0.28, 1.0),    # printed FPC grille plate (rust)
+    "accessory_rail": (0.38, 0.24, 0.58, 1.0),  # printed accessory rail (violet)
+    "rail_washer": (0.92, 0.80, 0.32, 1.0),  # printed washer pucks under the rail
 }
 
 DEFAULT_COLOR: Color = (0.6, 0.6, 0.6, 1.0)

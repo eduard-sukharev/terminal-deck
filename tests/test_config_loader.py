@@ -1,6 +1,8 @@
 """Tests for config loading and dataclass mapping."""
 
-from utilities.config_loader import load_config, build_config, Config, Display, Flex
+import pytest
+
+from utilities.config_loader import SlideRail, load_config, build_config, Config, Display, Flex
 
 
 def test_load_default():
@@ -51,3 +53,31 @@ def test_merge_topics():
     cfg = load_config("config/default.yaml", topics=("display", "keyboard", "hardware"))
     assert cfg.display.width > 0
     assert cfg.keyboard.columns == 12
+
+
+def test_slide_rail():
+    cfg = load_config("config/default.yaml")
+    rail = cfg.slide.rail
+    assert isinstance(rail, SlideRail)
+    assert rail.stations == 2
+    assert rail.station_spacing == 60.0
+    assert rail.width == 21.2
+    assert rail.height == 5.0
+    assert rail.pitch == 10.0
+    assert rail.screw == "M4"
+    assert rail.head == "button"
+    assert rail.nut == "M4"
+    assert rail.fit >= 0.0
+    # The dead "pockets only" knob is retired: the rail is printed.
+    assert not hasattr(rail, "pocket_depth")
+
+
+def test_slide_rail_rejects_bad_values():
+    with pytest.raises(ValueError):
+        SlideRail(stations=3)
+    with pytest.raises(ValueError):
+        SlideRail(stations=0)
+    with pytest.raises(ValueError):
+        SlideRail(station_spacing=0.0)
+    with pytest.raises(ValueError):
+        SlideRail(fit=-0.1)

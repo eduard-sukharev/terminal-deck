@@ -241,6 +241,12 @@ class BuildPipeline:
         from case.chassis import Chassis
         from case.screen_lid import ScreenLid
         from case.slider_frame import SliderFrame
+        from components.accessory_rail import (
+            build_rail,
+            build_rail_washer,
+            place_rail,
+            place_rail_washer,
+        )
         from components.slide import (
             build_bearing_clamp,
             build_guide_rod,
@@ -248,6 +254,7 @@ class BuildPipeline:
             build_rod_clamp,
         )
         from exports import EXPORTERS, GENERATED_DIR
+        from geometry.rail_mounts import rail_mounts
         from utilities import cad_helpers as ch
         from utilities.build_cache import BuildCache
 
@@ -511,7 +518,7 @@ class BuildPipeline:
             return once(
                 "chassis",
                 lambda: ch.make_compound(
-                    [chassis_shell()]
+                    [chassis_shell(), rails_compound(), rail_washers_compound()]
                     + [assembly.build_subset([p]) for p in chassis_parts]
                 ),
             )
@@ -556,6 +563,46 @@ class BuildPipeline:
                 lambda: ch.make_compound(
                     [assembly.build_subset([p]) for p in lid_parts]
                 ),
+            )
+
+        # --- accessory rail ---------------------------------------------------
+        def rail_pattern():
+            return once(
+                "_rail_mounts", lambda: rail_mounts(config, frame.chassis_joint)
+            )
+
+        def rail_part():
+            return once("rail", lambda: build_rail(rail_pattern()))
+
+        def rail_washer_part():
+            return once(
+                "rail_washer", lambda: build_rail_washer(rail_pattern())
+            )
+
+        def rails():
+            return once(
+                "_rails",
+                lambda: [
+                    place_rail(rail_pattern(), side) for side in (-1, 1)
+                ],
+            )
+
+        def rail_washers():
+            return once(
+                "_rail_washers",
+                lambda: [
+                    place_rail_washer(rail_pattern(), station)
+                    for station in rail_pattern().stations
+                ],
+            )
+
+        def rails_compound():
+            return once("_rails_compound", lambda: ch.make_compound(rails()))
+
+        def rail_washers_compound():
+            return once(
+                "_rail_washers_compound",
+                lambda: ch.make_compound(rail_washers()),
             )
 
         # --- keyboard plate ---------------------------------------------------
@@ -623,6 +670,8 @@ class BuildPipeline:
             "fpc_guard": guard,
             "rod_clamp": rod_clamp_part,
             "bearing_clamp": bearing_clamp_part,
+            "rail": rail_part,
+            "rail_washer": rail_washer_part,
             "keyboard_plate": plate,
             "keyboard_plate_left": lambda: plate_sections()[0],
             "keyboard_plate_right": lambda: plate_sections()[1],
@@ -668,6 +717,8 @@ class BuildPipeline:
         # reference but is not printable across X.
         printable = (
             "fpc_guard",
+            "rail",
+            "rail_washer",
             "chassis_tray_left",
             "chassis_tray_right",
             "chassis_deck_left",
@@ -698,6 +749,8 @@ class BuildPipeline:
                         ("fpc_guard", guard()),
                         ("linear_bearing", bearings_compound()),
                         ("bearing_clamp", bearing_clamps_compound()),
+                        ("accessory_rail", rails_compound()),
+                        ("rail_washer", rail_washers_compound()),
                     ],
                 )
             if name == "assembly_opened":
@@ -720,6 +773,8 @@ class BuildPipeline:
                         ("fpc_guard", _move_y(guard())),
                         ("linear_bearing", bearings_compound()),
                         ("bearing_clamp", bearing_clamps_compound()),
+                        ("accessory_rail", rails_compound()),
+                        ("rail_washer", rail_washers_compound()),
                     ],
                 )
             if name == "chassis":
@@ -731,6 +786,8 @@ class BuildPipeline:
                         ("chassis_deck", deck()),
                         ("linear_bearing", bearings_compound()),
                         ("bearing_clamp", bearing_clamps_compound()),
+                        ("accessory_rail", rails_compound()),
+                        ("rail_washer", rail_washers_compound()),
                     ],
                 )
             if name == "screen_lid":

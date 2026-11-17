@@ -13,14 +13,15 @@ parametricity, reusability.
 > **Status.** `docs/form_factor.md`, `CONTEXT.md` and ADR-0009/0010/0011/0012
 > plus ADR-0013 (rods under the display), ADR-0014 (the walled Well and the
 > plate mounted to its lower faces), ADR-0015 (per-piece staggered Section
-> Seams) and ADR-0019 (the Tray's vertical side walls and its end-wall base
-> taper) define the slider. The data skeleton
+> Seams), ADR-0019 (the Tray's vertical side walls and its end-wall base
+> taper) and ADR-0020 (the printed accessory rail on those walls) define the
+> slider. The data skeleton
 > and the CAD shell are implemented: `--layout slider` (the only layout) derives
 > the budget and builds/exports the chassis (Tray + Deck, split at the band
 > joint), screen lid (Bezel + Back plate, split at the band joint), the printed
 > FPC guard, guide rods, the printed Rod clamps and Bearing clamps, the
-> keyboard plate with the Well's ears, notches and M2 clearance holes, and the
-> closed/open assembly. Each shell piece is cut on **its own** Seam (Deck and
+> printed accessory rail and its washer pucks, the keyboard plate with the
+> Well's ears, notches and M2 clearance holes, and the closed/open assembly. Each shell piece is cut on **its own** Seam (Deck and
 > Bezel straight at `x = −14`; Tray and Back a 45° trapezoid at `+10`/`+18`),
 > so a screwed pair laps and a centreline band station cross-ties it; every Seam
 > also carries two fin-pair glued filament pins (ADR 0006). The
@@ -117,6 +118,7 @@ fingerprint together with their whole piece, and the assembled targets
 - `rod_clamp` — one printable Rod clamp
 - `bearing_clamp` — one printable Bearing clamp
 - `fpc_guard` — the printable FPC grille plate (bonded to the display's back)
+- `rail` — the printed MIL-STD-1913 rail blank; `rail_washer` — one printed washer puck (both ADR-0020)
 - `keyboard_plate` — the switch plate with the Well's ears, notches and M2 clearance holes; `keyboard_plate_left/right` — its Sections, split along the Plate Seam
 - `display` — LCD panel + HDMI driver combined
 - `components` — all per-component debug STLs
@@ -158,6 +160,11 @@ intuition. Wire-up lives in `main.py` (`BuildPipeline`, `run()`).
   bosses; `build()` returns their compound; `tray_sections()` /
   `deck_sections()` split a half on the Seam configured for **that piece**
   (ADR-0015), through `geometry.split.split_part`.
+- `components/accessory_rail.py` builds the printed rail blank and the washer
+  puck from `geometry/rail_mounts.rail_mounts(config, joint)` (ADR-0020), the
+  same pure-data pattern `Chassis.build_tray()` cuts the pads, gusset ribs,
+  square pockets and M4 bores from; `place_rail()`/`place_rail_washer()` put
+  them on either wall.
 - `case.screen_lid.ScreenLid.build_fpc_guard()` produces the printed FPC
   grille plate (planform, channel and grille from `SliderFrame`; a separate
   target, placed on the display's back); `build_bezel()` produces the
@@ -172,8 +179,8 @@ intuition. Wire-up lives in `main.py` (`BuildPipeline`, `run()`).
   `geometry/joint.py` and `geometry/chassis_joint.py`, the Well/plate pattern in
   `geometry/well_mounts.py`, the Seam cut in `geometry/split.py`, the Seam pins
   in `geometry/seam_joint.py`, and the Tray's base taper in
-  `geometry/base_taper.py`). The drag-chain channel, vents and connector
-  cutouts are the next refinement.
+  `geometry/base_taper.py`, the rail stations in `geometry/rail_mounts.py`).
+  The drag-chain channel, vents and connector cutouts are the next refinement.
 - `geometry/well_mounts.py` is the single source for the Well and the plate's
   mounting pattern (ADR-0014): the plate frame (the keyboard's 180° placement),
   the eight M2 stations, the ears, the notches and the plate Seam, all as pure
@@ -275,7 +282,9 @@ a YAML key usually requires adding a field to the matching dataclass.
 The face is flat — there is no keyboard slope and no slope machinery in the
 code (the clamshell's `deck.slope`/`tilt_x`/`deck_level_at` are gone). `config.slide` holds the purchased
 linear guide (rod diameter/length, bearing model, clamp, travel margin, chain
-pitch/width/bend radius); the build checks the chosen combination against the
+pitch/width/bend radius) and the accessory rail (`rail.stations`,
+`station_spacing`, `width`, `height`, `pitch`, `screw`, `head`, `nut`, `fit`);
+the build checks the chosen combination against the
 140 mm face-height budget. `config.chassis_joint` holds the Tray/Deck band
 (band height, boss cap, per-wall station insets, screw size);
 `config.parting` sets the plane it sits on. `config.keyboard.plate` holds the
@@ -294,6 +303,18 @@ Gotchas:
   ADR-0014's plate is what sets it. One bearing per rod; the default is the
   short LM6UU (19 mm) because the 35 mm LM6LUU plus the end clamps does not
   fit. A second bearing per rod breaks the budget.
+- **The accessory rail sets the Tray's X wall interface (ADR-0020).** Two M4
+  stations per wall at `y = ±30` (`slide.rail.stations` / `station_spacing`,
+  which must be a whole number of slot pitches so both screws land on rail
+  bridge centres), each a full-height pad (`2 × wall` deep, `11.2` wide) with a
+  square `10.0 × 10.0 × 2.6` pocket for the printed washer puck and two 45°
+  gussets sharing one obstacle-derived run (`3.05`). The puck captures a
+  DIN 562 M4 nut; the derived 8.8 mm stack pins the screw to **M4 × 10**. The
+  rail blank is `21.2 × 80 × 5.0`, counterbored, overhanging the wall 9.6 mm a
+  side. The pad and gussets must stay clear of the band joint's X-wall columns
+  (`±114.083, ±44.25`, Ø10) -- `slide-rail-*` are HARD checks. The rail's
+  picatinny profile (10 mm slots, hex top) is a **later slice** on an unchanged
+  interface; do not move the stations or the holes for it.
 - **The lid is the larger half; the chassis grows to it.** The guide span is
   fixed by the purchased bearing and the end clamps, so `chassis height =
   max(keycap top + rear band, guide span + top bezel)` and the
@@ -489,9 +510,9 @@ Gotchas:
   whole travel (closed → open), not just at the end poses.
 - The drag chain is a printed accessory whose channel and anchors are in the
   shell: keep the minimum bend radius and the channel clear over the travel.
-- The battery is **external** on an accessory rail; do not grow the chassis
-  envelope for it. The side walls carry square-nut pockets for the
-  user-supplied picatinny rails; the rails are not printed.
+- The battery and the USB hub are **external** on an accessory rail; do not
+  grow the chassis envelope for them. The rail itself is printed (ADR-0020);
+  its M4 stations, pads and washer pucks are part of the Tray.
 
 ## Docs
 

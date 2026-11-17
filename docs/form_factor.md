@@ -17,8 +17,9 @@ so it reads as a tablet with a slide-out keyboard. This replaces the clamshell
   Journal Rev.2 ReVamp) are **retired** with the clamshell. Only their
   handheld-PC size class remains relevant.
 
-No palm rest. No decorative rails, antennas or greebles; the picatinny
-interface is functional (accessories) and is not part of the printed shell.
+No palm rest. No decorative rails, antennas or greebles; the printed
+accessory rail (MIL-STD-1913, ADR-0020) is a functional mounting interface,
+not decoration.
 
 ## Envelope
 
@@ -179,9 +180,11 @@ to tilt it.**
 * **Battery** — external, on the accessory rail (as the reference). An
   internal pack, ideally a small one that keeps the SBC alive while external
   packs are swapped, is a later option only if the envelope allows.
-* **Accessory rails** — picatinny interface, **not modelled**: the side walls
-  get square-nut pockets printed in (nuts inserted during a print pause), so
-  user-supplied rail sections bolt on. No rail bars in the shell.
+* **Accessory rails** — a printed MIL-STD-1913 rail blank (ADR-0020) bolts to
+  two M4 stations per Tray side wall. Each station is a full-height pad with a
+  square pocket and two 45° gussets; a printed washer puck in the pocket
+  captures a DIN 562 square nut, so a one-sided M4 button screw clamps the rail.
+  The slot profile is a later slice; the interface, stance and screw are fixed.
 * **Well contents** — the keyboard plate closes the Well from below; the
   **RP2040 controller** sits under the plate, in the chassis thickness. The
   cavity there is clear end-to-end (the only things that cross the Parting
@@ -323,5 +326,5 @@ height.
 
 Every assembly target is also exported as glTF with one colour per component
 and the chassis/lid shells translucent, so Sections, Seams and internals can
-be told apart. New parts (Bearing clamp, Rod clamp, guide rod, drag chain, rail pockets)
+be told apart. New parts (Bearing clamp, Rod clamp, guide rod, drag chain, accessory rail, washer puck)
 need their own entry in `utilities/colors.py`.

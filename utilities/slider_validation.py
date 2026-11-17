@@ -8,6 +8,7 @@ and the drag-chain channel are checked by the case build once it exists (see
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from utilities.validation import ValidationReport
@@ -473,6 +474,153 @@ def _add_taper_checks(report: ValidationReport, config: Any, budget: Any) -> Non
         and nearest >= min_feature - 1e-6,
         f"{len(runs)} taper runs, shortest {shortest:.2f} mm; nearest stop "
         f"{nearest:.2f} mm inside the wall end >= min feature {min_feature:.2f}",
+    )
+
+
+def _add_rail_checks(report: ValidationReport, config: Any, budget: Any) -> None:
+    """HARD: the accessory rail's M4 stations fit the Tray's vertical X walls.
+
+    ADR-0020 bolts the printed rail to the Tray's X walls (vertical for exactly
+    that, ADR-0019) over an even number of stations per wall, mirrored about the
+    wall's centre. Four things have to hold before any solid is built:
+
+    * the stations mirror, sit one ``station_spacing`` apart and land on the
+      rail profile's **bridge centres** -- a whole number of slot pitches from
+      the rail's mid-length -- so a counterbore can never eat a slot;
+    * each station's pad clears the band joint's X-wall columns and leaves room
+      for both of its 45 degree gussets;
+    * the pocket leaves the puck a floor and stays clear of the floor and the
+      Parting plane by a minimum feature;
+    * the derived screw stack has a stock length that covers it with a minimum
+      feature of thread past the nut and no more than one pitch of waste.
+    """
+    min_feature = config.material.minimum_feature
+    joint = budget.chassis_joint
+    settings = config.slide.rail
+
+    from geometry.rail_mounts import plan_gap, rail_mounts
+
+    try:
+        mounts = rail_mounts(config, joint)
+    except (ValueError, KeyError) as exc:
+        for name in (
+            "slide-rail-stations",
+            "slide-rail-spacing",
+            "slide-rail-clear",
+            "slide-rail-pocket",
+            "slide-rail-screw",
+            "slide-rail-envelope",
+        ):
+            report.add(name, False, f"the rail derivation failed: {exc}")
+        return
+
+    offsets = mounts.station_offsets
+    counts = {}
+    for side in (-1, 1):
+        counts[side] = sum(1 for s in mounts.stations if s.side == side)
+    symmetric = all(
+        any(abs(-s.y - other.y) <= 1e-9 for other in mounts.stations)
+        for s in mounts.stations
+    )
+    report.add(
+        "slide-rail-stations",
+        counts[-1] == counts[1] == settings.stations
+        and settings.stations % 2 == 0
+        and symmetric
+        and len({round(s.z, 9) for s in mounts.stations}) == 1,
+        f"{len(mounts.stations)} stations ({counts[-1]} per wall, mirrored, "
+        f"all at z {mounts.stations[0].z:.2f}); offsets "
+        + ", ".join(f"{y:+.2f}" for y in offsets),
+    )
+
+    pitch = settings.pitch
+    bridge_error = max(
+        abs(offset - round(offset / pitch) * pitch) for offset in offsets
+    )
+    span = offsets[-1] - offsets[0] if len(offsets) > 1 else 0.0
+    report.add(
+        "slide-rail-spacing",
+        abs(span - settings.station_spacing) <= 1e-9 and bridge_error <= 1e-6,
+        f"spacing {span:.2f} mm is {span / pitch:g} x pitch {pitch:.2f}; both "
+        f"stations sit within {bridge_error * 1000.0:.1f} um of a bridge "
+        f"centre (a counterbore cannot reach a slot)",
+    )
+
+    def _pad_clearance(station: Any) -> float:
+        """The tightest plan gap between this pad and a band column (mm)."""
+        pad = (
+            station.x_inner - station.pad_depth,
+            station.y - station.pad_width / 2.0,
+            station.x_inner,
+            station.y + station.pad_width / 2.0,
+        )
+        gaps = [
+            plan_gap(abs(x), y, pad) - boss / 2.0
+            for x, y, boss in columns
+        ]
+        return min(gaps) if gaps else math.inf
+
+    columns = [
+        (station.x, station.y, station.boss)
+        for station in joint.stations
+        if station.kind == "end"
+    ]
+    gap = min(_pad_clearance(s) for s in mounts.stations)
+    run = min(s.gusset_run for s in mounts.stations)
+    report.add(
+        "slide-rail-clear",
+        bool(columns) and gap >= 0.0 and run >= min_feature - 1e-6,
+        f"every pad clears its nearest band column by {gap:.2f} mm and every "
+        f"45 degree gusset still has {run:.2f} >= min feature "
+        f"{min_feature:.2f} mm of run",
+    )
+
+    puck_floor_ok = mounts.puck_floor >= min_feature - 1e-6
+    ring = min(
+        (s.pad_width - s.pocket_side) / 2.0 for s in mounts.stations
+    )
+    pocket_rows = all(
+        s.pocket_depth < s.pad_depth - 1e-9
+        and s.z - s.pocket_side / 2.0 - mounts.wall >= min_feature - 1e-9
+        and joint.parting_z - (s.z + s.pocket_side / 2.0) >= min_feature - 1e-9
+        for s in mounts.stations
+    )
+    report.add(
+        "slide-rail-pocket",
+        puck_floor_ok and pocket_rows and ring >= min_feature - 1e-6,
+        f"puck floor {mounts.puck_floor:.2f} >= min feature "
+        f"{min_feature:.2f}; pocket {mounts.stations[0].pocket_side:.2f} in a "
+        f"{mounts.stations[0].pad_width:.2f} pad ({ring:.2f} mm ring), "
+        f"{mounts.protrusion:.2f} mm puck protrusion",
+    )
+
+    stock = mounts.stock_length
+    slack = stock - mounts.screw_stack
+    web = mounts.height - mounts.head_recess.depth
+    report.add(
+        "slide-rail-screw",
+        web >= min_feature - 1e-6 and slack >= min_feature - 1e-6 and slack <= pitch,
+        f"the rail's web under the {mounts.screw.size} head is {web:.2f} >= min "
+        f"feature {min_feature:.2f}; stock {mounts.screw.size} x {stock:.0f} "
+        f"spans the {mounts.screw_stack:.2f} mm stack with {slack:.2f} mm past "
+        f"the nut (at most one pitch {pitch:.2f})",
+    )
+
+    straight_end = joint.depth / 2.0 - config.corners.chamfer
+    overhang = (mounts.width - mounts.wall) / 2.0
+    in_envelope = (
+        mounts.length <= 2.0 * straight_end + 1e-6
+        and mounts.width <= BUILD_VOLUME[0]
+        and mounts.length <= BUILD_VOLUME[1]
+        and overhang > 0.0
+    )
+    report.add(
+        "slide-rail-envelope",
+        in_envelope,
+        f"rail {mounts.width:.2f} x {mounts.length:.2f} mm fits the "
+        f"{2.0 * straight_end:.2f} mm straight wall span and the build volume; "
+        f"it overhangs the {mounts.wall:.2f} mm wall by {overhang:.2f} mm a "
+        f"side, so the device stands on its lower edges",
     )
 
 
@@ -1608,6 +1756,7 @@ def run_slider_checks(
     _add_seam_checks(report, config, budget, mounts)
     _add_seam_pin_checks(report, config, budget, placements, mounts)
     _add_taper_checks(report, config, budget)
+    _add_rail_checks(report, config, budget)
 
     report.goals["closed-face-height"] = budget.closed_face_height
     report.goals["open-face-height"] = budget.open_face_height

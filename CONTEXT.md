@@ -127,10 +127,12 @@ behind the screen; its channel and anchors are part of the shell, its links are
 a separate printed part.
 _Avoid:_ "cable guard" (retired clamshell term), "cable track".
 
-**Accessory rail** — The picatinny-style mounting interface on the Chassis's
-side walls. The shell carries square-nut pockets (nuts inserted during a print
-pause); the rail bars themselves are user-supplied accessories, not printed
-shell parts. The external battery pack hangs on one.
+**Accessory rail** — The printed MIL-STD-1913 interface bolted to the Tray's
+vertical side walls (ADR-0020). Two M4 stations per wall sit on a printed
+washer puck: the puck captures a DIN 562 square nut in a square pocket in the
+wall's pad, and the rail blank's counterbored hole comes down on it. The
+picatinny profile (slots, hex top) is a later slice; the stance, pad, puck and
+screw are settled. The external battery pack and the USB hub hang on rails.
 
 **Rear band** — The strip of Deck behind the keyboard, between the
 bearing-clamp seats. Holds the SBC and the drag-chain anchor; not used for the

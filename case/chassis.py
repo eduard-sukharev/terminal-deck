@@ -105,6 +105,22 @@ class Chassis:
         body = ch.cut(body, taper_cutter(f.base_taper))
         body = ch.union(body, taper_fill(f.base_taper))
 
+        # The accessory rail's stations (ADR-0020): a pad at each M4 station on
+        # the X walls, braced into the floor by two 45 degree gussets. The pad
+        # carries the square pocket the printed washer puck drops into; the
+        # screw comes through the rail, the wall and the pad into the nut the
+        # puck captures.
+        rail = self._rail_mounts()
+        body = ch.union(
+            body,
+            *[self._rail_pad(station) for station in rail.stations],
+            *[
+                self._rail_gusset(station, direction)
+                for station in rail.stations
+                for direction in (-1, 1)
+            ],
+        )
+
         # A column at every station, from the floor up to the plane. The
         # frustum tapers from what the floor skin allows to the insert boss
         # diameter at the plane.
@@ -133,6 +149,20 @@ class Chassis:
             )
             holes.extend((through, keyhole))
         body = ch.cut(body, *holes)
+
+        # The rail's own holes: the pocket the washer puck sits in and the M4
+        # clearance bore behind it, through the pad and the wall.
+        body = ch.cut(
+            body,
+            *[
+                shape
+                for station in rail.stations
+                for shape in (
+                    self._rail_pocket(station),
+                    self._rail_hole(station),
+                )
+            ],
+        )
 
         # ADR-0006: the Seam's glued-filament pins, grown into the half before
         # the split so each Section prints its own share of every fin.
@@ -362,6 +392,86 @@ class Chassis:
         else:
             column = ch.frustum_centered(station.base_boss, station.boss, height)
         return ch.translate(column, station.x, station.y, height / 2.0)
+
+    # -- accessory rail ---------------------------------------------------
+    def _rail_mounts(self):
+        """The rail's station pattern (ADR-0020), from the band joint."""
+        from geometry.rail_mounts import rail_mounts
+
+        mounts = rail_mounts(self.config, self.frame.chassis_joint)
+        if not mounts.ok:
+            raise ValueError(
+                "the accessory rail's stations are invalid: "
+                + "; ".join(mounts.failures)
+            )
+        return mounts
+
+    def _rail_pad(self, station: Any):
+        """One station's pad: a full-height column on the wall's cavity face."""
+        from utilities import cad_helpers as ch
+
+        f = self.frame
+        height = f.parting_z - f.wall
+        pad = ch.box_centered(station.pad_depth, station.pad_width, height)
+        return ch.translate(
+            pad,
+            station.side * (station.x_inner - station.pad_depth / 2.0),
+            station.y,
+            f.wall + height / 2.0,
+        )
+
+    def _rail_gusset(self, station: Any, direction: int):
+        """One 45 degree gusset from the pad's face down to the floor.
+
+        The run is the station's shared, obstacle-derived value; the rib's tip
+        is truncated one minimum feature before the floor, so it lands on a
+        small vertical face instead of a knife edge.
+        """
+        from utilities import cad_helpers as ch
+
+        f = self.frame
+        floor = f.wall
+        run = station.gusset_run
+        tip = self.config.material.minimum_feature
+        edge = station.y + direction * station.pad_width / 2.0
+        profile = [
+            (edge, floor),
+            (edge, floor + run),
+            (edge + direction * (run - tip), floor + tip),
+            (edge + direction * (run - tip), floor),
+        ]
+        prism = ch.extrude_profile_x(profile, station.pad_depth)
+        return ch.translate(
+            prism, station.side * (station.x_inner - station.pad_depth / 2.0), 0.0, 0.0
+        )
+
+    def _rail_pocket(self, station: Any):
+        """The square pocket the printed washer puck drops into."""
+        from utilities import cad_helpers as ch
+
+        over = 0.2
+        depth = station.pocket_depth + over
+        pocket = ch.box_centered(depth, station.pocket_side, station.pocket_side)
+        return ch.translate(
+            pocket,
+            station.side * (station.x_pad_in - over / 2.0 + depth / 2.0),
+            station.y,
+            station.z,
+        )
+
+    def _rail_hole(self, station: Any):
+        """The M4 clearance bore behind the pocket, through the wall."""
+        from utilities import cad_helpers as ch
+
+        over = 0.2
+        length = station.x_outer - station.pocket_floor + 2.0 * over
+        hole = ch.rotate_y(ch.cylinder_centered(station.clearance_hole, length), 90.0)
+        return ch.translate(
+            hole,
+            station.side * (station.pocket_floor + length / 2.0 - over),
+            station.y,
+            station.z,
+        )
 
     # -- Deck features ---------------------------------------------------
     def _seat(self, side: int):

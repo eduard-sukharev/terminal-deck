@@ -24,6 +24,7 @@ load configuration -> load components -> place layout -> validate placement
 | `vents.build(spec)` | `VentSpec` | vent slots |
 | `cutouts.build(cutouts, shell)` | `Cutout[]`, shell | shell with openings |
 | `split.split_part(shape, split, depth, wall)` | part, configured `Split` | its printable Sections (own Seam) |
+| `rail_mounts.rail_mounts(config, joint)` | config, chassis joint | the accessory rail's stations: pads, pockets, gusset run, puck and screw stack (ADR-0020) |
 | `seam_joint.add_pins(body, seam, pin, sites, substrate, upward)` | Seam, `SeamPin`, sites | the two fin-pair pin pockets of a half |
 | `seam_joint.pin_planes(config, budget)` | config, budget | each part's pin substrate Z and direction |
 | `edge_treatment.*`, `printability.*` | Sections | chamfers, bed faces |
@@ -33,7 +34,7 @@ load configuration -> load components -> place layout -> validate placement
 | Method | Consumes | Produces |
 |--------|----------|----------|
 | `Chassis.build()` | config, frame | assembled chassis: Tray + Deck compound |
-| `Chassis.build_tray()` | config, frame | lower bowl: prismatic walls, 15° base taper on the end walls, floor, straight screw columns (ADR-0019) |
+| `Chassis.build_tray()` | config, frame | lower bowl: prismatic walls, 15° base taper on the end walls, floor, straight screw columns (ADR-0019), rail pads/pockets/gussets (ADR-0020) |
 | `Chassis.build_deck()` | config, frame | purely prismatic Deck: keyboard Well, seats, insert bosses |
 | `Chassis.tray_sections()` / `deck_sections()` | — | each half's printable Sections, on that piece's configured Seam |
 | `ScreenLid.build()` | config, frame | assembled lid: Bezel + Back plate as a compound |
@@ -45,6 +46,12 @@ load configuration -> load components -> place layout -> validate placement
 
 Each `Component.build()` produces the component's solid centered on its
 reference origin.
+
+| Function | Consumes | Produces |
+|----------|----------|----------|
+| `accessory_rail.build_rail(mounts)` | `RailMounts` | the printed rail blank, counterbored M4 holes on the station offsets |
+| `accessory_rail.build_rail_washer(mounts)` | `RailMounts` | the square washer puck with the DIN 562 nut pocket |
+| `accessory_rail.place_rail(mounts, side)` / `place_rail_washer(mounts, station)` | `RailMounts` | the parts in the chassis frame |
 
 ### Exports (`exports/`)
 

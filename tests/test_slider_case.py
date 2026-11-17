@@ -151,9 +151,10 @@ def test_the_walls_keep_their_thickness(data, solids):
     config, _, _, frame = data
     chassis, _ = solids
     wall = config.wall_thickness
-    # Probe away from the joint stations (which stand against every wall), so
-    # only the plain wall section is measured.
-    y_probe = 30.0
+    # Probe away from the joint stations (which stand against every wall) and
+    # from the accessory rail's pads (ADR-0020, +/-30 on the X walls), so only
+    # the plain wall section is measured.
+    y_probe = 0.0
     for z in (1.5 * wall, frame.chassis_top / 2.0, frame.chassis_top - 2.5 * wall):
         outer_half = _width_at(chassis, z) / 2.0
         assert _material_at(chassis, outer_half - wall / 2.0, y_probe, z) > 0

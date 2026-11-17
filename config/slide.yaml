@@ -100,11 +100,19 @@ slide:
     link_height: 6.0
     bend_radius: 30.0        # HDMI minimum bend radius (routing.cable_routing)
 
-  rail:                      # picatinny interface: pockets only, no rails printed
-    interface: picatinny
-    nut: M4
-    pocket_depth: 5.0
-    pitch: 10.0
+  rail:                      # printed accessory rail on the Tray's X walls
+    interface: picatinny     # the profile lands in the next slice; the station
+                             # pattern and the rail blank do not change
+    stations: 2              # per side, mirrored fore and aft of the centre
+    station_spacing: 60.0    # M4 axis to M4 axis; a whole number of pitches,
+                             # which also puts both on rail bridge centres
+    width: 21.2              # MIL-STD-1913 width across the wall (overhangs)
+    height: 5.0              # rail thickness off the wall
+    pitch: 10.0              # slot pitch of the profile
+    screw: M4                # button head in a counterbore, from outside
+    head: button
+    nut: M4                  # DIN 562 square nut in the printed washer puck
+    fit: 0.2                 # printed puck in its pad pocket
 
   # Sectioning (ADR 0015): every part is still cut into two Sections, but the
   # Seams are staggered so no two Seams of a screw-joined pair ever coincide.

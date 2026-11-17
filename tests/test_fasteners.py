@@ -1,6 +1,16 @@
 """Tests for the fastener library."""
 
-from utilities.fasteners import head, head_recess, screw, heat_insert, SCREWS, HEAT_INSERTS
+from utilities.fasteners import (
+    HEAT_INSERTS,
+    SCREWS,
+    SQUARE_NUTS,
+    SquareNut,
+    head,
+    head_recess,
+    heat_insert,
+    screw,
+    square_nut,
+)
 
 
 def test_screw_sizes():
@@ -22,3 +32,13 @@ def test_heat_insert():
     assert hi.size == "M2.5"
     assert hi.outside_diameter > 0
     assert hi.depth > 0
+
+
+def test_square_nut():
+    nut = square_nut("M4")
+    assert isinstance(nut, SquareNut)
+    assert nut is SQUARE_NUTS["M4"]
+    # DIN 562 M4: 7.0 mm across the flats, 2.2 mm thick.
+    assert nut.across_flats == 7.0
+    assert nut.height == 2.2
+    assert nut.pocket == nut.across_flats + nut.clearance

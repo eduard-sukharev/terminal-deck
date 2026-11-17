@@ -103,6 +103,33 @@ class NutTrap:
 
 
 @dataclass(frozen=True)
+class SquareNut:
+    """A square nut (DIN 562) carried by a printed washer puck.
+
+    Attributes
+    ----------
+    size : str
+        Thread designation.
+    across_flats : float
+        Width across the flats (mm); it is also the nut's height in plan.
+    height : float
+        Nut thickness (mm).
+    clearance : float
+        Added to the pocket width for a slip fit (mm).
+    """
+
+    size: str
+    across_flats: float
+    height: float
+    clearance: float
+
+    @property
+    def pocket(self) -> float:
+        """The square pocket's side that seats the nut (mm)."""
+        return self.across_flats + self.clearance
+
+
+@dataclass(frozen=True)
 class WasherRecess:
     """A shallow round pocket for a washer under a screw head.
 
@@ -230,6 +257,13 @@ NUT_TRAPS: dict[str, NutTrap] = {
     "M3": NutTrap(across_flats=5.5, height=4.0, clearance=0.2),
 }
 
+#: Square nuts (DIN 562): across flats and height, with a slip-fit clearance.
+#: The accessory rail's stations capture one in a printed washer puck
+#: (ADR-0020): 7.0 mm is the DIN 562 M4 dimension, 2.2 mm its thickness.
+SQUARE_NUTS: dict[str, SquareNut] = {
+    "M4": SquareNut(size="M4", across_flats=7.0, height=2.2, clearance=0.2),
+}
+
 #: Flat washers (ISO 7089): outer diameter and thickness.
 WASHERS: dict[str, WasherRecess] = {
     "M3": WasherRecess(diameter=7.0, depth=0.5),
@@ -249,6 +283,11 @@ COUNTERSINKS: dict[str, Countersink] = {
 def nut_trap(size: str) -> NutTrap:
     """The nyloc nut pocket for ``size``, e.g. ``"M3"``."""
     return NUT_TRAPS[size]
+
+
+def square_nut(size: str) -> SquareNut:
+    """The DIN 562 square nut ``size`` captures in a washer puck (ADR-0020)."""
+    return SQUARE_NUTS[size]
 
 
 def washer(size: str) -> WasherRecess:

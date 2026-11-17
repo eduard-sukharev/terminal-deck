@@ -98,13 +98,18 @@ class ValidationReport:
         """Record a SOFT finding: reported in the summary, never fails the build."""
         self.warnings.append(message)
 
-    def summary(self) -> str:
+    def summary(self, verbose: bool = True) -> str:
+        """One line per check (and GOAL metrics) when ``verbose``; otherwise
+        only the header, FAIL lines and warnings."""
         lines = [f"{len(self.checks)} checks: {'PASS' if self.passed else 'FAIL'}"]
         for check in self.checks:
+            if check.passed and not verbose:
+                continue
             marker = "ok  " if check.passed else "FAIL"
             lines.append(f"  [{marker}] {check.name}: {check.message}")
-        for name, value in self.goals.items():
-            lines.append(f"  [goal] {name}: {value:.2f}")
+        if verbose:
+            for name, value in self.goals.items():
+                lines.append(f"  [goal] {name}: {value:.2f}")
         for message in self.warnings:
             lines.append(f"  [warn] {message}")
         return "\n".join(lines)

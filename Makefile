@@ -42,6 +42,11 @@
 #                                     # inspecting a known-bad layout while
 #                                     # iterating on a fix, not for shipping
 #                                     # the result. Works with `data` too.
+#
+# Every Python target is quiet by default: only errors and warnings are
+# printed, so a fully passing run is silent (exit code 0). Pass VERBOSE=1
+# (e.g. `make all VERBOSE=1`, `make test VERBOSE=1`) for the full output —
+# per-check report lines, per-target export lines, pytest -v.
 
 ENV_NAME ?= cyberdeck
 PY_VERSION ?= 3.12
@@ -58,7 +63,13 @@ RENDER_AZIM ?= -90
 TARGETS  ?= all
 IGNORE_VALIDATION ?=
 NO_CACHE ?=
+VERBOSE  ?=
 CACHE_FILE ?= .build-cache.json
+
+# VERBOSE=1 forwards --verbose to main.py/render scripts and -v to pytest;
+# without it the build is quiet (errors and warnings only).
+VERBOSE_FLAG = $(if $(strip $(VERBOSE)),--verbose,)
+PYTEST_FLAGS = $(if $(strip $(VERBOSE)),-v,-q)
 
 # Convenience targets ship the whole part AND its printable cuts, matching what
 # `make all` produces for that sub-assembly (ADR-0015): the shell, its left/right
@@ -103,13 +114,13 @@ env-remove:
 data build test check render_svg render_stl: env
 
 data:
-	$(PYTHON) $(MAIN) --config $(CONFIG) --layout $(LAYOUT) --steps data $(IGNORE_VALIDATION_FLAG)
+	$(PYTHON) $(MAIN) --config $(CONFIG) --layout $(LAYOUT) --steps data $(IGNORE_VALIDATION_FLAG) $(VERBOSE_FLAG)
 
 # One shared recipe: the convenience targets below assign TARGETS per goal and
 # run it themselves. A common `build` prerequisite would be made only once, so
 # `make chassis screen_lid` would silently skip the second target.
 define BUILD_CMD
-$(PYTHON) $(MAIN) --config $(CONFIG) --layout $(LAYOUT) --steps all --targets $(TARGETS) $(IGNORE_VALIDATION_FLAG) $(NO_CACHE_FLAG)
+$(PYTHON) $(MAIN) --config $(CONFIG) --layout $(LAYOUT) --steps all --targets $(TARGETS) $(IGNORE_VALIDATION_FLAG) $(NO_CACHE_FLAG) $(VERBOSE_FLAG)
 endef
 
 build:
@@ -172,7 +183,7 @@ components: env
 	$(BUILD_CMD)
 
 test:
-	$(PYTHON) -m pytest
+	$(PYTHON) -m pytest $(PYTEST_FLAGS)
 
 check: data
 	$(PYTHON) -m py_compile main.py components/*.py geometry/*.py layouts/*.py \
@@ -183,7 +194,7 @@ render: render_svg render_stl
 
 render_svg:
 	@mkdir -p $(GENERATED)/svg
-	$(PYTHON) utilities/render_plate_svg.py --layout $(PLATE_LAYOUT) -o $(GENERATED)/svg/plate_top.svg
+	$(PYTHON) utilities/render_plate_svg.py --layout $(PLATE_LAYOUT) -o $(GENERATED)/svg/plate_top.svg $(VERBOSE_FLAG)
 
 # Shaded PNG preview of every generated STL (run `make all` first).
 render_stl:
@@ -191,7 +202,7 @@ render_stl:
 	@set -e; found=0; for f in $(GENERATED)/stl/cyberdeck_*.stl; do \
 		[ -e "$$f" ] || continue; found=1; \
 		$(PYTHON) utilities/render_stl.py $$f -o $(GENERATED)/png/$$(basename $$f .stl).png \
-			--elev $(RENDER_ELEV) --azim $(RENDER_AZIM); \
+			--elev $(RENDER_ELEV) --azim $(RENDER_AZIM) $(VERBOSE_FLAG); \
 	done; \
 	[ $$found = 1 ] || { echo "no STLs in $(GENERATED)/stl - run 'make all' first"; exit 1; }
 

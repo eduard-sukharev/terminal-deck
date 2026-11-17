@@ -158,6 +158,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--wobble", type=float, default=None,
                         help="keycap wobble per side (default: keyboard.plate.wobble)")
     parser.add_argument("--scale", type=float, default=1.0)
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="print 'wrote …' lines (quiet by default)")
     args = parser.parse_args(argv)
 
     # The Well and the plate are derived from the config; the tool reads the
@@ -173,7 +175,8 @@ def main(argv: list[str] | None = None) -> int:
         pitch=config.keyboard.pitch if args.pitch is None else args.pitch,
         scale=args.scale,
     )
-    print(f"wrote {out}  ({len(xml)} bytes)")
+    if args.verbose:
+        print(f"wrote {out}  ({len(xml)} bytes)")
     if args.png:
         png = out.with_suffix(".png")
         subprocess.run(
@@ -181,7 +184,8 @@ def main(argv: list[str] | None = None) -> int:
             check=True,
             capture_output=True,
         )
-        print(f"wrote {png}")
+        if args.verbose:
+            print(f"wrote {png}")
     return 0
 
 

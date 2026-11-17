@@ -84,11 +84,15 @@ class ConstraintReport:
     def passed(self) -> bool:
         return len(self.hard_violations) == 0
 
-    def summary(self) -> str:
+    def summary(self, verbose: bool = True) -> str:
+        """One line per constraint when ``verbose``; otherwise only the
+        header and FAIL lines."""
         lines = [
             f"{len(self.results)} constraints: {'PASS' if self.passed else 'FAIL'}"
         ]
         for r in self.results:
+            if r.satisfied and not verbose:
+                continue
             marker = "ok  " if r.satisfied else "FAIL"
             lines.append(f"  [{marker}] {r.constraint.kind}: {r.message}")
         return "\n".join(lines)

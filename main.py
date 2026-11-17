@@ -39,6 +39,18 @@ from utilities.file_metadata import apply as apply_fs_metadata
 from utilities.validation import ValidationReport, run_all
 
 
+#: Set from ``--verbose`` in ``main()``: informational messages print only
+#: when True. Errors and warnings always print; a failed report prints its
+#: full detail regardless. A fully passing quiet run prints nothing.
+_VERBOSE = False
+
+
+def _info(message: str) -> None:
+    """Informational pipeline message — shown only with ``--verbose``."""
+    if _VERBOSE:
+        print(message)
+
+
 class BuildPipeline:
     """Drives a complete cyberdeck build from configuration."""
 
@@ -136,8 +148,8 @@ class BuildPipeline:
         )
         return layout
 
-    def validate(self, placements, shell_depths=None, openings=None) -> str:
-        """Run the placement validation suite and return its summary."""
+    def validate(self, placements, shell_depths=None, openings=None):
+        """Run the placement validation suite and return its report."""
         assert self.config is not None
         max_height = max(
             (p.z_bounds()[1] for p in placements), default=0.0
@@ -150,7 +162,7 @@ class BuildPipeline:
             max_component_height=max_height,
             lid_interior_height=max_height,
         )
-        return report.summary()
+        return report
 
     def _run_slider_data(
         self,
@@ -174,7 +186,7 @@ class BuildPipeline:
 
         assembly = Assembly(placements, config)
         size = assembly.enclosure_size()
-        print(
+        _info(
             f"[pipeline] placement envelope: {size.width:.1f} x "
             f"{size.depth:.1f} x {size.height:.1f} mm "
             "(component extent incl. walls; the device envelope is the slide "
@@ -182,8 +194,9 @@ class BuildPipeline:
         )
 
         budget = compute_slide_budget(config, components)
-        print("[pipeline] slide budget:")
-        print(budget.summary())
+        if _VERBOSE or not budget.within_face_limit:
+            print("[pipeline] slide budget:")
+            print(budget.summary())
 
         # The plate carries the Well's mounting pattern (ears, notches, M2
         # clearance holes) -- one source, derived from the same budget the Deck
@@ -210,8 +223,13 @@ class BuildPipeline:
         report = run_slider_checks(
             budget, config, placements, mounts=keyboard.well_mounts
         )
-        print("[pipeline] slider validation:")
-        print(report.summary())
+        if report.passed and not _VERBOSE:
+            # Quiet success: nothing but the warnings.
+            for message in report.warnings:
+                print(f"  [warn] {message}")
+        else:
+            print("[pipeline] slider validation:")
+            print(report.summary(verbose=_VERBOSE))
         if not report.passed and not ignore_validation:
             raise SystemExit(
                 "[pipeline] aborted: slider validation failed "
@@ -614,7 +632,7 @@ class BuildPipeline:
         def plate_sections():
             def build():
                 model = components["keyboard"].plate_model()
-                print(
+                _info(
                     "[pipeline] keyboard plate Seam, front to back: "
                     + " -> ".join(
                         f"({x:.2f}, {y:.2f})"
@@ -815,7 +833,7 @@ class BuildPipeline:
             reuse=use_cache and metrics_path is None,
         )
         if use_cache and metrics_path is not None:
-            print(
+            _info(
                 "[pipeline] geometry cache disabled: --metrics needs every "
                 "selected target built"
             )
@@ -826,6 +844,7 @@ class BuildPipeline:
             from utilities.metrics import shape_metrics
 
         reused = 0
+        built = 0
         for name, build in builders.items():
             artifacts = [
                 EXPORTERS[fmt]().output_path(f"cyberdeck_{name}")
@@ -833,7 +852,7 @@ class BuildPipeline:
             ]
             if cache.is_fresh(name, artifacts):
                 reused += 1
-                print(f"[pipeline] {name}: unchanged, keeping its exports")
+                _info(f"[pipeline] {name}: unchanged, keeping its exports")
                 continue
 
             try:
@@ -842,6 +861,7 @@ class BuildPipeline:
                 continue
             if solid is None:
                 continue
+            built += 1
 
             if name in printable:
                 x, y, z = ch.bounding_box_mm(solid)
@@ -850,10 +870,16 @@ class BuildPipeline:
                     and y <= volume[1] + 1e-6
                     and z <= volume[2] + 1e-6
                 )
-                print(
-                    f"[pipeline] {name}: {x:.1f} x {y:.1f} x {z:.1f} mm "
-                    f"{'fits' if fits else 'EXCEEDS'} the build volume"
-                )
+                if fits:
+                    _info(
+                        f"[pipeline] {name}: {x:.1f} x {y:.1f} x {z:.1f} mm "
+                        "fits the build volume"
+                    )
+                else:
+                    print(
+                        f"[pipeline] {name}: {x:.1f} x {y:.1f} x {z:.1f} mm "
+                        "EXCEEDS the build volume"
+                    )
                 if not fits and not ignore_validation:
                     raise SystemExit(
                         "[pipeline] aborted: Section exceeds the build "
@@ -863,7 +889,7 @@ class BuildPipeline:
             if metrics_path is not None:
                 metrics[name] = shape_metrics(solid)
             x, y, z = ch.bounding_box_mm(solid)
-            print(
+            _info(
                 f"[pipeline] {name}: bbox {x:.1f} x {y:.1f} x {z:.1f} mm, "
                 f"volume {ch.volume_mm3(solid):.0f} mm^3"
             )
@@ -875,15 +901,14 @@ class BuildPipeline:
                 exporter.export(obj, path)
                 if path.exists() and not apply_fs_metadata(provenance, path):
                     print(f"[pipeline] warning: could not write fs metadata for {path}")
-                print(f"[pipeline] exported {name} -> {path}")
+                _info(f"[pipeline] exported {name} -> {path}")
             cache.record(name, artifacts)
             cache.save()
 
-        if reused:
-            print(
-                f"[pipeline] {reused} of {len(builders)} target(s) unchanged "
-                f"since the last build ({CACHE_FILE_NAME})"
-            )
+        print(
+            f"[pipeline] build: {built} built, {reused} reused "
+            f"({len(builders)} targets)"
+        )
 
         if metrics_path is not None:
             metrics["_pipeline"] = {
@@ -956,16 +981,16 @@ class BuildPipeline:
             the metrics need every selected target built.
         """
         config = self.load_config()
-        print(f"[pipeline] config: {self.config_path} ({self.topics})")
-        print(f"           layout: {self.layout_name}")
-        print(f"           wall_thickness: {config.wall_thickness} mm")
+        _info(f"[pipeline] config: {self.config_path} ({self.topics})")
+        _info(f"           layout: {self.layout_name}")
+        _info(f"           wall_thickness: {config.wall_thickness} mm")
 
         components = self.load_components()
-        print(f"[pipeline] components: {', '.join(components)}")
+        _info(f"[pipeline] components: {', '.join(components)}")
 
         layout = self.place_layout(components)
         placements = layout.placements()
-        print(f"[pipeline] placements: {len(placements)}")
+        _info(f"[pipeline] placements: {len(placements)}")
 
         # Pre-enclosure assumptions: mounted components sit on the base floor
         # (wall thickness deep) and every externally-accessible connector needs
@@ -984,15 +1009,21 @@ class BuildPipeline:
                 if not c.internal
             }
         )
-        summary = self.validate(placements, shell_depths, openings)
-        print("[pipeline] placement validation:")
-        print(summary)
+        vreport = self.validate(placements, shell_depths, openings)
+        if vreport.passed and not _VERBOSE:
+            # Quiet success: nothing but the warnings.
+            for message in vreport.warnings:
+                print(f"  [warn] {message}")
+        else:
+            print("[pipeline] placement validation:")
+            print(vreport.summary(verbose=_VERBOSE))
 
         if isinstance(layout, ConstraintLayout):
             creport = layout.constraint_report()
             if creport is not None:
-                print("[pipeline] constraint resolution:")
-                print(creport.summary())
+                if not (creport.passed and not _VERBOSE):
+                    print("[pipeline] constraint resolution:")
+                    print(creport.summary(verbose=_VERBOSE))
                 if not creport.passed:
                     # HARD is defined as "violation stops the build"; carrying
                     # on would export geometry the layout already knows is
@@ -1015,13 +1046,14 @@ class BuildPipeline:
             if not hasattr(component, "validate"):
                 continue
             comp_checks, comp_errors = component.validate()
-            print(
-                f"[pipeline] {comp_name} validation: "
-                f"{comp_checks} check(s): "
-                f"{'PASS' if not comp_errors else 'FAIL'}"
-            )
-            for error in comp_errors:
-                print(f"  [x ] {error}")
+            if comp_errors or _VERBOSE:
+                print(
+                    f"[pipeline] {comp_name} validation: "
+                    f"{comp_checks} check(s): "
+                    f"{'PASS' if not comp_errors else 'FAIL'}"
+                )
+                for error in comp_errors:
+                    print(f"  [x ] {error}")
 
         if self.layout_name == "slider":
             self._run_slider_data(
@@ -1100,6 +1132,15 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
              "checks, e.g. across the CadQuery -> build123d port.",
     )
     parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="print informational build output (config header, per-check "
+             "report lines, per-target export lines). Without it only "
+             "errors and warnings are shown; a fully passing run is "
+             "silent (exit code 0).",
+    )
+    parser.add_argument(
         "--no-cache",
         action="store_true",
         help="rebuild every selected target even when its inputs and exports "
@@ -1110,7 +1151,9 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    global _VERBOSE
     args = _parse_args(argv or sys.argv[1:])
+    _VERBOSE = args.verbose
     pipeline = BuildPipeline(
         config_path=args.config,
         layout_name=args.layout,

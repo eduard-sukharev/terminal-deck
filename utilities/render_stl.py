@@ -181,13 +181,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("-o", "--out", type=Path, default=Path("/tmp/render.png"), help="output PNG")
     parser.add_argument("--elev", type=float, default=45.0)
     parser.add_argument("--azim", type=float, default=-90.0)
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="print one line per rendered STL (quiet by default)")
     args = parser.parse_args(argv)
     path = render(args.stl, args.out, elev=args.elev, azim=args.azim)
     fill = fill_fraction(path)
     from PIL import Image
 
     w, h = Image.open(path).size
-    print(f"{path}  {w}x{h}  fill={fill:.0%}")
+    if args.verbose:
+        print(f"{path}  {w}x{h}  fill={fill:.0%}")
     if w < MIN_WIDTH or h < MIN_HEIGHT:
         print(f"warning: below {MIN_WIDTH}x{MIN_HEIGHT}")
     if fill < 0.8:

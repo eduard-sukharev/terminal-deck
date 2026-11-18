@@ -182,6 +182,19 @@ class DeepRecess:
         )
 
 
+def cone_rim_fillet_run(recess: DeepRecess, mouth_radius: float, radius: float) -> float:
+    """How far an ``radius`` fillet on the cone's mouth rim runs along the bed
+    (and up the cone), mm (ADR-0023).
+
+    The rim is the edge between the access cone and the floor face; the two
+    surfaces meet at ``90 - cone_half_angle`` degrees, so the fillet's tangent
+    length on each face is ``radius x cot(dihedral / 2)``. The caller checks
+    that this run leaves one minimum feature inside the rim's landing strip.
+    """
+    half = recess.cone_angle(mouth_radius)
+    return radius / math.tan(math.radians((90.0 - half) / 2.0))
+
+
 def deep_recess(
     size: str,
     kind: str = "button",

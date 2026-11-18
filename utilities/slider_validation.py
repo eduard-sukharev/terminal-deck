@@ -13,6 +13,8 @@ from typing import Any
 
 from utilities.validation import ValidationReport
 from utilities import fasteners
+from geometry import head_recess
+from geometry.base_taper import cone_lip_z, lip_fillet_limit
 
 #: The lid's flat back must clear the keycaps by at least this much (mm).
 MIN_LID_CLEARANCE = 1.0
@@ -402,21 +404,28 @@ def _tray_cavity_half(config: Any, budget: Any, z: float) -> tuple[float, float]
 
 
 def _add_taper_checks(report: ValidationReport, config: Any, budget: Any) -> None:
-    """HARD: the Tray's end-wall base taper drafts the wall and keeps its pads.
+    """HARD: the Tray's end-wall base taper drafts the wall, opens through the
+    long-wall stations' cones and keeps its corner pads.
 
     ADR-0019 keeps the Tray's X walls vertical (the rail's face) and gives the
     vertical front/rear walls a base taper that runs from the table up to the
     band's bottom. It is a **draft**, not a chamfer on the floor's edge: the
     outer face and the cavity face move together, so the wall keeps its
-    thickness. Three things make that legitimate:
+    thickness. ADR-0022 then runs the taper through the long-wall stations:
+    only the corners keep a pad. Four things have to hold:
 
     * the taper stops at the band's bottom, so no station's insert or recess
       lands on a slope and the band stays prismatic;
-    * every pad keeps a printable ring outside the head recess it protects and
-      is wide enough to swallow the station's column, which the tapered cavity
-      would otherwise leave standing proud of the outer face;
-    * the stop circles leave a real taper run along the wall (a pad that
-      swallowed the whole wall would just be a square foot again).
+    * at a through-station the taper's face at the table lies inside the access
+      cone's mouth, so the opening is the cone flared by the taper with no
+      sliver of floor skin to print as a knife edge;
+    * the pier around the head pocket survives the taper: at the taper's top
+      the ring from the pocket to the outer face is at least two minimum
+      features (the ring only grows with height);
+    * each corner pad keeps a printable ring outside the cone mouth it
+      protects, swallows its column, and the stop circles leave a real taper
+      run along the wall (a pad that swallowed the whole wall would just be a
+      square foot again).
     """
     taper = budget.base_taper
     joint = budget.chassis_joint
@@ -438,16 +447,29 @@ def _add_taper_checks(report: ValidationReport, config: Any, budget: Any) -> Non
         f"the Parting plane)",
     )
     wall_y = taper.half_depth - joint.side_inset
-    wall_stations = [
-        station
-        for station in joint.stations
-        if abs(abs(station.y) - wall_y) <= 1e-9
-    ]
+    through = list(taper.through_stations(joint))
+    opens = min(
+        station.margin - taper.inset - station.mouth_radius
+        for station in through
+    )
+    pocket_ring = min(
+        station.margin - joint.recess.pocket_radius for station in through
+    )
+    report.add(
+        "chassis-taper-opens",
+        opens <= 0.0 and pocket_ring >= 2.0 * min_feature - 1e-6,
+        f"at the {len(through)} through-stations the taper face at the table "
+        f"sits {abs(opens):.2f} inside the cone mouth (no floor sliver), and "
+        f"the pier ring at the taper's top is {pocket_ring:.2f} >= 2 x min "
+        f"feature {2.0 * min_feature:.2f} around the Ø"
+        f"{joint.recess.pocket_diameter:.2f} pocket",
+    )
+    corners = [station for station in taper.wall_stations(joint) if station.is_corner]
     ring = min(
-        taper.pad_radius - station.mouth_radius for station in wall_stations
+        taper.pad_radius - station.mouth_radius for station in corners
     )
     coverage = min(
-        taper.stop_radius - station.boss / 2.0 for station in wall_stations
+        taper.stop_radius - station.boss / 2.0 for station in corners
     )
     report.add(
         "chassis-taper-pad",
@@ -457,9 +479,9 @@ def _add_taper_checks(report: ValidationReport, config: Any, budget: Any) -> Non
         f"pad Ø{2.0 * taper.pad_radius:.2f} (stop Ø"
         f"{2.0 * taper.stop_radius:.2f}) leaves {ring:.2f} >= min feature "
         f"{min_feature:.2f} outside the Ø"
-        f"{2.0 * max(s.mouth_radius for s in wall_stations):.2f} access cone "
-        f"mouth and covers each Ø{max(s.boss for s in wall_stations):.2f} "
-        f"column by {coverage:.2f} at all {len(wall_stations)} wall stations",
+        f"{2.0 * max(s.mouth_radius for s in corners):.2f} access cone "
+        f"mouth and covers each Ø{max(s.boss for s in corners):.2f} "
+        f"column by {coverage:.2f} at all {len(corners)} corner stations",
     )
     runs = [x1 - x0 for x0, x1 in taper.segments]
     margins = [
@@ -475,6 +497,51 @@ def _add_taper_checks(report: ValidationReport, config: Any, budget: Any) -> Non
         f"{len(runs)} taper runs, shortest {shortest:.2f} mm; nearest stop "
         f"{nearest:.2f} mm inside the wall end >= min feature {min_feature:.2f}",
     )
+    # ADR-0023: fillet the access cones' mouth rims by ``taper_fillet`` and
+    # their lips by the largest radius that keeps the head pocket's neck
+    # intact. Two things have to hold: the rim fillet's tangent run along the
+    # bed must leave one minimum feature inside the rim's landing strip (at a
+    # through-station that strip is the gap between the cone mouth and the
+    # taper face at the table), and the lip must admit at least a token
+    # fillet below the pocket's neck.
+    radius = config.chassis_joint.taper_fillet
+    through = taper.through_stations(joint)
+    rim_runs = [
+        head_recess.cone_rim_fillet_run(joint.recess, s.mouth_radius, radius)
+        for s in joint.stations
+    ]
+    rim_strips = [
+        s.mouth_radius - (s.margin - taper.inset) for s in through
+    ]
+    worst_run = max(rim_runs)
+    worst_strip = min(rim_strips)
+    fits_rims = worst_run + min_feature <= worst_strip
+    lip_limits = [
+        lip_fillet_limit(
+            taper, joint.recess, s.mouth_radius, s.margin, min_feature
+        )
+        for s in through
+    ]
+    lip_limit = min(lip_limits)
+    lip_radius = min(radius, lip_limit)
+    lips_ok = lip_limit > 0.0
+    report.add(
+        "chassis-taper-fillet",
+        fits_rims and lips_ok,
+        f"taper fillet r{radius:.2f} on the cone rims runs at most "
+        f"{worst_run:.2f} along the bed, leaving "
+        f"{worst_strip - worst_run:.2f} >= min feature {min_feature:.2f} in the "
+        f"tightest strip (a through-station's landing), and the lips take "
+        f"r{lip_radius:.2f}, stopping {min_feature:.2f} below the pocket neck "
+        f"{joint.recess.z_neck:.2f}; the walls' edges with the floor stay sharp",
+    )
+    if lip_radius < radius:
+        report.warn(
+            f"chassis-taper-fillet: the lips are filleted at r{lip_radius:.2f}, "
+            f"not r{radius:.2f}: a larger radius would climb the cone into the "
+            f"head pocket's neck"
+        )
+    report.goals["taper-lip-fillet-radius"] = lip_radius
 
 
 def _add_rail_checks(report: ValidationReport, config: Any, budget: Any) -> None:

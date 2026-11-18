@@ -829,6 +829,11 @@ def is_planar(face: Any) -> bool:
     return face.is_planar
 
 
+def face_kind(face: Any) -> str:
+    """The face's surface kind: ``"plane"``, ``"cylinder"``, ``"cone"``, ..."""
+    return face.geom_type.name.lower()
+
+
 def face_area(face: Any) -> float:
     return face.area
 
@@ -932,6 +937,16 @@ def _edge_faces(shape: Any) -> list[tuple[Any, list[Any]]]:
         faces = [b3d.Face(TopoDS.Face_s(f)) for f in table.FindFromIndex(i)]
         pairs.append((edge, faces))
     return pairs
+
+
+def edge_info(edge: Any) -> EdgeInfo:
+    """Locate ``edge`` by midpoint and length, so it can be found again later."""
+    return EdgeInfo(
+        key=_edge_key(edge),
+        length=edge.length,
+        tangent=_unit(edge.tangent_at(0.5)),
+        curve_type=edge.geom_type.name.lower(),
+    )
 
 
 def concave_edges(shape: Any) -> list[EdgeInfo]:

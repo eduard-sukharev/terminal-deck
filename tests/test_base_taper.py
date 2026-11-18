@@ -16,7 +16,14 @@ import pytest
 from case.chassis import Chassis
 from case.slider_frame import SliderFrame
 from components.slide import compute_slide_budget
-from geometry.base_taper import base_taper, build_cutter, build_fill
+from geometry import head_recess
+from geometry.base_taper import (
+    base_taper,
+    build_cutter,
+    build_fill,
+    cone_lip_z,
+    lip_fillet_limit,
+)
 from layouts import make_layout
 from main import BuildPipeline
 from utilities import cad_helpers as ch
@@ -90,34 +97,59 @@ def test_the_pads_keep_the_head_recesses_their_ring(data):
     wall_stations = [
         s for s in joint.stations if abs(abs(s.y) - wall_y) < 1e-9
     ]
+    corners = [s for s in wall_stations if s.is_corner]
     assert len(wall_stations) == 10
+    assert len(corners) == 4
+    # ADR-0022: only the corners carry a pad; the side stations are through.
+    assert len(taper.stations) == 4
     # The pad stops the taper before the access cone mouth (ADR-0021).
     assert taper.pad_radius == pytest.approx(
-        max(s.mouth_radius for s in wall_stations) + minimum
+        max(s.mouth_radius for s in corners) + minimum
     )
     assert taper.stop_radius == pytest.approx(
         taper.pad_radius + config.chassis_joint.taper_runout
     )
-    for station in wall_stations:
-        assert (
-            taper.pad_radius >= station.mouth_radius + minimum - 1e-9
-        )
-        # The tapered cavity would leave the station's column proud of the
-        # outer face; the pad (the taper's suppression circle) must swallow it.
+    for station in corners:
+        assert taper.pad_radius >= station.mouth_radius + minimum - 1e-9
+        # The pad must swallow the station's column.
         assert taper.stop_radius >= station.boss / 2.0 + minimum - 1e-9
         assert taper.in_pad(station.x, station.y)
         assert taper.in_pad(station.x + taper.pad_radius, station.y)
         assert not taper.in_pad(station.x + taper.stop_radius + 0.1, station.y)
+    for station in wall_stations:
+        if station.is_corner:
+            continue
+        # The taper passes through: no pad, no suppression circle.
+        assert not taper.in_pad(station.x, station.y)
+
+
+def test_the_taper_opens_through_the_side_stations(data):
+    """ADR-0022: at the table the taper face lies inside the cone mouth."""
+    config, budget, _, _ = data
+    taper = budget.base_taper
+    joint = budget.chassis_joint
+    minimum = config.material.minimum_feature
+    wall_y = taper.half_depth - joint.side_inset
+    for station in joint.stations:
+        if abs(abs(station.y) - wall_y) > 1e-9 or station.is_corner:
+            continue
+        # No floor sliver: the sloped face at the table is inside the mouth.
+        assert station.margin - taper.inset - station.mouth_radius <= 0.0
+        # The pocket's pier survives: the ring at the taper's top only grows
+        # with height, so its minimum over the taper is at the top.
+        assert station.margin - joint.recess.pocket_radius >= 2.0 * minimum
 
 
 def test_the_stop_circles_leave_real_taper_runs(data):
     _, budget, _, _ = data
     taper = budget.base_taper
-    assert len(taper.segments) == 4
+    # ADR-0022: only the corner pads stop the taper, so each wall is a single
+    # full-width run between the corner pads' stops.
+    assert len(taper.segments) == 1
     for x0, x1 in taper.segments:
         assert x1 - x0 > 10.0
         # Both ends sit inside the wall's straight part, not on the corner
-        # chop, and every station's stop circle stays outside the run.
+        # chop, and every pad's stop circle stays outside the run.
         assert -taper.wall_half_x < x0 < x1 < taper.wall_half_x
         for sx, _ in taper.stations:
             assert not (x0 < abs(sx) < x1)
@@ -171,9 +203,18 @@ def test_the_tray_keeps_its_full_width_and_tapers_its_end_walls(data, tray):
     # The X silhouette is vertical at every height (the rail's face).
     for z in (0.5, taper.height + 0.5, frame.parting_z - 0.5):
         assert _width_at(tray, z) == pytest.approx(frame.width, abs=0.05)
-    # Between the pads both faces sit on the data's lines, and the wall keeps
-    # its thickness between them -- the draft, not a thinning chamfer.
-    x = sum(taper.segments[1]) / 2.0
+    # Between the corner pads both faces sit on the data's lines, and the wall
+    # keeps its thickness between them -- the draft, not a thinning chamfer.
+    # The probe sits mid-run, clear of the side stations' cones (the taper
+    # passes through them now).
+    joint = budget.chassis_joint
+    wall_y = taper.half_depth - joint.side_inset
+    side_xs = [
+        abs(s.x)
+        for s in joint.stations
+        if abs(abs(s.y) - wall_y) < 1e-9 and not s.is_corner
+    ]
+    x = (max(side_xs) + taper.segments[0][1]) / 2.0
     for z in (0.5, taper.wall + 0.5, taper.height / 2.0, taper.height - 0.5):
         face = taper.face_y(z)
         # The built outer face sits on the data's line to within a probe's
@@ -191,10 +232,74 @@ def test_the_tray_keeps_its_full_width_and_tapers_its_end_walls(data, tray):
     # Above the taper the full depth is back, on both faces.
     assert _material_at(tray, x, half - 0.4, taper.height + 0.5) > 0
     assert _material_at(tray, x, half - wall - 0.4, taper.height + 0.5) == 0
-    # Inside a pad the face is at the full depth even at the base.
-    station = next(
+    # At a through-station the taper opens into the cone: no pier ring is left
+    # at the table, the opening flares straight into the cavity.
+    side = next(
         s
-        for s in budget.chassis_joint.stations
-        if abs(abs(s.y) - (half - budget.chassis_joint.side_inset)) < 1e-9
+        for s in joint.stations
+        if abs(abs(s.y) - wall_y) < 1e-9 and not s.is_corner
     )
-    assert _material_at(tray, station.x, half - 0.4, taper.height / 2.0) > 0
+    sy = math.copysign(half - 0.4, side.y)
+    assert _material_at(
+        tray, side.x, sy, taper.height / 2.0
+    ) == pytest.approx(0)
+    # ...while the head pocket's pier is intact just below the band.
+    assert _material_at(
+        tray, side.x, sy, taper.height - 0.05
+    ) > 0
+    # Inside a corner pad the face is at the full depth even at the base.
+    corner = next(
+        s
+        for s in joint.stations
+        if abs(abs(s.y) - wall_y) < 1e-9 and s.is_corner
+    )
+    cy = math.copysign(half - 0.4, corner.y)
+    assert _material_at(tray, corner.x, cy, taper.height / 2.0) > 0
+
+
+# -- ADR-0023: the cone edge fillets ---------------------------------------
+def test_through_stations_are_the_wall_stations_without_corners(data):
+    _, budget, _, _ = data
+    taper = budget.base_taper
+    joint = budget.chassis_joint
+    wall = taper.wall_stations(joint)
+    through = taper.through_stations(joint)
+    assert len(wall) == 10 and len(through) == 6
+    assert not any(s.is_corner for s in through)
+    assert {s for s in wall if s.is_corner} == set(wall) - set(through)
+
+
+def test_the_lip_sits_between_the_table_and_the_pocket_neck(data):
+    _, budget, _, _ = data
+    taper = budget.base_taper
+    joint = budget.chassis_joint
+    for station in taper.through_stations(joint):
+        z_lip = cone_lip_z(
+            taper, joint.recess, station.mouth_radius, station.margin
+        )
+        assert 0.0 < z_lip < joint.recess.z_neck
+
+
+def test_the_lip_fillet_is_limited_by_the_pocket_neck(data):
+    config, budget, _, _ = data
+    taper = budget.base_taper
+    joint = budget.chassis_joint
+    limit = min(
+        lip_fillet_limit(
+            taper,
+            joint.recess,
+            s.mouth_radius,
+            s.margin,
+            config.material.minimum_feature,
+        )
+        for s in taper.through_stations(joint)
+    )
+    assert 0.0 < limit < config.chassis_joint.taper_fillet
+
+
+def test_the_rim_fillet_run_is_shallow(data):
+    _, budget, _, _ = data
+    recess = budget.chassis_joint.recess
+    run = head_recess.cone_rim_fillet_run(recess, 3.30, 1.0)
+    assert run == pytest.approx(1.02, abs=0.01)
+    assert head_recess.cone_rim_fillet_run(recess, 3.30, 0.5) < run

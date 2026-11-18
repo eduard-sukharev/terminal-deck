@@ -16,7 +16,9 @@ parametricity, reusability.
 > Seams), ADR-0019 (the Tray's vertical side walls and its end-wall base
 > taper) and ADR-0020 (the printed accessory rail on those walls) define the
 > slider, and ADR-0021 (deep conical head recesses for the Tray's band screws)
-> deepens its screws. The data skeleton
+> deepens its screws; ADR-0022 runs the base taper through the long-wall
+> stations' cones, and ADR-0023 fillets the cones' mouth rims (1.0 mm) and
+> through-lips (0.47 mm) while the walls' edges with the floor stay sharp. The data skeleton
 > and the CAD shell are implemented: `--layout slider` (the only layout) derives
 > the budget and builds/exports the chassis (Tray + Deck, split at the band
 > joint), screen lid (Bezel + Back plate, split at the band joint), the printed
@@ -377,12 +379,23 @@ Gotchas:
   width and the closed-face width are one number (`width`). The Tray's vertical
   end walls carry a 15° base taper from the table up to the band's bottom
   (`chassis_joint.taper_angle` / `taper_runout`, `geometry/base_taper.py`) —
-  a draft, so the cavity follows and the wall keeps its thickness —
-  suppressed inside a `Ø13.80` stop circle (pad + runout) around every wall
-  station so no access cone loses its lip and no column stands proud. Its four
-  HARD checks are
-  `chassis-taper-draft`, `-band`, `-pad`, `-stop` in
-  `utilities/slider_validation`.
+  a draft, so the cavity follows and the wall keeps its thickness. ADR-0022
+  runs the taper **through** the six long-wall stations: at the table the
+  sloped face sits 2.32 mm inside the access cone's mouth (no floor sliver),
+  the pier ring around the pocket is 1.45 at the taper's top and only grows,
+  and each wall is one full-width run (214.5 mm). **Only the four corners
+  keep a pad** (stop Ø13.80 — pad + runout), the rounded stops the taper
+  starts and ends on, set off the corner as before. The HARD checks are
+  `chassis-taper-draft`, `-band`, `-opens`, `-pad`, `-stop` and `-fillet` in
+  `utilities/slider_validation`. ADR-0023 fillets the cones' own outside
+  edges — the mouth rims at the bed (`chassis_joint.taper_fillet` = 1.0 mm,
+  tangent run only ~1.02 mm) and the lips where the taper flares a cone open
+  (radius-limited to 0.47 mm so the fillet stops one minimum feature below
+  the pocket's neck; a larger radius would climb the cone and seal the
+  driver access). The selector (`geometry.edge_treatment.cone_cut_edges`)
+  matches only cone-against-plane edges at the bed or on the taper's outer
+  slope: the long edges where the walls meet the floor, the interior rings
+  at the cavity floor and the cavity-side flares stay sharp.
   **Twelve** M3 × 6 come up from below (`grip` = one wall = 2.00)
   into
   heat-set inserts in the Deck's band bosses. The heads are buried one wall

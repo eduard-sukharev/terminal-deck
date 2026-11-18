@@ -467,9 +467,11 @@ class ChassisJoint:
     a station's margin is a plain plan distance. ``taper_angle`` /
     ``taper_runout`` size the base taper on the vertical front/rear walls
     (ADR-0019): the taper runs from the table up to the band's bottom as a
-    draft (the cavity follows, so the wall keeps its thickness) and dies into
-    a pad at every station, so no head recess loses its ring and no column
-    stands proud of the tapered face.
+    draft (the cavity follows, so the wall keeps its thickness). ADR-0022 runs
+    it through the long-wall stations' cones; only the corners keep a pad.
+    ``taper_fillet`` rounds the access cones' mouth rims (ADR-0023); the lips
+    where the taper flares a cone open take the largest radius that keeps the
+    head pocket's neck intact, and the walls' edges with the floor stay sharp.
     """
 
     band: float = 6.0
@@ -481,6 +483,7 @@ class ChassisJoint:
     head: str = "button"
     taper_angle: float = 15.0
     taper_runout: float = 3.0
+    taper_fillet: float = 1.0
 
     def __post_init__(self) -> None:
         if self.band <= 0 or self.boss <= 0:
@@ -493,6 +496,8 @@ class ChassisJoint:
             raise ValueError("chassis_joint.taper_angle must be in [0, 45) degrees")
         if self.taper_runout <= 0.0:
             raise ValueError("chassis_joint.taper_runout must be positive")
+        if self.taper_fillet <= 0.0:
+            raise ValueError("chassis_joint.taper_fillet must be positive")
 
 
 @dataclass(frozen=True)
@@ -1159,6 +1164,7 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
             head=str(chassis_joint_raw.get("head", "button")),
             taper_angle=float(chassis_joint_raw.get("taper_angle", 15.0)),
             taper_runout=float(chassis_joint_raw.get("taper_runout", 3.0)),
+            taper_fillet=float(chassis_joint_raw.get("taper_fillet", 1.0)),
         ),
         merged_boss=MergedBoss(**{k: float(v) for k, v in (raw.get("merged_boss") or {}).items()}),
         edges=Edges(**{k: float(v) for k, v in (raw.get("edges") or {}).items()}),

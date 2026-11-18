@@ -23,7 +23,9 @@ never blocks the build. All CAD calls go through :mod:`utilities.cad_helpers`.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
+from typing import Any
 
 from geometry.printability import PrintOrientation
 from utilities import cad_helpers
@@ -128,3 +130,90 @@ def round_seam_corners(shape, orientation: PrintOrientation, seams, depth: float
         and any(abs(info.key[0] - x) < tol and abs(info.key[1] - y) < tol for x, y in points)
     ]
     return _apply(shape, infos, radius, cad_helpers.fillet_edges, "seam corner fillet", report)
+
+
+def cone_cut_edges(
+    shape: Any, angle_deg: float, bed_z: float
+) -> tuple[list[cad_helpers.EdgeInfo], list[cad_helpers.EdgeInfo]]:
+    """The access cones' outside edges, split into mouth rims and lips (ADR-0023).
+
+    A **rim** borders a conical face and a horizontal plane at the part's bed
+    (``bed_z``) -- the mouth ring where the access cone or the column frustum
+    leaves the floor face. A **lip** borders a conical face and the taper's
+    *outer* sloped face (a plane tilted ``angle_deg`` off vertical with a
+    downward normal, ``nz < 0``) -- where the taper's slice flares the cone
+    open. Everything else stays sharp: the pocket's neck ring (cone against
+    the cylindrical pocket), the clearance hole, the interior rings where a
+    cone breaks the cavity floor, the flares against the cavity-side draft
+    (their slope faces up, ``nz > 0``), and in particular the long edges
+    where the front/rear walls meet the floor -- the fillet is only ever on
+    the cones' own outside edges.
+    """
+    tilt = math.sin(math.radians(angle_deg))
+    infos: dict[tuple, cad_helpers.EdgeInfo] = {}
+    kinds: dict[tuple, set[str]] = {}
+    on_bed: dict[tuple, bool] = {}
+    outer_lip: dict[tuple, bool] = {}
+    for face in cad_helpers.faces(shape):
+        kind = cad_helpers.face_kind(face)
+        bed_face = False
+        slope_face = False
+        if kind == "plane":
+            normal = cad_helpers.face_normal(face)
+            if abs(normal[2]) >= 0.9:
+                bed_face = abs(cad_helpers.face_center(face)[2] - bed_z) <= 0.05
+            elif abs(abs(normal[2]) - tilt) <= 0.05 and normal[2] < 0.0:
+                # the taper's outer slope leans outward as it rises, so its
+                # normal tilts down; the cavity-side draft's tilts up
+                slope_face = True
+        for wire in face.wires():
+            for edge in wire.edges():
+                info = cad_helpers.edge_info(edge)
+                bucket = infos.setdefault(info.key, info)
+                kinds.setdefault(bucket.key, set()).add(kind)
+                on_bed[bucket.key] = on_bed.get(bucket.key, False) or bed_face
+                outer_lip[bucket.key] = (
+                    outer_lip.get(bucket.key, False) or slope_face
+                )
+    rims = [
+        info
+        for key, info in infos.items()
+        if {"cone", "plane"} <= kinds[key] and on_bed[key]
+    ]
+    lips = [
+        info
+        for key, info in infos.items()
+        if {"cone", "plane"} <= kinds[key] and not on_bed[key] and outer_lip[key]
+    ]
+    return rims, lips
+
+
+def round_cone_cut(
+    shape: Any,
+    angle_deg: float,
+    bed_z: float,
+    radius: float,
+    report: Any,
+    lip_radius: float | None = None,
+) -> Any:
+    """Fillet the access cones' mouth rims by ``radius`` and their lips by
+    ``lip_radius`` (ADR-0023; defaults to ``radius``).
+
+    The one fillet on an outside face: the cones' rims and flared lips are
+    hard to ease with a chamfer without reading as a second taper, and the
+    wall/floor edges stay sharp by construction -- they are never selected.
+    Edges that don't take the fillet are skipped with a SOFT warning.
+    """
+    rims, lips = cone_cut_edges(shape, angle_deg, bed_z)
+    shape = _apply(
+        shape, rims, radius, cad_helpers.fillet_edges, "cone rim fillet", report
+    )
+    shape = _apply(
+        shape,
+        lips,
+        radius if lip_radius is None else lip_radius,
+        cad_helpers.fillet_edges,
+        "cone lip fillet",
+        report,
+    )
+    return shape

@@ -48,6 +48,14 @@ def _width_at(shape, z):
     return ch.bounding_box_mm(ch.intersect(shape, slab))[0]
 
 
+def _vertex_zmin(shape):
+    return min(v.Z for v in shape.vertices())
+
+
+def _vertex_zmax(shape):
+    return max(v.Z for v in shape.vertices())
+
+
 # -- data ----------------------------------------------------------------
 def test_twelve_stations_four_corners_six_sides_two_ends(data):
     """ADR-0015 adds one long-wall station per side, on the centreline."""
@@ -157,10 +165,13 @@ def test_tray_and_deck_meet_at_the_parting_plane(data, solids):
     tray, deck = solids
     tray_box = ch.bounding_box(tray)
     deck_box = ch.bounding_box(deck)
-    assert tray_box.zmin == pytest.approx(0.0, abs=0.01)
-    assert tray_box.zmax == pytest.approx(frame.parting_z, abs=0.01)
-    assert deck_box.zmin == pytest.approx(frame.parting_z, abs=0.01)
-    assert deck_box.zmax == pytest.approx(frame.chassis_top, abs=0.01)
+    # The bed/top extremes are read at the vertices: a fillet face's
+    # control-point hull can overshoot the actual surface (ADR-0023), so the
+    # plain bounding box is conservative there.
+    assert _vertex_zmin(tray) == pytest.approx(0.0, abs=0.01)
+    assert _vertex_zmax(tray) == pytest.approx(frame.parting_z, abs=0.01)
+    assert _vertex_zmin(deck) == pytest.approx(frame.parting_z, abs=0.01)
+    assert _vertex_zmax(deck) == pytest.approx(frame.chassis_top, abs=0.01)
     # The silhouette is continuous across the joint: the prismatic band is the
     # closed-face width on both sides of the plane.
     assert _width_at(tray, frame.parting_z - 0.005) == pytest.approx(
@@ -194,15 +205,22 @@ def test_the_tray_and_the_deck_are_prismatic(data, solids):
 def test_the_tray_end_walls_leave_the_table_with_a_base_taper(data, solids):
     """ADR-0019: the vertical end walls read as a taper up to the band.
 
-    Between the station pads the outer face leans out over ``taper.height``;
-    above it, and inside a pad, the face is the full depth again.
+    Between the corner pads the outer face leans out over ``taper.height``;
+    above it, and inside a pad, the face is the full depth again. The probe
+    sits mid-run, clear of the side stations' cones (the taper passes through
+    them now).
     """
     _, budget, frame, _ = data
     tray, _ = solids
     taper = budget.base_taper
     half = frame.depth / 2.0
-    # A point on a taper run, clear of every stop circle.
-    x = sum(taper.segments[0]) / 2.0
+    wall_y = taper.half_depth - budget.chassis_joint.side_inset
+    side_xs = [
+        abs(s.x)
+        for s in budget.chassis_joint.stations
+        if abs(abs(s.y) - wall_y) < 1e-9 and not s.is_corner
+    ]
+    x = (max(side_xs) + taper.segments[0][1]) / 2.0
     z = taper.height / 2.0
     face = taper.face_y(z)
     assert face < half - 0.3
@@ -212,10 +230,12 @@ def test_the_tray_end_walls_leave_the_table_with_a_base_taper(data, solids):
     assert _material_at(tray, x, half - 0.4, taper.height + 0.5) > 0
     # The pads keep the full face at the table.
     station = next(
-        s for s in budget.chassis_joint.stations
-        if abs(abs(s.y) - (half - budget.chassis_joint.side_inset)) < 1e-9
+        s
+        for s in budget.chassis_joint.stations
+        if abs(abs(s.y) - wall_y) < 1e-9 and s.is_corner
     )
-    assert _material_at(tray, station.x, half - 0.4, taper.height / 2.0) > 0
+    sy = math.copysign(half - 0.4, station.y)
+    assert _material_at(tray, station.x, sy, taper.height / 2.0) > 0
 
 
 def test_tray_and_deck_are_valid_and_rejoin(solids):
@@ -231,20 +251,32 @@ def test_tray_and_deck_are_valid_and_rejoin(solids):
 def test_every_station_has_a_screw_hole_through_the_tray(data, solids):
     _, budget, frame, _ = data
     joint = budget.chassis_joint
+    taper = budget.base_taper
     tray, _ = solids
     z = frame.parting_z / 2.0
     for station in joint.stations:
         assert _material_at(tray, station.x, station.y, z) == pytest.approx(0)
-    # The column around the hole stays solid just outside the cone mouth,
-    # probed near the floor where the frustum is at its widest (an end
-    # station's column can stand free of the X wall -- the probe must sit
-    # inside the column, not in the wall).
+    # A column at every station, probed where the slice leaves it. The taper
+    # cuts through the long-wall bosses: below the lip crossing the sloped
+    # face is inside the cone mouth, so nothing of the column is left at the
+    # table; above it the pier ring is intact. The end and corner stations
+    # keep their columns to the table.
+    z_pier = taper.height - 0.15
     z_floor = 0.5
+    wall_y = taper.half_depth - joint.side_inset
     for station in joint.stations:
         offset = station.mouth_radius + 0.3
         px = station.x + station.normal[0] * offset
         py = station.y + station.normal[1] * offset
-        assert _material_at(tray, px, py, z_floor) > 0
+        on_tapered_wall = abs(abs(station.y) - wall_y) <= 1e-9
+        if on_tapered_wall and not station.is_corner:
+            # ADR-0023: the taper's slice passes through the boss -- at the
+            # table the sloped face sits inside the cone, the boss is cut away.
+            assert _material_at(tray, px, py, z_floor) == pytest.approx(0)
+            # ...and the pier ring around the pocket survives above the lip.
+            assert _material_at(tray, px, py, z_pier) > 0
+        else:
+            assert _material_at(tray, px, py, z_floor) > 0
 
 
 def test_the_deep_cone_buries_the_head_and_widens_to_the_floor(data, solids):
@@ -398,3 +430,59 @@ def test_tray_and_deck_sections_fit_and_rejoin(data, solids):
             assert x <= BUILD_VOLUME[0] + 1e-6
             assert y <= BUILD_VOLUME[1] + 1e-6
             assert z <= BUILD_VOLUME[2] + 1e-6
+
+
+# -- ADR-0023: the cone edge fillets ---------------------------------------
+@pytest.fixture(scope="module")
+def unfilleted_tray(data):
+    """The Tray before the cone edge fillets, for selector assertions."""
+    from geometry import edge_treatment
+
+    original = edge_treatment.round_cone_cut
+    edge_treatment.round_cone_cut = lambda body, *args, **kwargs: body
+    try:
+        config, _, frame, _ = data
+        yield Chassis(config, frame).build_tray()
+    finally:
+        edge_treatment.round_cone_cut = original
+
+
+def test_the_taper_fillet_selects_only_the_cones_edges(data, unfilleted_tray):
+    from geometry.edge_treatment import cone_cut_edges
+
+    _, budget, _, _ = data
+    taper = budget.base_taper
+    recess = budget.chassis_joint.recess
+    rims, lips = cone_cut_edges(unfilleted_tray, taper.angle, 0.0)
+    assert rims and lips
+    # every selected edge is an arc of a cone: the long straight edges where
+    # the walls meet the floor are never picked
+    assert all(i.curve_type in ("circle", "ellipse") for i in rims + lips)
+    # rims are the mouth rings at the bed face -- nothing from the cavity
+    # floor at one wall above it
+    assert all(abs(i.key[2]) < 0.01 for i in rims)
+    # lips sit on the taper's outer slope, below the pocket's neck
+    assert all(1.0 < i.key[2] < recess.z_neck for i in lips)
+
+
+def test_the_wall_floor_edges_stay_sharp_after_the_fillet(data, solids):
+    _, budget, frame, _ = data
+    tray, _ = solids
+    # the taper's long floor edge on each wall is still a straight segment:
+    # filleting it would have replaced it with a curved surface
+    lines = 0
+    for face in ch.faces(tray):
+        for wire in face.wires():
+            for edge in wire.edges():
+                info = ch.edge_info(edge)
+                if (
+                    info.curve_type == "line"
+                    and abs(info.key[2]) < 0.02
+                    and info.length > 50.0
+                    and abs(info.tangent[0]) > 0.9
+                ):
+                    lines += 1
+    assert lines >= 2
+    # ...and the fillet did not wander below the bed or into the parting plane
+    assert _vertex_zmin(tray) == pytest.approx(0.0, abs=0.01)
+    assert _vertex_zmax(tray) == pytest.approx(frame.parting_z, abs=0.01)

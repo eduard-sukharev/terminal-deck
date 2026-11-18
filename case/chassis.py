@@ -97,12 +97,12 @@ class Chassis:
         )
         body = ch.cut(outer, cavity)
 
-        # The base taper on the vertical front/rear walls (ADR-0019): a wedge
-        # from the table up to the band's bottom, suppressed inside a pad around
-        # every station. It is a draft, not a chamfer on the floor's edge -- the
-        # same wedge goes back inside the cavity, so the wall keeps its
-        # thickness instead of thinning toward the table.
-        body = ch.cut(body, taper_cutter(f.base_taper))
+        # The base taper on the vertical front/rear walls (ADR-0019, ADR-0022):
+        # a draft from the table up to the band's bottom -- the cavity follows,
+        # so the wall keeps its thickness. The draft's fill (the cavity-side
+        # wedge) goes down first; the wedge cut comes only after the station
+        # columns, so the slice passes through the long-wall bosses instead of
+        # leaving them proud of the sloped face.
         body = ch.union(body, taper_fill(f.base_taper))
 
         # The accessory rail's stations (ADR-0020): a pad at each M4 station on
@@ -121,15 +121,19 @@ class Chassis:
             ],
         )
 
-        # A column at every station, from the floor up to the plane. The
-        # frustum tapers from what the floor skin allows to the insert boss
-        # diameter at the plane.
+        # A column at every station, from the floor up to the plane: a frustum
+        # below the access cone's neck, a strict cylinder above it (ADR-0021).
         body = ch.union(body, *[self._column(station) for station in joint.stations])
+
+        # The taper's wedge, now that the columns are in: through the wall and
+        # the long-wall bosses, stopping at the corner pads' arcs.
+        body = ch.cut(body, taper_cutter(f.base_taper))
 
         # The screw: a clearance hole through the column, its ordinary button
         # head buried at the top of a deep conical access cavity (ADR-0021).
         # The seat sits one wall below the Parting plane and the cone widens to
-        # the floor face, so the driver enters straight along the axis.
+        # the floor face, so the driver enters straight along the axis. Cut
+        # last so every cavity is exact.
         spec = screw_spec(joint.screw.size)
         recess = joint.recess
         holes = []
@@ -148,6 +152,38 @@ class Chassis:
             )
             holes.extend((through, cavity))
         body = ch.cut(body, *holes)
+
+        # Ease the access cones' own edges (ADR-0023): the mouth rims where a
+        # cone or a column frustum leaves the floor face, and the lips where
+        # the taper flares a through-station's cone open. The lip fillet is
+        # radius-limited so it never climbs the cone into the head pocket's
+        # neck; the long edges where the walls meet the floor stay sharp -- the
+        # selector never picks them. A failing edge is skipped with a SOFT
+        # warning, never blocking the build. The bed face is re-trimmed to
+        # z = 0 afterwards in case a fillet surface wanders a hair below it.
+        from geometry import edge_treatment
+        from geometry.base_taper import lip_fillet_limit
+        from utilities.validation import ValidationReport
+
+        radius = self.config.chassis_joint.taper_fillet
+        lip_limit = min(
+            lip_fillet_limit(
+                f.base_taper,
+                joint.recess,
+                station.mouth_radius,
+                station.margin,
+                self.config.material.minimum_feature,
+            )
+            for station in f.base_taper.through_stations(joint)
+        )
+        lip_radius = min(radius, lip_limit)
+        treatment = ValidationReport()
+        body = edge_treatment.round_cone_cut(
+            body, f.base_taper.angle, 0.0, radius, treatment, lip_radius=lip_radius
+        )
+        for warning in treatment.warnings:
+            print(f"[pipeline] warn: {warning}")
+        body = ch.cut(body, ch.half_space((0.0, 0.0, 0.0), (0.0, 0.0, -1.0), size=300.0))
 
         # The rail's own holes: the pocket the washer puck sits in and the M4
         # clearance bore behind it, through the pad and the wall.

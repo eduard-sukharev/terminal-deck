@@ -9,12 +9,54 @@ pytestmark = pytest.mark.skipif(
 )
 
 from geometry.edge_treatment import (  # noqa: E402
-    bed_chamfer, concave_edges, relieve_concave_joints,
+    bed_chamfer, concave_edges, cone_cut_edges, relieve_concave_joints,
+    round_cone_cut,
 )
 from geometry.printability import BED_DOWN, PrintOrientation  # noqa: E402
 from utilities.validation import ValidationReport  # noqa: E402
 
 WALL = 2.0
+
+
+def _plate_with_conical_hole():
+    plate = cad_helpers.translate(
+        cad_helpers.box_centered(40, 40, 10), 0, 0, 5
+    )  # z 0..10
+    cone = cad_helpers.translate(
+        cad_helpers.frustum_centered(12, 6, 14), 0, 0, 5
+    )  # wider at the bed
+    return cad_helpers.cut(plate, cone)
+
+
+def test_cone_cut_edges_split_the_bed_rim_from_the_interior_ring():
+    rims, lips = cone_cut_edges(_plate_with_conical_hole(), 15.0, 0.0)
+    assert not lips
+    # only the mouth ring at the bed: the top ring is an interior edge and
+    # is never picked, and no straight plate edge is selected either
+    assert rims
+    assert all(abs(i.key[2]) < 0.01 for i in rims)
+    assert all(i.curve_type == "circle" for i in rims)
+
+
+def test_round_cone_cut_fillets_the_bed_rim_only():
+    plate = _plate_with_conical_hole()
+    report = ValidationReport()
+    out = round_cone_cut(plate, 15.0, 0.0, 1.0, report)
+    assert not report.warnings
+    assert cad_helpers.volume_mm3(out) < cad_helpers.volume_mm3(plate)
+    # the plate's own wall/floor edges are still straight
+    lines = 0
+    for face in cad_helpers.faces(out):
+        for wire in face.wires():
+            for edge in wire.edges():
+                info = cad_helpers.edge_info(edge)
+                if (
+                    info.curve_type == "line"
+                    and abs(info.key[2]) < 0.01
+                    and info.length > 30.0
+                ):
+                    lines += 1
+    assert lines >= 4
 
 
 def _tray():

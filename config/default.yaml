@@ -64,9 +64,14 @@ chassis_joint:
   taper_angle: 15.0    # base taper on the vertical front/rear walls: draft
                        # angle from vertical (ADR-0019); runs from the table up
                        # to the band's bottom, the cavity following so the wall
-                       # keeps its thickness; it dies into a pad at every
-                       # station so the access cones keep their lip (ADR-0021)
+                       # keeps its thickness; it runs through the long-wall
+                       # stations' cones and dies into a pad at the corners
+                       # only (ADR-0022), so the taper reads full-width
   taper_runout: 3.0    # how far that taper fades into a station pad
+  taper_fillet: 1.0    # the fillet on the access cones' mouth rims (ADR-0023);
+                       # the lips take the largest radius that keeps the head
+                       # pocket's neck intact, and the walls' edges with the
+                       # floor stay sharp
 
 # Merged boss (ADR 0003): a boss, column, standoff or lug whose outer surface is
 # closer than `threshold_factor * wall` to a wall face is fused into that wall

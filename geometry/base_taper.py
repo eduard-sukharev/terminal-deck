@@ -1,4 +1,4 @@
-"""The Tray's base taper on its vertical front/rear walls (ADR-0019).
+"""The Tray's base taper on its vertical front/rear walls (ADR-0019, ADR-0022).
 
 The Tray's X walls are vertical because the accessory rail bolts to a flat,
 square face; its front/rear end walls are vertical too (the guide span and the
@@ -14,14 +14,14 @@ and :func:`build_fill` puts the same wedge back inside the cavity, so the wall
 keeps its thickness over the whole taper instead of thinning to a knife edge at
 the table.
 
-The **pad** around every station is what makes that legal. The band joint's
-access cone mouths sit in the floor right beside those walls, so the taper
-would break the floor's lip around them, and the station's column (which
-carries the screw from the floor to the plane) would stand proud of the tapered
-face. Suppressing the taper within a circle of ``stop_radius`` around each
-station bolts both back -- the pad keeps the full face at the cone mouth and
-swallows the column -- and the circle's arc is the rounded stop the wall is
-drawn with.
+Only the **corner** stations keep a pad (ADR-0022). The long-wall stations
+stand mid-run, and there the taper runs **through** their access cones: at the
+table the taper's sloped face lies inside the cone mouth's plan circle, so the
+opening is the cone flared by the taper with no sliver of floor skin to print
+as a knife edge; higher up the wall's draft restores the pier around the cone
+in one constant-thickness slope. The corners keep their pads because the
+chamfered corner leaves no run to open into -- a pad there is the rounded stop
+the wall's taper starts and ends on, set off the corner as today.
 
 Everything here is pure data -- the plan of the taper, its segments along the
 wall and the pad circles -- so the drawings, the checks and the CAD agree; only
@@ -52,7 +52,7 @@ class BaseTaper:
     half_depth: float
     wall: float
     wall_half_x: float
-    stations: tuple[tuple[float, float], ...]
+    stations: tuple[tuple[float, float], ...]  # the padded corner stations
     segments: tuple[tuple[float, float], ...]
 
     @property
@@ -87,16 +87,66 @@ class BaseTaper:
             math.hypot(x - sx, y - sy) <= self.stop_radius for sx, sy in self.stations
         )
 
+    def wall_stations(self, joint: Any) -> tuple[Any, ...]:
+        """The joint's stations on this taper's front/rear walls."""
+        wall_y = self.half_depth - joint.side_inset
+        return tuple(
+            s for s in joint.stations if abs(abs(s.y) - wall_y) <= 1e-9
+        )
 
-def _wall_stations(joint: Any, half_depth: float) -> list[Any]:
-    """The joint's stations that stand against a front/rear wall.
+    def through_stations(self, joint: Any) -> tuple[Any, ...]:
+        """The wall stations the taper runs through (all but the corner pads)."""
+        return tuple(s for s in self.wall_stations(joint) if not s.is_corner)
 
-    They are the ones inset ``side_inset`` from that wall's outer face
-    (``y_wall`` in :func:`geometry.chassis_joint.chassis_joint`), which is what
-    the base taper has to step around.
+
+def cone_lip_z(taper: BaseTaper, recess: Any, mouth_radius: float, margin: float) -> float:
+    """Where the access cone crosses the taper's sloped face -- the lip (mm).
+
+    The crossing solves ``cone_r(z) == margin - inset_at(z)``: the wall face
+    recedes at ``inset / height`` while the cone narrows at its own slope from
+    the mouth to the head pocket.
+    """
+    slope = (
+        taper.inset / taper.height
+        + (mouth_radius - recess.pocket_radius) / recess.z_neck
+    )
+    return (taper.inset + mouth_radius - margin) / slope
+
+
+def lip_fillet_limit(
+    taper: BaseTaper,
+    recess: Any,
+    mouth_radius: float,
+    margin: float,
+    minimum_feature: float,
+) -> float:
+    """Largest fillet radius on the lip that keeps the head pocket intact (mm).
+
+    A radius ``r`` fillet on the lip (cone against the sloped face, a shallow
+    ``taper angle - cone half-angle`` dihedral) climbs the cone by
+    ``r x cot(dihedral / 2)``; it must stop one ``minimum_feature`` below the
+    pocket's neck so the driver cone stays a clean surface. Returns zero or
+    negative when even a vanishing fillet would breach the neck.
+    """
+    z_lip = cone_lip_z(taper, recess, mouth_radius, margin)
+    dihedral = taper.angle - recess.cone_angle(mouth_radius)
+    run_budget = recess.z_neck - minimum_feature - z_lip
+    return run_budget * math.tan(math.radians(dihedral / 2.0))
+
+
+def _corner_stations(joint: Any, half_depth: float) -> list[Any]:
+    """The joint's corner stations: the ones that keep a taper pad.
+
+    The long-wall (side) stations stand mid-run and the taper passes through
+    their access cones (ADR-0022), so only the corners -- where the chamfered
+    corner leaves no run to open into -- suppress the taper.
     """
     target = half_depth - joint.side_inset
-    return [s for s in joint.stations if abs(abs(s.y) - target) <= 1e-9]
+    return [
+        s
+        for s in joint.stations
+        if s.is_corner and abs(abs(s.y) - target) <= 1e-9
+    ]
 
 
 def _segments(
@@ -131,19 +181,21 @@ def base_taper(config: Any, joint: Any) -> BaseTaper:
     ``height`` is the bottom of the joint band: the taper runs from the table
     to where the band starts, so the band itself stays prismatic and the slope
     stops 3 mm short of the Parting plane -- the "taper + band" silhouette. The
-    inset then follows the configured angle, and the pads follow the recess the
-    joint already sized.
+    inset then follows the configured angle. The pads follow the recess the
+    joint already sized, but only the corner stations carry one (ADR-0022):
+    everywhere else the taper runs straight through the wall, opening into the
+    long-wall stations' access cones.
     """
     settings = config.chassis_joint
     minimum_feature = config.material.minimum_feature
     wall = config.wall_thickness
     wall_half_x = joint.band_width / 2.0 - config.corners.chamfer
     half_depth = joint.depth / 2.0
-    stations = _wall_stations(joint, half_depth)
+    stations = _corner_stations(joint, half_depth)
     if not stations:
         raise ValueError(
-            "no band station stands against a front/rear wall: the base taper "
-            "has nothing to step around"
+            "no band station stands at a front/rear wall corner: the base "
+            "taper has nothing to stop on"
         )
 
     angle = settings.taper_angle
@@ -214,8 +266,10 @@ def build_cutter(taper: BaseTaper):
     """The solid that takes both end walls' taper off the outside of the Tray.
 
     The 15 degree wedge from the table up to ``height`` on each wall, with a
-    cylinder of ``stop_radius`` subtracted at every station: the pads keep their
-    full face and the taper stops on the cylinder's arc.
+    cylinder of ``stop_radius`` subtracted at every corner pad: the pads keep
+    their full face and the taper stops on the cylinder's arc. Everywhere else
+    -- the long-wall stations included -- the wedge runs unbroken through the
+    wall and opens into the access cones (cut later, in ``case.chassis``).
     """
     from utilities import cad_helpers as ch
 

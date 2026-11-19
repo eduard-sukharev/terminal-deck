@@ -253,6 +253,7 @@ def test_well_front_margin_falls_out_of_the_face_budget():
         config.merged_boss.bore_margin
         + insert.printed_hole_diameter
         + config.chassis_joint.boss_margin
+        + config.keyboard.mounting["boss_widen"] / 2.0
     )
     assert budget.well.boss_lip_required == pytest.approx(boss_lip)
     assert budget.well_front_margin >= config.wall_thickness + boss_lip - 1e-9

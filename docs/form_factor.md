@@ -158,7 +158,7 @@ to tilt it.**
   the 1.5 mm plate grip and the insert;
   the M2 head (Ø3.80 × 2.00) cannot be recessed, so it spans 14.30–16.30 and
   dips 1.85 mm into the Tray, 1.75 mm clear of its inner walls. The front lip is
-  5.65 mm for a 5.00 mm boss requirement. The X
+  5.65 mm for a 5.50 mm boss requirement. The X
   sides have only ~2 mm of Deck rim, so a station that cannot fit the border
   gets a 5.20 × 5.20 mm, r2.0 filleted **Plate ear** protruding past the
   outline; **five Plate notches** (5.30 × 1.45, 1.10 mm bite) yield the front

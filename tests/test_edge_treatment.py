@@ -11,8 +11,10 @@ pytestmark = pytest.mark.skipif(
 )
 
 from geometry.edge_treatment import (  # noqa: E402
-    bed_chamfer, column_junction_edges, concave_edges, cone_cut_edges,
-    merge_column_walls, relieve_concave_joints, round_cone_cut,
+    bed_chamfer, boss_base_edges, column_junction_edges, concave_edges,
+    cone_cut_edges, fillet_boss_bases, fillet_junctions, merge_column_walls,
+    rect_base_edges, rect_junction_edges, relieve_concave_joints,
+    round_cone_cut,
 )
 from geometry.printability import BED_DOWN, PrintOrientation  # noqa: E402
 from utilities.validation import ValidationReport  # noqa: E402
@@ -69,6 +71,12 @@ def _tray():
 
 def _tray_with_boss():
     boss = cad_helpers.translate(cad_helpers.cylinder_centered(6, 12), 10, 5, 2 + 6)
+    return cad_helpers.union(_tray(), boss)
+
+
+def _tray_with_rect():
+    """A bridged boss: a rectangle on the tray floor, its long axis along Y."""
+    boss = cad_helpers.rect_prism(3.5, 4.0, 19.0, 12.0, x=10.0, z=2.0)
     return cad_helpers.union(_tray(), boss)
 
 
@@ -294,3 +302,54 @@ def test_sharp_tabs_clash_with_the_filleted_notches():
     left, right = (relieve_concave_joints(s, BED_DOWN, 1.0, ValidationReport())
                    for s in split_sections(_tray(), [seam], 40.0))
     assert cad_helpers.volume_mm3(cad_helpers.intersect(left, right)) > 1e-3
+
+
+def test_boss_base_edges_finds_the_ring_a_boss_springs_from():
+    """ADR-0025: the circular reentrant edge under a boss on a plane."""
+    edges = boss_base_edges(_tray_with_boss(), [(10.0, 5.0, 3.0, 3.0)], 2.0, 1.0)
+    assert len(edges) == 1
+    assert edges[0].curve_type == "circle"
+    assert edges[0].key[2] == pytest.approx(2.0)
+
+
+def test_a_boss_growing_away_from_the_bed_keeps_its_base_sharp():
+    """The cove would face the bed, so the round needs support: not selected."""
+    up = PrintOrientation((0, 0, 1))
+    assert boss_base_edges(_tray_with_boss(), [(10.0, 5.0, 3.0, 3.0)], 2.0, 1.0, up) == []
+
+
+def test_fillet_boss_bases_rounds_the_floor_ring():
+    shape = _tray_with_boss()
+    report = ValidationReport()
+    out = fillet_boss_bases(shape, [(10.0, 5.0, 3.0, 3.0)], 2.0, 1.0, 1.0, report)
+    assert report.warnings == []
+    assert out.volume > shape.volume
+    assert boss_base_edges(out, [(10.0, 5.0, 3.0, 3.0)], 2.0, 1.0) == []
+
+
+def test_rect_base_edges_finds_the_bridge_floor_edges():
+    """ADR-0026: a bridged boss meets its base plane in a rectangle outline."""
+    rect = (10.0, 4.0, 19.0, 3.5)
+    edges = rect_base_edges(_tray_with_rect(), [rect], 2.0, 1.0)
+    assert edges
+    assert all(e.key[2] == pytest.approx(2.0) for e in edges)
+
+
+def test_rect_junction_edges_finds_the_wall_chords():
+    """The rectangle's long sides meet the tray wall in two vertical chords."""
+    rect = (10.0, 4.0, 19.0, 3.5)
+    edges = rect_junction_edges(_tray_with_rect(), [rect], 18.0)
+    assert len(edges) == 2
+    assert all(e.curve_type == "line" for e in edges)
+
+
+def test_fillet_junctions_rounds_the_rect_base():
+    """The combined pass eases a bridged boss's base in one go."""
+    rect = (10.0, 4.0, 19.0, 3.5)
+    shape = _tray_with_rect()
+    bases = rect_base_edges(shape, [rect], 2.0, 1.0)
+    report = ValidationReport()
+    out = fillet_junctions(shape, [], bases, 1.0, 1.0, report)
+    assert report.warnings == []
+    assert out.volume > shape.volume
+    assert rect_base_edges(out, [rect], 2.0, 1.0) == []

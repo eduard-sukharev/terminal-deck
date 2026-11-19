@@ -226,13 +226,17 @@ _Avoid:_ "Seam lug" (the retired drilled block with a bore).
 is fused into it instead of standing free; the wall then serves as part of its
 sleeve.
 
-**Chamfer** — The default edge treatment: a 45 degree cut on an outside corner
-or inside joint. It gives the case its chopped, brutal hi-tech look and prints
-without support. Outside edges are chamfered, never filleted.
+**Chamfer** — A 45 degree cut on a convex (outside) edge, where the two faces
+meet at `<= 90` degrees through the material. Outside edges are chamfered,
+never filleted. A concave joint that opens toward the bed *of the part's own
+print orientation* also keeps a chamfer: a round there prints as a curved
+overhang.
 
-**Fillet** — A rounded edge. Allowed only sparingly on hidden inside joints
-(the vertical concave relief and the Seam tab corners that nest in it), never
-on an outside face. See `docs/design_spec.md` (Edge Treatment).
+**Fillet** — A rounded edge on a concave (inside) edge, where the two faces
+meet at `>= 270` degrees through the material (`<= 90` through the void). Every
+boss base and every sharp inside corner of the shell is filleted; never on an
+outside face. A fillet must run so it prints without support. See ADR-0025 and
+`docs/design_spec.md` (Edge Treatment).
 
 **Core component** — A purchased hardware item modelled to its measured size:
 SBC, USB hub, battery pack, display panel, display driver, controller,

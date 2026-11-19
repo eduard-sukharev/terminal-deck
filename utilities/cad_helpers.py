@@ -133,6 +133,26 @@ def frustum_centered(bottom_diameter: float, top_diameter: float, height: float)
     return b3d.Cone(bottom_diameter / 2.0, top_diameter / 2.0, height)
 
 
+def rect_prism(
+    half_x: float,
+    y0: float,
+    y1: float,
+    height: float,
+    x: float = 0.0,
+    z: float = 0.0,
+) -> Any:
+    """Return a vertical rectangular prism spanning ``y0``..``y1`` in Y.
+
+    The plan is a ``2 * half_x`` wide rectangle; it is extruded ``height`` from
+    ``z`` and centred on ``x``. A bridge uses it to reach two parallel walls
+    with flat faces instead of rounded caps.
+    """
+    b3d = require_cad()
+    low, high = (y0, y1) if y0 <= y1 else (y1, y0)
+    solid = b3d.Box(2.0 * half_x, high - low, height)
+    return translate(solid, x, (low + high) / 2.0, z + height / 2.0)
+
+
 def draft_inset(angle_deg: float, height: float) -> float:
     """Horizontal inset of a drafted wall over ``height`` mm (mm).
 
@@ -1071,6 +1091,35 @@ def _isolated(shape: Any, infos: list[EdgeInfo], size: float, mode: str) -> Any:
     return solids[0] if len(solids) == 1 else result
 
 
+def _isolated_variable(shape: Any, pairs: list[tuple[EdgeInfo, float]]) -> Any:
+    """Fillet a network of edges, each with its own radius, in a child process."""
+    import os
+    import tempfile
+    from concurrent.futures.process import BrokenProcessPool
+
+    from utilities import _cad_worker
+
+    global _POOL
+    b3d = require_cad()
+    items = [[list(info.key), size] for info, size in pairs]
+    with tempfile.TemporaryDirectory() as tmp:
+        src, dst = os.path.join(tmp, "in.brep"), os.path.join(tmp, "out.brep")
+        b3d.export_brep(shape, src)
+        future = _pool().submit(_cad_worker.treat_variable, src, dst, items)
+        try:
+            future.result(timeout=120)
+        except BrokenProcessPool as exc:
+            _POOL = None
+            raise ValueError("OCC crashed on this edge treatment") from exc
+        except Exception as exc:
+            raise ValueError(f"edge treatment failed: {exc}") from exc
+        result = b3d.import_brep(dst)
+    solids = result.solids()
+    if len(solids) != len(shape.solids()):
+        raise ValueError("edge treatment changed the solid count")
+    return solids[0] if len(solids) == 1 else result
+
+
 def chamfer_edges(shape: Any, infos: list[EdgeInfo], size: float) -> Any:
     """Chamfer the edges at ``infos`` by ``size`` mm; raises if OCC cannot."""
     if not _locate(shape, infos):
@@ -1083,3 +1132,18 @@ def fillet_edges(shape: Any, infos: list[EdgeInfo], size: float) -> Any:
     if not _locate(shape, infos):
         return shape
     return _isolated(shape, infos, size, "fillet")
+
+
+def fillet_edges_variable(shape: Any, pairs: list[tuple[EdgeInfo, float]]) -> Any:
+    """Fillet a network of edges, each at its own radius; raises if OCC cannot.
+
+    Unlike :func:`fillet_edges`, the edges may meet at vertices: a boss's
+    vertical chord and its base ring do. Filleting them in one pass lets OCC
+    build the corner blend, which a second pass cannot roll off the first
+    fillet's surface.
+    """
+    if not pairs:
+        return shape
+    if not _locate(shape, [info for info, _ in pairs]):
+        return shape
+    return _isolated_variable(shape, pairs)

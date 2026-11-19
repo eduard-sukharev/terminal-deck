@@ -808,6 +808,18 @@ def _screw_size(config) -> str:
     return str(mounting.get("screw", "M2"))
 
 
+def _boss_widen(config) -> float:
+    """Extra boss diameter over the bare insert hole + two margins (mm).
+
+    The Well's M2 boss is a structural post, not a bare insert wall; it is
+    grown ``keyboard.mounting.boss_widen`` stronger than the fastener alone
+    needs. A tight-lip boss bridges the lip as a rectangle (ADR-0026), and its
+    widened faces merge into both walls.
+    """
+    mounting = getattr(config.keyboard, "mounting", None) or {}
+    return float(mounting.get("boss_widen", 1.0))
+
+
 def _plate_corner_radius(config) -> float:
     plate = getattr(config.keyboard, "plate", None) or {}
     return float(plate.get("corner_radius", 0.0))
@@ -1175,15 +1187,17 @@ def well_mounts(
     bolt_head = fasteners.head(screw_name, "cap")
     bore_margin = config.merged_boss.bore_margin
     boss_margin = config.chassis_joint.boss_margin
+    boss_widen = _boss_widen(config)
     # The screw's head seats on the plate's underside and its shank crosses the
     # plate into the insert above: the grip is the plate thickness, and the
     # stock length is derived (never chosen) exactly like the chassis joints.
     screw_grip = plate_thickness
     screw = deck_screw(screw_name, screw_grip)
 
-    # One source for the boss: the bore plus the print margin on both sides.
+    # One source for the boss: the bore plus the print margin on both sides,
+    # widened by the configured structural allowance.
     hole = insert.printed_hole_diameter
-    boss_diameter = hole + 2.0 * boss_margin
+    boss_diameter = hole + 2.0 * boss_margin + boss_widen
     insert_height = insert.depth + boss_margin
     # The Deck is a bowl whose top slab is one `wall` thick under the closed
     # face, and it prints face down: the slab is on the bed and everything
@@ -1498,10 +1512,10 @@ def well_mounts(
         )
     # The Well sized the lip for its own bore; if this module sizes a different
     # bore for the same station, one of the two is wrong -- say so loudly.
-    if abs(lip_required - (bore_margin + hole + boss_margin)) > 1e-9:
+    if abs(lip_required - (bore_margin + hole + boss_margin + boss_widen / 2.0)) > 1e-9:
         failures.append(
             f"lip: the Well requires {lip_required:.2f} mm of lip for its bore, "
-            f"this pattern needs {bore_margin + hole + boss_margin:.2f} mm"
+            f"this pattern needs {bore_margin + hole + boss_margin + boss_widen / 2.0:.2f} mm"
         )
     for notch in notches:
         if notch.intrusion >= wall - minimum + _EPS:

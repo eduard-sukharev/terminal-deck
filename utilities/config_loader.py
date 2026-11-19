@@ -57,9 +57,10 @@ class Wall:
 class Corners:
     """45 degree chamfer on the case's visible outer corners (mm).
 
-    The case is chamfer-first (``docs/design_spec.md`` § Edge Treatment):
-    outside faces are chopped, never rounded. Fillets are reserved for hidden
-    inside joints in :mod:`geometry.edge_treatment`.
+    Edge treatment follows the material dihedral (``docs/design_spec.md`` §
+    Edge Treatment, ADR-0025): convex outside faces are chopped, never rounded;
+    concave inside joints are filleted. A concave joint that opens toward the
+    bed keeps this chamfer instead, since a round would print as an overhang.
     """
 
     chamfer: float
@@ -474,6 +475,9 @@ class ChassisJoint:
     head pocket's neck intact, and the walls' edges with the floor stay sharp.
     ``column_fillet`` is the merge fillet where a column's disc crosses a
     front/rear cavity wall face (ADR-0024), applied in both halves.
+    ``boss_base_fillet`` rounds the ring where a boss springs from its floor or
+    ceiling (ADR-0025); it stays below ``column_fillet`` because its endpoints
+    land on the merge round the chords leave.
     """
 
     band: float = 6.0
@@ -487,6 +491,7 @@ class ChassisJoint:
     taper_runout: float = 3.0
     taper_fillet: float = 1.0
     column_fillet: float = 1.5
+    boss_base_fillet: float = 0.6
 
     def __post_init__(self) -> None:
         if self.band <= 0 or self.boss <= 0:
@@ -503,6 +508,11 @@ class ChassisJoint:
             raise ValueError("chassis_joint.taper_fillet must be positive")
         if self.column_fillet <= 0.0:
             raise ValueError("chassis_joint.column_fillet must be positive")
+        if not 0.0 < self.boss_base_fillet < self.column_fillet:
+            raise ValueError(
+                "chassis_joint.boss_base_fillet must be positive and below "
+                "column_fillet (the chord merge owns the shared corner)"
+            )
 
 
 @dataclass(frozen=True)

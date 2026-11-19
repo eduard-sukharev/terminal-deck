@@ -18,6 +18,9 @@ keyboard:
   mounting:
     screw: M2
     edge_offset: 5.0
+    boss_widen: 1.0      # the Well's M2 boss is grown this much over the bare
+                         # insert + margin (0.5 each side); a tight-lip boss
+                         # bridges the lip as a rectangle (ADR-0026)
     seam_slack: 4.0      # at-Seam M2 stations keep this much clear of the Deck's
                          # Section Seam, on top of the ear and the printable
                          # minimum (ADR-0014, ADR-0015). With the straight Deck

@@ -182,15 +182,17 @@ def test_boss_diameter_is_the_insert_hole_plus_two_margins(data, mounts):
     config, _, _, _ = data
     insert = fasteners.heat_insert(_screw(config))
     margin = config.chassis_joint.boss_margin
+    widen = config.keyboard.mounting["boss_widen"]
     assert mounts.insert_hole_diameter == pytest.approx(insert.printed_hole_diameter)
     assert mounts.insert_depth == pytest.approx(insert.depth)
     assert mounts.boss_diameter == pytest.approx(
-        insert.printed_hole_diameter + 2.0 * margin
+        insert.printed_hole_diameter + 2.0 * margin + widen
     )
     # One source: every mount reports the module's single diameter.
     assert {m.boss_diameter for m in mounts.mounts} == {mounts.boss_diameter}
-    # Today: a Ø6.0 boss around the Ø3.0 M2 insert bore.
-    assert mounts.boss_diameter == pytest.approx(6.0)
+    # Today: a Ø7.0 boss around the Ø3.0 M2 insert bore (1.0 mm wider than
+    # the bare insert + margin, 0.5 mm per side).
+    assert mounts.boss_diameter == pytest.approx(7.0)
 
 
 def test_boss_runs_from_the_plate_top_up_to_the_deck_ceiling(data, mounts):
@@ -279,12 +281,13 @@ def test_the_front_lip_hosts_the_boss(data, mounts):
         config.merged_boss.bore_margin
         + mounts.insert_hole_diameter
         + config.chassis_joint.boss_margin
+        + config.keyboard.mounting["boss_widen"] / 2.0
     )
     assert mounts.lip_required == pytest.approx(required)
     assert budget.well.front_lip >= required - 1e-9
     assert mounts.front_lip_slack == pytest.approx(budget.well.front_lip - required)
-    # Today: 5.65 mm of front lip for a 5.00 mm boss, 0.65 mm to spare.
-    assert mounts.front_lip_slack == pytest.approx(0.65, abs=1e-6)
+    # Today: 5.65 mm of front lip for a 5.50 mm boss, 0.15 mm to spare.
+    assert mounts.front_lip_slack == pytest.approx(0.15, abs=1e-6)
 
 
 # -- ears ----------------------------------------------------------------
@@ -1012,7 +1015,7 @@ def test_a_different_placement_offset_moves_the_whole_pattern(data, frame, seam)
 
 def test_summary_reports_stations_bosses_ears_and_notches(mounts):
     text = mounts.summary()
-    assert "6.00" in text  # the boss diameter
+    assert "7.00" in text  # the boss diameter
     assert "front-outer" in text
     assert "notch" in text
     # The report names the Seam's two ends and the per-Section counts, so a

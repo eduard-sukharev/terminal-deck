@@ -65,9 +65,15 @@ reference origin.
   easy to distinguish. Each component role gets its own opaque color; apply
   transparency only where it makes the inside visible (the case shell).
 * `wall_thickness = config.wall.thickness` is the single wall parameter.
-* Edges are chamfer-first: `config.corners.chamfer` for the visible outer
-  case corners, `config.edges.*` for inside joint relief and the bed face.
-  Fillets are restricted to hidden inside joints (never an outside face).
+* Edges follow the material dihedral (ADR-0025): `config.corners.chamfer` for
+  the visible outer case corners (convex), `config.edges.*` for the inside
+  joint relief and the bed face, `config.chassis_joint.column_fillet` for the
+  column/wall merges and `config.chassis_joint.boss_base_fillet` for the boss
+  bases (concave). Concave edges are filleted, convex ones chamfered; a concave
+  joint that opens toward the bed keeps the chamfer. A tight-lip Well boss is
+  bridged into its facing wall as a rectangle (ADR-0026); its wall chords and
+  base edges come from `rect_junction_edges` / `rect_base_edges`, and every
+  Well boss is widened by `keyboard.mounting.boss_widen`.
 * Heat inserts come from `utilities/fasteners.py`, never recreated.
 * Slide math lives in `components/slide.py`, never in the enclosure.
 * The FPC guard is built by `ScreenLid.build_fpc_guard()` (a separate printed

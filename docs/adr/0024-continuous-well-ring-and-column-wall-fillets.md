@@ -31,8 +31,8 @@ bosses against the ring's own outer face.
   front/rear outer faces -- the reentrant corner along the chord is filleted at
   `chassis_joint.column_fillet` (1.5 mm) by
   `geometry.edge_treatment.merge_column_walls`: the fillet runs along print Z
-  in both orientations, so it prints cleanly (the one sanctioned fillet use,
-  ADR 0003), and it only adds corner material outside the insert, the head
+  in both orientations, so it prints cleanly (an inside fillet, ADR-0025), and
+  it only adds corner material outside the insert, the head
   pocket and the screw, which sit on the column's axis, far inboard of the
   chord.
 - **Applied while the junction edges run the wall's full height.** In the

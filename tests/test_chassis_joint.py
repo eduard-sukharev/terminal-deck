@@ -539,3 +539,54 @@ def test_columns_merge_into_the_cavity_walls(data, solids):
                     f"the merge fillet is missing {dx:.2f} past the chord at "
                     f"z {z:.2f}"
                 )
+
+
+def _probe(shape, x, y, z, size=0.1):
+    """Material in a tiny box centered at ``x, y, z`` (mm^3)."""
+    box = ch.translate(ch.box_centered(size, size, size), x, y, z)
+    return ch.volume_mm3(ch.intersect(shape, box))
+
+
+def test_boss_bases_are_filleted_on_the_plane_they_spring_from(data, solids):
+    """ADR-0025: every boss stands on its base and the ring is rounded.
+
+    Both halves are judged in their own print orientation: the Tray as
+    modelled (a column stands on the floor), the Deck face down (the inner
+    ceiling is the bed face, so its bosses stand on it).
+    """
+    from geometry.edge_treatment import boss_base_edges
+    from geometry.printability import BED_DOWN, FACE_DOWN
+
+    config, budget, frame, _ = data
+    tray, deck = solids
+    joint = budget.chassis_joint
+    base = config.chassis_joint.boss_base_fillet
+    station = next(s for s in joint.side_stations if s.x > 1e-6 and s.y > 0.0)
+    columns = [
+        (
+            s.x,
+            s.y,
+            min(s.strict_boss, s.base_boss) / 2.0,
+            max(s.strict_boss, s.base_boss) / 2.0,
+        )
+        for s in joint.stations
+    ]
+    ceiling = frame.chassis_top - frame.wall
+
+    # The Tray's columns: no base ring is left on the floor.
+    assert boss_base_edges(tray, columns, frame.wall, 1.0, BED_DOWN) == []
+    # The Deck's front/rear band bosses: no base ring is left on the ceiling.
+    column = (
+        station.x,
+        station.y,
+        min(station.strict_boss, station.base_boss) / 2.0,
+        max(station.strict_boss, station.base_boss) / 2.0,
+    )
+    assert boss_base_edges(deck, [column], ceiling, -1.0, FACE_DOWN) == []
+
+    # ...and the fillet is material where the sharp corner was air: just
+    # outside the boss wall and just above (Tray) / below (Deck) the plane.
+    radius = station.strict_boss / 2.0
+    inward = station.y - (radius + base * 0.25)
+    assert _probe(tray, station.x, inward, frame.wall + base * 0.1) > 0.0
+    assert _probe(deck, station.x, inward, ceiling - base * 0.1) > 0.0

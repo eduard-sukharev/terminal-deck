@@ -572,8 +572,11 @@ hardware envelope.
 
 # Edge Treatment
 
-The case is **chamfer-first**. The look is chopped, brutal, heavy-duty
-hi-tech: cut bevels, not soft rounds.
+The case's edge treatment follows the **material dihedral** (ADR-0025): a
+convex edge is chopped into the brutal hi-tech look with a 45 degree chamfer,
+and a concave edge is rolled with a fillet, because a reentrant corner is a
+crack starter. The look is chopped, brutal, heavy-duty hi-tech: cut bevels on
+every edge you can see, rounds only inside the material.
 
 Outside faces — every edge visible on the assembled device, and every exposed
 convex or bed-facing edge. When an outside edge is broken it is a 45 degree
@@ -584,9 +587,26 @@ round.
 
 Inside (concave) joints:
 
-* Chamfer by default. The stress-relief at horizontal floor/wall, boss/wall,
-  boss/floor and rib/floor joints is a 45 degree chamfer
-  (`edges.chamfer_factor * wall`).
+* The material angle decides. Measure the dihedral between the two faces
+  through the material: `<= 90` degrees is a convex (outside) edge, `>= 270`
+  degrees is a concave (inside) edge — one square joint read from either side.
+  Convex takes a chamfer, concave takes a fillet. Never the other way round,
+  and the angle is the only criterion.
+
+* A concave edge is a reentrant corner, and a reentrant corner is a crack
+  starter: it gets a fillet, so the material rolls smoothly from one face into
+  the other. That covers **every boss base** — a boss meets its floor, wall or
+  ring at such an angle — and every other sharp inside edge of the shell:
+  cavity floor/wall, wall/wall, boss/wall, boss/floor, rib/floor.
+
+* A fillet must print the way the part is printed. Judge every joint in that
+  part's own print orientation, not in the assembly's Z: the Deck prints face
+  down, so its inner ceiling is the bed face and the bosses that stand on it
+  take the fillet like any other boss base. A concave joint that opens toward
+  the bed *of that part* keeps the 45 degree chamfer
+  (`edges.chamfer_factor * wall`) — the round approaches horizontal there and
+  prints as a curved overhang, while the 45 degree chamfer is the widest
+  self-supporting break.
 
 * A shell's cavity corners follow the outer chop. The outer chamfer is cut
   with a square cavity behind it and the corner pinches to nothing — for the
@@ -597,18 +617,25 @@ Inside (concave) joints:
   `wall` behind the outer one (ADR-0016). Never leave a knife edge at a
   chamfered corner.
 
-* Fillets are allowed sparingly and only on hidden inside joints, where a
-  smooth relief is needed and a chamfer would leave a sharp rebate. The
-  sanctioned uses are the vertical wall/wall joints in
-  `geometry/edge_treatment.py` and the Seam tab corners that must nest in
-  them. Never decorative, never on an outside face.
+* The build implements this in `geometry/edge_treatment.py` (ADR-0025): the
+  concave joints it can roll are filleted — `merge_column_walls` at the
+  columns and the Well bosses (ADR-0024), `fillet_boss_bases` at every boss
+  base (the selector `boss_base_edges` reads the part's print orientation),
+  the vertical wall/wall relief and the Seam tab corners that nest in it —
+  while the horizontal joints that open toward the bed keep the 45 degree
+  chamfer, and bed-facing outside edges keep `edges.bed_chamfer`. Every chord
+  merge runs before any base round, so a base round beside a neighbouring
+  family's chord cannot block it. A round that does not fit is skipped with a
+  SOFT warning; the build never blocks on OCC.
 
 No hardcoded sizes. Every edge size is configuration:
 
 ```
 corners.chamfer          # outside case corners (mm)
 
-edges.chamfer_factor     # inside joint relief, scaled from wall.thickness
+edges.chamfer_factor     # inside joint relief where a fillet would bridge
+
+chassis_joint.column_fillet  # boss-base and column/wall merge fillet (mm)
 
 edges.bed_chamfer        # bed-face perimeter (elephant's foot)
 

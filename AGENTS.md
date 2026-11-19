@@ -264,10 +264,19 @@ is checked by `keyboard/validation.py`.
   screen end), +Z up (thickness); origin = centre of the chassis footprint on
   the table plane. Never redefine origins.
 - `wall_thickness = config.wall.thickness` is the single wall parameter.
-- **Chamfer-first.** Outside edges are chamfered, never filleted
-  (`corners.chamfer`, `edges.*`). Fillets are only allowed sparingly on hidden
-  inside joints (see `docs/design_spec.md` § Edge Treatment). A shell's cavity
-  corners carry the **derived inner chamfer**
+- **Edge treatment follows the material dihedral.** Measure the angle between
+  the two faces through the material: `<= 90°` is a convex (outside) edge,
+  `>= 270°` is a concave (inside) edge — one square joint read from either
+  side. Concave edges are **filleted**: every boss base where it meets a floor,
+  wall or ring, and every sharp inside corner of the shell (ADR-0025,
+  `geometry/edge_treatment.py`, `chassis_joint.column_fillet`). Convex edges
+  are **chamfered**, always 45° (`corners.chamfer`, `edges.*`): outside faces
+  are never filleted. A fillet must print without support **in that part's own
+  print orientation** — judge the joint there, not in the assembly's Z (the
+  Deck prints face down, so its inner ceiling is the bed face and its bosses
+  are filleted) — and a concave joint that opens toward the part's bed keeps
+  its 45° chamfer instead (the round would print as a curved overhang). A
+  shell's cavity corners also carry the **derived inner chamfer**
   (`cad_helpers.inner_corner_chamfer(chamfer, wall)`, ADR-0016): a square
   cavity corner meets a 4 mm outer chop on a 2 mm wall in a knife edge.
 - Layouts contain **no CAD** — only placements.
@@ -305,7 +314,7 @@ Gotchas:
   length + 2 * (Rod clamp + clearance) + end supports + lid bezel ≤ 140`.
   The front margin is the budget's **remainder**, not a knob:
   `well_front_margin = 140.00 − 51.50 lid stack − 80.85 plate depth = 7.65`
-  (floored at 7.00 = wall 2.00 + the 5.00 front lip an M2 boss needs). Travel
+  (floored at 7.50 = wall 2.00 + the 5.50 front lip an M2 boss needs). Travel
   is `7.65 + 80.85 + 5.0 clearance = 93.50`, not the keyboard depth (77.75);
   ADR-0014's plate is what sets it. One bearing per rod; the default is the
   short LM6UU (19 mm) because the 35 mm LM6LUU plus the end clamps does not
@@ -392,7 +401,18 @@ Gotchas:
   out — a second call with its own column set, because the chords where a
   *band* column crosses that face must stay sharp: at the five notched stations
   its chord passes ~0.1 mm from the M2 boss's, so no fillet rolls between them
-  (as is the corner chamfer and the end stations' X walls). The HARD checks
+  (as is the corner chamfer and the end stations' X walls). A front-lip M2 boss
+  whose lip is narrower than one wall bridges outboard as a **rectangle**
+  (ADR-0026): its ends sit one `minimum_feature` inside the ring and the facing
+  wall, and its chords and base edges are selected by `rect_junction_edges` /
+  `rect_base_edges`. Every Well M2 boss is also widened by
+  `keyboard.mounting.boss_widen` (1.0 mm, 0.5 per side) over the bare insert +
+  margin. Every boss base is also rounded at
+  `chassis_joint.boss_base_fillet` (0.6 mm) by
+  `fillet_boss_bases` — every chord merge runs before any base round, so a base
+  round beside a neighbouring family's chord cannot block it. The Tray's column
+  bases and most Deck band bases take the round; the crowded end-station and
+  most M2 bases are skipped with a SOFT warning. The HARD checks
   `slide-chassis-joint-column-fillet` and `keyboard-mounts-fillet` require
   `column_fillet + minimum_feature` to fit the tightest wall chord (2.66 mm, the
   strict column) and the tightest Well chord (2.24 mm).

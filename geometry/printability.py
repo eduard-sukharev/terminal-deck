@@ -37,6 +37,9 @@ class PrintOrientation:
 #: Printed as modelled, lowest face on the bed.
 BED_DOWN = PrintOrientation((0.0, 0.0, -1.0))
 
+#: Printed flipped, the closed face on the bed (the Deck opens upward).
+FACE_DOWN = PrintOrientation((0.0, 0.0, 1.0))
+
 
 @dataclass(frozen=True)
 class OverhangFace:

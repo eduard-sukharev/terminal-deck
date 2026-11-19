@@ -393,10 +393,14 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
     plate_screw = fasteners.heat_insert(
         str((config.keyboard.mounting or {}).get("screw", "M2"))
     )
+    boss_widen = float(
+        (config.keyboard.mounting or {}).get("boss_widen", 1.0)
+    )
     boss_lip_required = (
         config.merged_boss.bore_margin
         + plate_screw.printed_hole_diameter
         + config.chassis_joint.boss_margin
+        + boss_widen / 2.0
     )
     front_margin_floor = wall + boss_lip_required
     well_front_margin = max(

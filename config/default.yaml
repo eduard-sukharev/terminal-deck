@@ -76,6 +76,9 @@ chassis_joint:
                        # front/rear cavity wall face, in both the Tray and the
                        # Deck (ADR-0024); it plus one minimum feature must fit
                        # the tightest chord
+  boss_base_fillet: 0.6  # the round where a boss springs from its floor or
+                         # ceiling (ADR-0025); it must stay below column_fillet
+                         # because its endpoints land on the chord merge
 
 # Merged boss (ADR 0003): a boss, column, standoff or lug whose outer surface is
 # closer than `threshold_factor * wall` to a wall face is fused into that wall

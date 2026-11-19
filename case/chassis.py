@@ -42,6 +42,18 @@ from __future__ import annotations
 from typing import Any
 
 from case.slider_frame import SliderFrame
+from geometry.printability import BED_DOWN, FACE_DOWN
+
+
+def _treat(treatment, shape, *args, **kwargs):
+    """Run an edge treatment, printing its SOFT warnings, and return the solid."""
+    from utilities.validation import ValidationReport
+
+    report = ValidationReport()
+    result = treatment(shape, *args, report, **kwargs)
+    for warning in report.warnings:
+        print(f"[pipeline] warn: {warning}")
+    return result
 
 
 class Chassis:
@@ -132,11 +144,15 @@ class Chassis:
         # below the access cone's neck, a strict cylinder above it (ADR-0021).
         body = ch.union(body, *[self._column(station) for station in joint.stations])
 
-        # ADR-0024: ease each column's chords along the front/rear cavity walls
-        # while that face still runs the column's full height. The taper fill
-        # below narrows the cavity and would hide the chords, and the cones
-        # slice the fillet at the floor, so the merge comes first.
-        body = self._merge_column_walls(body)
+        # ADR-0024/0025: ease each column's whole junction -- the chords along
+        # the front/rear cavity walls, then the ring at its floor base -- while
+        # the face still runs the column's full height. The taper fill below
+        # narrows the cavity and would hide the chords, and the cones slice the
+        # fillet at the floor, so the merge comes first. The Tray prints as
+        # modelled: a column stands on its base, so the cove opens away from
+        # the bed.
+        body = self._treat_wall_columns(body, f.wall, 1.0, BED_DOWN)
+
 
         # The taper's fill, now that the columns (and their merge fillets) are
         # in: the cavity-side wedge is backfilled under the sloped outer face.
@@ -301,16 +317,11 @@ class Chassis:
         # inside the front/rear lip. It stands on the plate's top face (the
         # plate's ear is below it), so no boss can enter the Cutout, and runs
         # up to the Deck's inner ceiling: the Deck prints face down, so a boss
-        # that stopped at the insert would be an unsupported overhang.
-        well_bosses = [
-            ch.translate(
-                ch.cylinder_centered(m.boss_diameter, m.boss_z1 - m.boss_z0),
-                m.x,
-                m.y,
-                (m.boss_z0 + m.boss_z1) / 2.0,
-            )
-            for m in mounts.mounts
-        ]
+        # that stopped at the insert would be an unsupported overhang. A boss
+        # in a lip only a sliver wider than itself (the front one) is grown
+        # outboard into the facing wall as a rectangle (ADR-0026): the boss
+        # then merges with both walls instead of leaving an unprintable sliver.
+        well_bosses, bridged, plain = self._well_boss_solids(mounts)
         body = ch.union(body, *well_bosses)
 
         # One insert boss per chassis band station. The M3 insert is 4 mm deep
@@ -329,12 +340,15 @@ class Chassis:
         ]
         body = ch.union(body, *band_bosses)
 
-        # ADR-0024: the same merge fillet the Tray's columns get, on the Deck's
-        # band bosses and on the Well's M2 bosses, applied before the insert
-        # holes, the seat pockets and the Seam pins so the chords still run the
-        # face's full height.
-        body = self._merge_column_walls(body)
-        body = self._merge_well_bosses(body, mounts)
+        # ADR-0024/0025/0026: each boss's wall chords and base ring are eased
+        # together where they meet, in the order the crowded geometry allows.
+        # A chord and its base ring meet at a vertex, so treating them one set
+        # after the other leaves the second edge on the first fillet's surface,
+        # which OCC cannot roll off. The band bosses are unioned first so their
+        # chords run the face's full height.
+        body = self._treat_deck_junctions(
+            body, mounts, bridged, plain, cavity_top
+        )
 
         body = ch.union(body, self._seat(-1), self._seat(1))
         body = ch.cut(body, self._seat_pocket(-1), self._seat_pocket(1))
@@ -420,58 +434,182 @@ class Chassis:
 
 
     # -- joint features --------------------------------------------------
-    def _merge_columns(self, body, columns, faces_y):
-        """Fillet the chords where ``columns`` pierce the faces in ``faces_y``.
-
-        ADR-0024: both halves ease the reentrant corner where a boss or a band
-        column crosses a vertical face (the front/rear cavity walls, and the
-        Well ring's outer face in the Deck), so the surface reads as one smooth
-        ridge and the print has no crack starter in the most handled part of
-        the case. A failing edge is skipped with a SOFT warning, never blocking
-        the build.
-        """
-        from geometry import edge_treatment
-        from utilities.validation import ValidationReport
-
-        radius = self.config.chassis_joint.column_fillet
-        treatment = ValidationReport()
-        body = edge_treatment.merge_column_walls(
-            body, columns, faces_y, radius, treatment
-        )
-        for warning in treatment.warnings:
-            print(f"[pipeline] warn: {warning}")
-        return body
-
-    def _merge_column_walls(self, body):
-        """Ease the band columns' chords along the front/rear cavity walls."""
-        f = self.frame
-        columns = [
+    def _band_columns(self):
+        """The twelve band stations as ``(x, y, r_min, r_max)`` column discs."""
+        return [
             (
                 station.x,
                 station.y,
                 min(station.strict_boss, station.base_boss) / 2.0,
                 max(station.strict_boss, station.base_boss) / 2.0,
             )
-            for station in f.chassis_joint.stations
+            for station in self.frame.chassis_joint.stations
         ]
-        return self._merge_columns(body, columns, f.depth / 2.0 - f.wall)
 
-    def _merge_well_bosses(self, body, mounts):
-        """Ease the Well's M2 bosses into the ring's front/rear outer faces.
+    def _treat_boss_junctions(
+        self, body, columns, faces_y, plane_z, axis, orientation, *,
+        chords=True, bases=True,
+    ):
+        """Ease a boss's whole junction: its wall chords and/or its base ring.
 
-        The plate's insert bosses sit `bore_margin + hole/2` outboard of the
-        ring's outer face, so each one's disc pierces that face and leaves two
-        vertical chords there. They take the same merge fillet as the band
-        columns: the ring reads as one wall with its bosses. The band columns'
-        own chords on that face stay sharp -- they sit under a millimetre from
-        the M2 boss beside them, so no fillet can roll between the two.
+        ADR-0024 eases the vertical chords where a column's disc crosses a
+        front/rear wall face; ADR-0025 rounds the ring where it springs from
+        its floor or ceiling. The chords go first: the base round's endpoints
+        land on the merge they leave, so the two cannot share one pass (OCC
+        cannot roll a fillet off another fillet's surface). The base round then
+        takes the largest radius that stays clear of the merge, ``boss_base_fillet``.
+        ``axis`` is the direction along Z the boss grows from ``plane_z``;
+        ``orientation`` is the part's print orientation, which decides whether
+        the base round opens away from the bed. A failing edge is skipped with
+        a SOFT warning, never blocking the build.
+
+        ``chords`` and ``bases`` split the two passes so a part with several
+        boss families can run every chord merge before any base round: a base
+        round beside a neighbouring family's chord would otherwise block it.
         """
+        from geometry import edge_treatment
+
+        joint = self.config.chassis_joint
+        if chords:
+            body = _treat(
+                edge_treatment.merge_column_walls,
+                body, columns, faces_y, joint.column_fillet,
+            )
+        if bases:
+            body = _treat(
+                edge_treatment.fillet_boss_bases,
+                body, columns, plane_z, axis, joint.boss_base_fillet,
+                orientation=orientation,
+            )
+        return body
+
+    def _treat_wall_columns(
+        self, body, plane_z, axis, orientation, *, chords=True, bases=True
+    ):
+        """Treat the band columns' cavity-wall chords and/or their bases."""
+        f = self.frame
+        return self._treat_boss_junctions(
+            body, self._band_columns(), f.depth / 2.0 - f.wall,
+            plane_z, axis, orientation, chords=chords, bases=bases,
+        )
+
+    def _treat_deck_junctions(self, body, mounts, bridged, plain, plane_z):
+        """Fillet every Deck boss's wall chords and base edges, boss by boss.
+
+        The Well's M2 bosses, the rectangles bridged into the facing wall and
+        the band columns all stand on the Deck's inner ceiling. A boss's
+        vertical chord and its base edge meet at a vertex, so they are eased in
+        one variable pass: treating them one set after the other leaves the
+        second edge on the first fillet's surface, which OCC cannot roll off.
+        ``plane_z`` is the ceiling the bosses stand on; the Deck prints face
+        down, so the base cove opens away from the bed.
+
+        The order is what the crowded geometry allows. Each bridged rectangle's
+        ring-side chord goes first, then the band columns run the cavity wall's
+        full height, then each rectangle's wall-side chord and base edges, then
+        the plain Well bosses and the band bases. A crowded edge that OCC
+        cannot roll is skipped with a SOFT warning.
+        """
+        from geometry import edge_treatment
+        from utilities.validation import ValidationReport
+
+        joint = self.config.chassis_joint
         plate = mounts.frame.rect
-        columns = [
-            (m.x, m.y, m.boss_diameter / 2.0, m.boss_diameter / 2.0)
-            for m in mounts.mounts
-        ]
-        return self._merge_columns(body, columns, (abs(plate.y0), abs(plate.y1)))
+        well_faces = (abs(plate.y0), abs(plate.y1))
+        band_faces = self.frame.depth / 2.0 - self.frame.wall
+        report = ValidationReport()
+
+        def treat(chords, bases, chord_radius):
+            return edge_treatment.fillet_junctions(
+                body, chords, bases, chord_radius, joint.boss_base_fillet,
+                report,
+            )
+
+        # The band columns' cavity-wall chords are the HARD joint; easing them
+        # first also lets their beads bury the bridged rectangles' wall-side
+        # chords where the two crowd one wall face.
+        body = self._treat_wall_columns(
+            body, plane_z, -1.0, FACE_DOWN, bases=False
+        )
+        for rect in bridged:
+            body = treat(
+                edge_treatment.rect_junction_edges(
+                    body, [rect], well_faces, FACE_DOWN
+                )
+                + edge_treatment.rect_junction_edges(
+                    body, [rect], band_faces, FACE_DOWN
+                ),
+                edge_treatment.rect_base_edges(
+                    body, [rect], plane_z, -1.0, FACE_DOWN
+                ),
+                joint.boss_base_fillet,
+            )
+        for column in plain:
+            body = treat(
+                edge_treatment.column_junction_edges(
+                    body, [column], well_faces, FACE_DOWN
+                ),
+                edge_treatment.boss_base_edges(
+                    body, [column], plane_z, -1.0, FACE_DOWN
+                ),
+                joint.column_fillet,
+            )
+        body = self._treat_wall_columns(
+            body, plane_z, -1.0, FACE_DOWN, chords=False
+        )
+
+        for warning in report.warnings:
+            print(f"[pipeline] warn: {warning}")
+        return body
+
+    def _well_boss_solids(self, mounts):
+        """The plate's M2 bosses, a tight-lip boss bridged as a rectangle.
+
+        A boss in a lip only a sliver wider than itself (the front lip is
+        5.65 mm for a 5.50 mm boss) leaves an unprintable gap to the facing
+        cavity wall while merging into the ring on the other side. ADR-0026
+        grows such a boss outboard as a rectangle: the inboard end sits
+        ``minimum_feature`` inside the ring, the outboard end
+        ``minimum_feature`` inside the facing wall, and its flat sides carry
+        the wall fillets. A boss whose lip is deeper than one wall stays a
+        plain cylinder. Returns the solids, the bridged bosses' plan rectangles
+        ``(cx, y_in, y_out, half_width)`` and the plain bosses' column discs.
+        """
+        from utilities import cad_helpers as ch
+
+        f = self.frame
+        wall = f.wall
+        wall_face = f.depth / 2.0 - wall
+        embed = self.config.material.minimum_feature
+        plate = mounts.frame.rect
+        solids = []
+        bridged = []
+        plain = []
+        for m in mounts.mounts:
+            radius = m.boss_diameter / 2.0
+            height = m.boss_z1 - m.boss_z0
+            sign = 1.0 if m.y > 0.0 else -1.0
+            # The sliver the boss would otherwise leave to the facing wall.
+            gap = wall_face - abs(m.y) - radius
+            if gap < wall:
+                ring_face = plate.y0 if sign < 0 else plate.y1
+                y_in = ring_face - sign * embed
+                y_out = sign * (wall_face + embed)
+                solids.append(
+                    ch.rect_prism(radius, y_in, y_out, height, x=m.x, z=m.boss_z0)
+                )
+                bridged.append((m.x, y_in, y_out, radius))
+            else:
+                solids.append(
+                    ch.translate(
+                        ch.cylinder_centered(m.boss_diameter, height),
+                        m.x,
+                        m.y,
+                        (m.boss_z0 + m.boss_z1) / 2.0,
+                    )
+                )
+                plain.append((m.x, m.y, radius, radius))
+        return solids, bridged, plain
 
     def _column(self, station: Any):
         """One Tray column: conical below the cone's neck, strict above.

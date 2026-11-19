@@ -1,13 +1,22 @@
-"""Edge treatment of concave joints and bed faces (ADR 0003).
+"""Edge treatment of concave joints and bed faces (ADR-0025).
 
-The case is chamfer-first (``docs/design_spec.md`` § Edge Treatment): every
-outside face and every bed-facing edge gets a 45 degree chamfer, never a
-fillet. Inside joints get a stress-relief edge so printed parts don't crack at
-sharp inside corners: a 45 degree chamfer where the edge is horizontal in
-print orientation (a fillet there would print as a curved overhang). The only
-fillets in the build are the vertical concave joints, where a smooth relief
-beats a sharp rebate and the joint is hidden inside the assembly — a fillet
-along print Z prints cleanly.
+The material dihedral picks the treatment (``docs/design_spec.md`` § Edge
+Treatment): a convex (``<= 90`` through the material) edge is an outside face
+and gets a 45 degree chamfer, never a fillet; a concave (``>= 270``) edge is a
+reentrant corner and gets a fillet so the material rolls from one face into the
+other. Judge that in the part's **own print orientation** (``PrintOrientation``,
+per part -- the Deck prints face down, so its inner ceiling is the bed face): a
+concave joint that opens toward that bed keeps its 45 degree chamfer instead,
+because the round would print as a curved overhang; a joint that opens away
+from the bed takes the round.
+
+The rule covers every boss base: a boss always meets its floor, wall or ring at
+a concave angle, so ``fillet_boss_bases`` rounds the ring where it springs from
+its plane (``boss_base_edges`` picks it, and skips it when the cove would open
+toward the part's bed). The other built fillets are the vertical concave
+joints, where a smooth relief beats a sharp rebate and the joint is hidden
+inside the assembly, plus the chords a column or Well boss leaves where it
+crosses a face (``merge_column_walls``, ADR-0024).
 
 A stepped Seam leaves each Section a notch on one side of a step and a tab on
 the other. The notch's inside corner gets the concave relief above, so the
@@ -79,14 +88,57 @@ def _apply(shape, infos, size: float, treat, label: str, report):
     return _apply(shape, infos[half:], size, treat, label, report)
 
 
+def fillet_junctions(
+    shape,
+    chord_infos: list[cad_helpers.EdgeInfo],
+    base_infos: list[cad_helpers.EdgeInfo],
+    chord_radius: float,
+    base_radius: float,
+    report,
+):
+    """Fillet a boss's wall chords and its base ring in one pass.
+
+    A boss's vertical chord and its base ring meet at a vertex. Filleting them
+    in separate passes cannot work: the second edge ends on the first fillet's
+    surface and OCC cannot roll it off. One ``BRepFilletAPI_MakeFillet`` pass
+    with a radius per edge builds the corner blend instead. If the combined
+    pass fails, fall back to the phased order (chords, then bases) so as much
+    as possible is still eased; failing edges are skipped with a SOFT warning.
+    """
+    if not chord_infos and not base_infos:
+        return shape
+    pairs = []
+    seen = set()
+    for info in chord_infos:
+        if info.key not in seen:
+            seen.add(info.key)
+            pairs.append((info, chord_radius))
+    for info in base_infos:
+        if info.key not in seen:
+            seen.add(info.key)
+            pairs.append((info, base_radius))
+    try:
+        return cad_helpers.fillet_edges_variable(shape, pairs)
+    except Exception:
+        shape = _apply(
+            shape, chord_infos, chord_radius, cad_helpers.fillet_edges,
+            "column merge fillet", report,
+        )
+        return _apply(
+            shape, base_infos, base_radius, cad_helpers.fillet_edges,
+            "boss base fillet", report,
+        )
+
+
 def relieve_concave_joints(shape, orientation: PrintOrientation, size: float, report):
     """Relieve the inside joints of ``shape`` by ``size`` mm.
 
-    Horizontal (and slanted) concave edges are chamfered. Vertical concave
-    edges are the one sanctioned fillet use: the relief is hidden inside the
-    assembly and a fillet along print Z prints cleanly. ``orientation`` is the
-    part's print orientation. Edges that don't take the treatment are skipped
-    with a SOFT warning on ``report``.
+    Horizontal (and slanted) concave edges are chamfered, because a fillet
+    there opens toward the bed and prints as a curved overhang. Vertical
+    concave edges are filleted: the relief is hidden inside the assembly and a
+    fillet along print Z prints cleanly. ``orientation`` is the part's print
+    orientation. Edges that don't take the treatment are skipped with a SOFT
+    warning on ``report``.
     """
     if size <= 0.0:
         return shape
@@ -294,3 +346,130 @@ def merge_column_walls(
         return shape
     infos = column_junction_edges(shape, columns, faces_y, orientation)
     return _apply(shape, infos, radius, cad_helpers.fillet_edges, "column merge fillet", report)
+
+
+def boss_base_edges(
+    shape: Any,
+    columns: Any,
+    plane_z: float,
+    axis: float,
+    orientation: PrintOrientation = BED_DOWN,
+    tol: float = 0.06,
+) -> list[cad_helpers.EdgeInfo]:
+    """The concave ring where a boss springs from a floor, wall or ceiling.
+
+    A boss meets the plane it grows from in a circular reentrant edge, and the
+    rule is that every such base is filleted (ADR-0025). ``columns`` are the
+    ``(x, y, r_min, r_max)`` quadruples used by :func:`column_junction_edges`,
+    ``plane_z`` is the base plane, and ``axis`` is the sign along Z the boss
+    grows from it (+1 upward, -1 downward).
+
+    The round only prints when its cove opens away from the part's bed: a boss
+    that grows toward the bed stands on its base, so the fillet opens up out of
+    the print; one growing away from the bed would need support under the round
+    and is left for the chamfer. ``orientation`` is the part's print
+    orientation, never the assembly's Z.
+    """
+    if axis * orientation.normal[2] >= 0.0:
+        return []
+    found = []
+    for edge in concave_edges(shape):
+        info = edge.info
+        if info.curve_type != "circle":
+            continue
+        x, y, z, _ = info.key
+        if abs(z - plane_z) > tol:
+            continue
+        for cx, cy, thin, thick in columns:
+            radius = math.hypot(x - cx, y - cy)
+            if thin - tol <= radius <= thick + tol:
+                found.append(info)
+                break
+    return found
+
+
+def fillet_boss_bases(
+    shape: Any,
+    columns: Any,
+    plane_z: float,
+    axis: float,
+    radius: float,
+    report: Any,
+    orientation: PrintOrientation = BED_DOWN,
+) -> Any:
+    """Fillet the concave ring under every boss base on a plane (ADR-0025).
+
+    The fillet rolls the floor, wall or ceiling into the boss wall and removes
+    the reentrant corner at the root -- the crack starter at the most loaded
+    edge of a printed boss. :func:`boss_base_edges` picks the rings and applies
+    the print-orientation test; edges that don't take the fillet are skipped
+    with a SOFT warning, so a tight spot never blocks the build.
+    """
+    if radius <= 0.0:
+        return shape
+    infos = boss_base_edges(shape, columns, plane_z, axis, orientation)
+    return _apply(shape, infos, radius, cad_helpers.fillet_edges, "boss base fillet", report)
+
+
+def rect_junction_edges(
+    shape: Any,
+    rects: Any,
+    faces_y: Any,
+    orientation: PrintOrientation = BED_DOWN,
+    tol: float = 0.06,
+) -> list[cad_helpers.EdgeInfo]:
+    """The vertical chords where a rectangular boss crosses a wall face.
+
+    A boss bridged into its facing wall as a rectangle (ADR-0026) meets each
+    wall in two vertical reentrant edges, at ``x = cx +/- half_width``. A rect
+    is ``(cx, y_in, y_out, half_width)`` with signed ``y`` endpoints. The edge
+    must run along print Z and its midpoint must sit on one of ``faces_y`` and
+    on the rectangle's long side; ``orientation`` is the part's print
+    orientation.
+    """
+    faces = (faces_y,) if isinstance(faces_y, (int, float)) else tuple(faces_y)
+    found = []
+    for edge in concave_edges(shape):
+        if not edge.vertical(orientation):
+            continue
+        x, y, _ = edge.info.key[:3]
+        if min(abs(abs(y) - face) for face in faces) > tol:
+            continue
+        for cx, y0, y1, half in rects:
+            low, high = (y0, y1) if y0 <= y1 else (y1, y0)
+            if abs(abs(x - cx) - half) <= tol and low - tol <= y <= high + tol:
+                found.append(edge.info)
+                break
+    return found
+
+
+def rect_base_edges(
+    shape: Any,
+    rects: Any,
+    plane_z: float,
+    axis: float,
+    orientation: PrintOrientation = BED_DOWN,
+    tol: float = 0.06,
+) -> list[cad_helpers.EdgeInfo]:
+    """The concave base edges under a rectangular boss on a plane.
+
+    A rectangle bridged between two walls (ADR-0026) meets its base plane in
+    two straight edges along Y, at ``x = cx +/- half_width``, between the ring's
+    outer face and the facing wall. A rect is ``(cx, y_in, y_out, half_width)``.
+    The round is gated by ``axis`` and ``orientation`` exactly as
+    :func:`boss_base_edges` does.
+    """
+    if axis * orientation.normal[2] >= 0.0:
+        return []
+    found = []
+    for edge in concave_edges(shape):
+        info = edge.info
+        if abs(info.key[2] - plane_z) > tol:
+            continue
+        x, y = info.key[0], info.key[1]
+        for cx, y0, y1, half in rects:
+            low, high = (y0, y1) if y0 <= y1 else (y1, y0)
+            if abs(abs(x - cx) - half) <= tol and low - tol <= y <= high + tol:
+                found.append(info)
+                break
+    return found

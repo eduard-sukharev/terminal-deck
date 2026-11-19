@@ -1055,6 +1055,16 @@ def test_eight_insert_holes_at_the_well_stations(data, deck, mounts):
             mounts.plate_top + mount.insert_depth, abs=1e-3
         )
 
+        wall = data[3].wall
+        wall_face = data[3].depth / 2.0 - wall
+        if wall_face - abs(mount.y) - boss_radius < wall:
+            # ADR-0026: a tight-lip boss is a rectangle, so it has no
+            # cylindrical face at the boss radius. Probe its wall instead.
+            for z in (mount.boss_z0 + 0.4, mount.boss_z1 - 0.4):
+                assert _material_at(
+                    deck, mount.x + boss_radius * 0.75, mount.y, z
+                ) > 0, f"no bridge material at {mount.name}"
+            continue
         bosses = [
             c
             for c in cylinders
@@ -1066,9 +1076,12 @@ def test_eight_insert_holes_at_the_well_stations(data, deck, mounts):
         assert min(b["z0"] for b in bosses) == pytest.approx(
             mounts.plate_top, abs=1e-3
         )
-        assert max(b["z1"] for b in bosses) == pytest.approx(
-            mount.boss_z1, abs=1e-3
-        )
+        # ADR-0025: the base round trims the cylinder's top by
+        # `boss_base_fillet` where it rolls; the boss still reaches the
+        # ceiling through the round. A skipped round leaves the full height.
+        base = data[0].chassis_joint.boss_base_fillet
+        top = max(b["z1"] for b in bosses)
+        assert mount.boss_z1 - base - 1e-3 <= top <= mount.boss_z1 + 1e-3
 
 
 def test_every_boss_column_runs_up_to_the_deck_ceiling(data, deck, mounts):
@@ -1159,7 +1172,10 @@ def test_the_well_bosses_merge_into_the_rings_outer_face(data, deck, mounts):
     bosses. The band columns' own chords on the same face stay sharp (they are
     too close to the M2 boss beside them for a fillet to roll between).
     """
-    from geometry.edge_treatment import column_junction_edges
+    from geometry.edge_treatment import (
+        column_junction_edges, rect_base_edges, rect_junction_edges,
+    )
+    from geometry.printability import FACE_DOWN
 
     config, _, _, frame = data
     merge = config.chassis_joint.column_fillet
@@ -1183,7 +1199,18 @@ def test_the_well_bosses_merge_into_the_rings_outer_face(data, deck, mounts):
     assert column_junction_edges(deck, band_columns, faces)
 
     z = (mounts.plate_top + frame.chassis_top) / 2.0
+    from case.chassis import Chassis
+    _, bridged, _ = Chassis(config, frame)._well_boss_solids(mounts)
+    # ADR-0026: a bridged rectangle's chords and base are eased as a network;
+    # no circular chord remains, and no sharp base edge is left.
+    plane_z = frame.chassis_top - frame.wall
+    for rect in bridged:
+        assert rect_junction_edges(deck, [rect], faces, FACE_DOWN) == []
+        assert rect_base_edges(deck, [rect], plane_z, -1.0, FACE_DOWN) == []
+    bridged_x = {round(rect[0], 3) for rect in bridged}
     for mount in mounts.mounts:
+        if round(mount.x, 3) in bridged_x:
+            continue
         out = min(
             abs(mount.x - plate.x0), abs(plate.x1 - mount.x),
             abs(mount.y - plate.y0), abs(plate.y1 - mount.y),
@@ -1206,6 +1233,35 @@ def test_the_well_bosses_merge_into_the_rings_outer_face(data, deck, mounts):
             assert ch.volume_mm3(ch.intersect(deck, probe)) > 1e-9, (
                 f"no merge fillet beside the chord of {mount.name}"
             )
+
+
+def test_front_lip_bosses_bridge_to_the_facing_wall(data, deck, mounts):
+    """ADR-0026: a tight-lip M2 boss reaches the facing chassis wall.
+
+    The front lip is narrower than one wall, so a plain boss would leave a
+    sub-printable sliver to the cavity wall. The rectangle grows the boss
+    outboard until its end sits `minimum_feature` inside the wall, so the lip
+    is solid from the mount to the wall and the boss merges with both walls.
+    """
+    config, _, _, frame = data
+    wall = frame.wall
+    wall_face = frame.depth / 2.0 - wall
+    radius = mounts.boss_diameter / 2.0
+    z = (mounts.plate_top + frame.chassis_top - wall) / 2.0
+    bridged = 0
+    for mount in mounts.mounts:
+        gap = wall_face - abs(mount.y) - radius
+        if not (0.0 <= gap < wall):
+            continue
+        bridged += 1
+        sign = -1.0 if mount.y < 0.0 else 1.0
+        # The former sliver midpoint is now solid: the rectangle spans it.
+        sliver_y = sign * (abs(mount.y) + radius + gap / 2.0)
+        probe = ch.translate(ch.box_centered(0.2, 0.2, 0.2), mount.x, sliver_y, z)
+        assert ch.volume_mm3(ch.intersect(deck, probe)) > 1e-9, (
+            f"{mount.name} leaves its sliver to the facing wall"
+        )
+    assert bridged >= 1, "no boss was bridged; the front lip is not tight"
 
 
 def test_the_band_does_not_breach_the_plate_border_or_a_boss(data, deck, mounts):

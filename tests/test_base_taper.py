@@ -187,12 +187,37 @@ def test_the_fill_spans_the_wall_from_the_floor_to_the_taper_top(data):
     taper = budget.base_taper
     fill = build_fill(taper)
     # The fill starts at the floor's top (it must not restore the floor edge
-    # the cutter took) and ends at the taper's top, inside the nominal wall.
+    # the cutter took) and ends at the taper's top. It reaches the prismatic
+    # cavity face (one wall inside the Tray's outer depth), never the outer
+    # face: it restores the cavity side of the draft only.
     box = ch.bounding_box(fill)
     assert box.zmin == pytest.approx(taper.wall, abs=0.05)
     assert box.zmax == pytest.approx(taper.height, abs=0.05)
-    assert box.ymax == pytest.approx(taper.half_depth, abs=0.05)
-    assert box.ymin == pytest.approx(-taper.half_depth, abs=0.05)
+    assert box.ymax == pytest.approx(taper.half_depth - taper.wall, abs=0.05)
+    assert box.ymin == pytest.approx(-(taper.half_depth - taper.wall), abs=0.05)
+    # Mid-run the wedge reaches the cavity face: from the drafted inner line
+    # out to the prismatic cavity plane, at every height below the crossing.
+    for z in (taper.wall + 0.5, taper.height / 2.0):
+        y = taper.inner_face_y(z) + taper.wall / 2.0
+        assert _material_at(fill, 70.0, y, z) > 0
+        assert _material_at(
+            fill, 70.0, taper.half_depth - taper.wall - 0.15, z
+        ) > 0
+
+
+def test_the_fill_bridges_the_corner_pads(data):
+    _, budget, _, _ = data
+    taper = budget.base_taper
+    fill = build_fill(taper)
+    # The fill is NOT clipped on the pads: it reaches the prismatic cavity face
+    # everywhere, so inside a pad it meets the shell (which keeps the full face
+    # because the pad suppresses the cutter) and the two fuse into one wall.
+    # Clipping it here was what opened a full-height slot between the drafted
+    # run and the pad -- the rectangular notch beside the corner boss.
+    cavity_face = taper.half_depth - taper.wall
+    for x, _ in taper.stations:
+        # A point in the pad, one wall inside the pad's full face.
+        assert _material_at(fill, x, cavity_face - 0.4, taper.height / 2.0) > 0
 
 
 def test_the_tray_keeps_its_full_width_and_tapers_its_end_walls(data, tray):
@@ -255,6 +280,25 @@ def test_the_tray_keeps_its_full_width_and_tapers_its_end_walls(data, tray):
     )
     cy = math.copysign(half - 0.4, corner.y)
     assert _material_at(tray, corner.x, cy, taper.height / 2.0) > 0
+
+
+def test_the_tray_wall_is_unbroken_at_the_corner_pad_shoulder(data, tray):
+    """No slot between the drafted run and the corner pad (the old notch)."""
+    _, budget, _, _ = data
+    taper = budget.base_taper
+    # Walk the shoulder across each corner pad: just outside its stop circle,
+    # on it, and just inside it. The wall's whole thickness is solid all the
+    # way -- the fill bridges the lateral offset between the drafted panel and
+    # the pad, so the wall is one piece. Clipping the fill at the pad instead
+    # opened a full-height air slot here: the rectangular notch beside the
+    # corner boss.
+    for z in (taper.wall + 0.5, taper.height / 2.0):
+        mid = (taper.inner_face_y(z) + taper.face_y(z)) / 2.0
+        for sx, sy in taper.stations:
+            y = math.copysign(mid, sy)
+            for off in (-0.6, 0.0, 0.4):
+                x = sx - math.copysign(taper.stop_radius - off, sx)
+                assert _material_at(tray, x, y, z, 0.3) > 0, (x, y, z)
 
 
 # -- ADR-0023: the cone edge fillets ---------------------------------------

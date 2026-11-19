@@ -262,6 +262,21 @@ def _both_walls(profile: list[tuple[float, float]], taper: BaseTaper):
     return ch.union(near, far)
 
 
+def _pads(taper: BaseTaper):
+    """The corner stop cylinders the cutter ends on (the taper's rounded stops)."""
+    from utilities import cad_helpers as ch
+
+    return [
+        ch.translate(
+            ch.cylinder_centered(2.0 * taper.stop_radius, taper.height + 2.0 * _EXTRA),
+            x,
+            y,
+            taper.height / 2.0,
+        )
+        for x, y in taper.stations
+    ]
+
+
 def build_cutter(taper: BaseTaper):
     """The solid that takes both end walls' taper off the outside of the Tray.
 
@@ -274,30 +289,34 @@ def build_cutter(taper: BaseTaper):
     from utilities import cad_helpers as ch
 
     cutter = _both_walls(_profile(taper, taper.half_depth, -_EXTRA), taper)
-    pads = [
-        ch.translate(
-            ch.cylinder_centered(2.0 * taper.stop_radius, taper.height + 2.0 * _EXTRA),
-            x,
-            y,
-            taper.height / 2.0,
-        )
-        for x, y in taper.stations
-    ]
-    return ch.cut(cutter, *pads)
+    return ch.cut(cutter, *_pads(taper))
 
 
 def build_fill(taper: BaseTaper):
     """The solid that moves the cavity's end faces back behind the taper.
 
-    The strip between the two slope lines -- the cutter's line on the outside
-    and the same line one wall further in -- from the floor's top up to the
-    taper's top. Unioning it back leaves a constant-thickness wall over the
-    whole taper instead of the knife edge the cut alone leaves below the
-    crossing height. It starts at the floor's top: below that there is no
-    cavity to restore (the cut's deeper bottom edge stays), and it ends at the
-    taper's top, where the prismatic band wall is already in place. Inside a
-    station's pad the cut kept the outer face, so the strip thickens the wall
-    there -- which is what the head recess and the column want.
+    The wedge between the **drafted** cavity face (``inner_face_y``, one wall
+    in from the cutter's line) and the **prismatic** cavity face
+    ``half_depth - wall``: at the floor's top it is one ``inset`` wide and it
+    closes to a line at the taper's top, where the draft reaches the band. It
+    starts at the floor's top (below that the floor is solid) and runs up to
+    the band.
+
+    Unioning it back fills the slice of cavity the draft cuts away, so the wall
+    keeps its thickness instead of thinning to a knife edge at the table. It
+    must reach the prismatic cavity face, not stop one wall short of the
+    cutter's line: the shell's inner face is that plane, and a strip that
+    stopped at the cutter's line would leave a thin air gap between itself and
+    the shell -- the crack that read as a notch beside the corner pad.
+
+    It is **not** clipped on the corner stop cylinders. The pads suppress the
+    cutter, so inside a pad the shell keeps the full face: there the fill's
+    outer edge meets the shell's inner face on the prismatic cavity plane, and
+    the two fuse into one continuous wall. Clipping the fill at a pad would
+    instead cut the very material that bridges the drafted run to the pad and
+    leave a full-height slot between them -- the rectangular notch beside the
+    corner boss. Inside a pad the fill simply thickens the wall, which the head
+    recess and the column want (ADR-0022).
     """
     from utilities import cad_helpers as ch
 
@@ -305,11 +324,9 @@ def build_fill(taper: BaseTaper):
     slope = math.tan(math.radians(taper.angle))
     z0 = taper.wall
     cavity_face = inner - taper.inset + z0 * slope
-    outer_face = cavity_face + taper.wall
     profile = [
         (cavity_face, z0),
-        (outer_face, z0),
-        (taper.half_depth, taper.height),
+        (inner, z0),
         (inner, taper.height),
     ]
     length = 2.0 * taper.wall_half_x

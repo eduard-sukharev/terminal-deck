@@ -486,3 +486,56 @@ def test_the_wall_floor_edges_stay_sharp_after_the_fillet(data, solids):
     # ...and the fillet did not wander below the bed or into the parting plane
     assert _vertex_zmin(tray) == pytest.approx(0.0, abs=0.01)
     assert _vertex_zmax(tray) == pytest.approx(frame.parting_z, abs=0.01)
+
+
+# -- ADR-0024: the columns merge into the cavity walls ---------------------
+def _wall_chord_half(joint, frame, config, radius: float) -> tuple[float, float]:
+    """``(half chord, wall face Y)`` for a column of ``radius`` on a long wall."""
+    wall = config.wall.thickness
+    face = frame.depth / 2.0 - wall
+    axis = frame.depth / 2.0 - joint.side_inset
+    return math.sqrt(radius**2 - (face - axis) ** 2), face
+
+
+def test_columns_merge_into_the_cavity_walls(data, solids):
+    """Both halves fillet the chords where a column crosses the front/rear wall.
+
+    The reentrant corner beside each chord is a crack starter in the most
+    handled part of the case; ``chassis_joint.column_fillet`` fills it, so the
+    material reaches past the chord where the sharp corner would be air.
+    """
+    from geometry.edge_treatment import column_junction_edges
+
+    config, budget, frame, _ = data
+    tray, deck = solids
+    joint = budget.chassis_joint
+    merge = config.chassis_joint.column_fillet
+    station = next(s for s in joint.side_stations if s.x > 1e-6 and s.y > 0.0)
+    columns = [
+        (
+            s.x,
+            s.y,
+            min(s.strict_boss, s.base_boss) / 2.0,
+            max(s.strict_boss, s.base_boss) / 2.0,
+        )
+        for s in joint.stations
+    ]
+
+    # The Tray's own column is strict above the access cone's neck; the Deck's
+    # band boss is a plain cylinder of `station.boss`.
+    for shape, radius, z in (
+        (tray, station.strict_boss / 2.0, joint.band_z0 + 1.0),
+        (deck, station.boss / 2.0, (joint.parting_z + frame.chassis_top) / 2.0),
+    ):
+        half, face = _wall_chord_half(joint, frame, config, radius)
+        assert half > merge, "the fillet has to fit the chord (HARD check)"
+        # ...and no chord is left untreated on either half.
+        assert column_junction_edges(shape, columns, face) == []
+        for dx in (merge * 0.4, merge * 0.7):
+            for dy in (0.3, merge * 0.4):
+                assert _material_at(
+                    shape, station.x + half + dx, face - dy, z
+                ) > 1e-6, (
+                    f"the merge fillet is missing {dx:.2f} past the chord at "
+                    f"z {z:.2f}"
+                )

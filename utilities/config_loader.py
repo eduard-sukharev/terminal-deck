@@ -472,6 +472,8 @@ class ChassisJoint:
     ``taper_fillet`` rounds the access cones' mouth rims (ADR-0023); the lips
     where the taper flares a cone open take the largest radius that keeps the
     head pocket's neck intact, and the walls' edges with the floor stay sharp.
+    ``column_fillet`` is the merge fillet where a column's disc crosses a
+    front/rear cavity wall face (ADR-0024), applied in both halves.
     """
 
     band: float = 6.0
@@ -484,6 +486,7 @@ class ChassisJoint:
     taper_angle: float = 15.0
     taper_runout: float = 3.0
     taper_fillet: float = 1.0
+    column_fillet: float = 1.5
 
     def __post_init__(self) -> None:
         if self.band <= 0 or self.boss <= 0:
@@ -498,6 +501,8 @@ class ChassisJoint:
             raise ValueError("chassis_joint.taper_runout must be positive")
         if self.taper_fillet <= 0.0:
             raise ValueError("chassis_joint.taper_fillet must be positive")
+        if self.column_fillet <= 0.0:
+            raise ValueError("chassis_joint.column_fillet must be positive")
 
 
 @dataclass(frozen=True)
@@ -1165,6 +1170,7 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
             taper_angle=float(chassis_joint_raw.get("taper_angle", 15.0)),
             taper_runout=float(chassis_joint_raw.get("taper_runout", 3.0)),
             taper_fillet=float(chassis_joint_raw.get("taper_fillet", 1.0)),
+            column_fillet=float(chassis_joint_raw.get("column_fillet", 1.5)),
         ),
         merged_boss=MergedBoss(**{k: float(v) for k, v in (raw.get("merged_boss") or {}).items()}),
         edges=Edges(**{k: float(v) for k, v in (raw.get("edges") or {}).items()}),

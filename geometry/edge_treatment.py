@@ -15,6 +15,10 @@ tab's corner that fits into it is treated too, a little larger
 (``round_seam_corners``), or the two would not mate. Both are hidden inside
 the joined part.
 
+A column standing against a cavity wall crosses that wall face, and the two
+vertical chords it leaves there are the same inside corner in the most handled
+part of the case; ``merge_column_walls`` fillets them (ADR-0024).
+
 OCC cannot always apply a chamfer (tight spots, thin neighbours). The edges
 are tried together and, on failure, split in halves until the failing edge is
 isolated; that edge is skipped and recorded as a SOFT warning, so a tight spot
@@ -27,7 +31,7 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
-from geometry.printability import PrintOrientation
+from geometry.printability import BED_DOWN, PrintOrientation
 from utilities import cad_helpers
 
 #: |tangent . bed normal| below this is horizontal, above its complement vertical.
@@ -217,3 +221,76 @@ def round_cone_cut(
         report,
     )
     return shape
+
+
+def column_junction_edges(
+    shape: Any,
+    columns: Any,
+    faces_y: Any,
+    orientation: PrintOrientation = BED_DOWN,
+    tol: float = 0.06,
+) -> list[cad_helpers.EdgeInfo]:
+    """The vertical chords where a column crosses a vertical face (ADR-0024).
+
+    A column whose axis sits a couple of millimetres from a vertical face while
+    its radius is larger than that gap pierces the face and leaves two vertical
+    reentrant chords on it: a joint station does this to the front/rear cavity
+    wall (``chassis_joint.side_inset`` against ``wall``), and a Well boss does it
+    to the Well ring's outer face. Those chords are picked here -- and only
+    them:
+
+    * the edge must run along print Z, so the merged fillet prints cleanly,
+    * its midpoint must lie on one of the vertical faces listed in ``faces_y``
+      (the ``|y|`` of each). The X walls, the corner chamfer and any face not
+      listed keep their chords sharp,
+    * its plan distance from a column's axis must be that column's radius at the
+      edge's height.
+
+    ``columns`` are ``(x, y, r_min, r_max)`` quadruples: the axis in plan and
+    the band the radius spans over the chord's height (a joint column is a
+    frustum below the access cone's neck and a strict cylinder above it, so its
+    chord's radius runs from the strict to the base diameter; a Well boss is one
+    diameter). ``faces_y`` is one ``|y|`` or a sequence of them.
+    """
+    faces = (faces_y,) if isinstance(faces_y, (int, float)) else tuple(faces_y)
+    found = []
+    for edge in concave_edges(shape):
+        if not edge.vertical(orientation):
+            continue
+        x, y, _ = edge.info.key[:3]
+        if min(abs(abs(y) - face) for face in faces) > tol:
+            continue
+        for cx, cy, thin, thick in columns:
+            radius = math.hypot(x - cx, y - cy)
+            if thin - tol <= radius <= thick + tol:
+                found.append(edge.info)
+                break
+    return found
+
+
+def merge_column_walls(
+    shape: Any,
+    columns: Any,
+    faces_y: Any,
+    radius: float,
+    report: Any,
+    orientation: PrintOrientation = BED_DOWN,
+) -> Any:
+    """Fillet the columns' chords into the vertical faces they cross (ADR-0024).
+
+    Wherever a column's disc crosses one of the faces in ``faces_y``, the
+    reentrant corner along their chord is eased by ``radius`` mm
+    (:func:`column_junction_edges` picks them). The fillet adds a smooth ridge
+    where the two surfaces meet -- a crack starter removed from the print in the
+    most handled part of the case -- and runs along print Z, so it prints
+    cleanly. Apply it while the face still runs the column's full height: the
+    base taper and the access cones slice it afterwards, and applied late the
+    same edges arrive segmented into stubs a fillet cannot roll off.
+
+    Edges that don't take the fillet are skipped with a SOFT warning on
+    ``report``, so a tight spot never blocks the build.
+    """
+    if radius <= 0.0:
+        return shape
+    infos = column_junction_edges(shape, columns, faces_y, orientation)
+    return _apply(shape, infos, radius, cad_helpers.fillet_edges, "column merge fillet", report)

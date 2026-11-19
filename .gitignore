@@ -32,3 +32,6 @@ generated/renders/
 /.obsidian/
 .~*.lock
 generated/.build-cache.json
+
+opencode.json
+

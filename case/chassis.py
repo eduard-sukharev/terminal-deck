@@ -25,6 +25,13 @@ chopped to match (``cad_helpers.inner_corner_chamfer``): a square cavity corner
 would sit flush with the outer chamfer at the default 4 mm / 2 mm wall and print
 as a knife edge.
 
+Each band column's disc crosses a front/rear cavity wall face and leaves two
+reentrant chords there; both halves fillet them into the wall
+(``edge_treatment.merge_column_walls``, ADR-0024), so the band reads as one
+smooth ridge. The Deck's Well ring is continuous over the plate's notches
+(ADR-0024): the sheet below gives way at a front-wall station, the ring above
+does not.
+
 The bearing clamps are separate printed parts. Each has a foot that drops
 through a pocket in the Deck; the Deck carries a small raised/merged seat with
 a pocket floor, so the clamp is located and bolted from inside the chassis.
@@ -97,13 +104,13 @@ class Chassis:
         )
         body = ch.cut(outer, cavity)
 
-        # The base taper on the vertical front/rear walls (ADR-0019, ADR-0022):
-        # a draft from the table up to the band's bottom -- the cavity follows,
-        # so the wall keeps its thickness. The draft's fill (the cavity-side
-        # wedge) goes down first; the wedge cut comes only after the station
-        # columns, so the slice passes through the long-wall bosses instead of
-        # leaving them proud of the sloped face.
-        body = ch.union(body, taper_fill(f.base_taper))
+        # The base taper on the vertical front/rear walls (ADR-0019, ADR-0022)
+        # is a draft from the table up to the band's bottom -- the cavity
+        # follows, so the wall keeps its thickness. Both of its solids (the
+        # cavity-side fill and the outer wedge) come after the station columns:
+        # the slice then passes through the long-wall bosses instead of leaving
+        # them proud of the sloped face, and the merge fillets see the plain
+        # cavity face.
 
         # The accessory rail's stations (ADR-0020): a pad at each M4 station on
         # the X walls, braced into the floor by two 45 degree gussets. The pad
@@ -124,6 +131,16 @@ class Chassis:
         # A column at every station, from the floor up to the plane: a frustum
         # below the access cone's neck, a strict cylinder above it (ADR-0021).
         body = ch.union(body, *[self._column(station) for station in joint.stations])
+
+        # ADR-0024: ease each column's chords along the front/rear cavity walls
+        # while that face still runs the column's full height. The taper fill
+        # below narrows the cavity and would hide the chords, and the cones
+        # slice the fillet at the floor, so the merge comes first.
+        body = self._merge_column_walls(body)
+
+        # The taper's fill, now that the columns (and their merge fillets) are
+        # in: the cavity-side wedge is backfilled under the sloped outer face.
+        body = ch.union(body, taper_fill(f.base_taper))
 
         # The taper's wedge, now that the columns are in: through the wall and
         # the long-wall bosses, stopping at the corner pads' arcs.
@@ -266,25 +283,11 @@ class Chassis:
         opening = ch.box_centered(cut.width, cut.depth, ring_height + 2.0)
         opening = ch.translate(opening, cut.cx, cut.cy, plate_top + ring_height / 2.0)
         ring = ch.cut(ring, opening)
-        # Where a chassis band column reaches into the plate's border, the
-        # plate is notched; the ring's outer reach is interrupted there too so
-        # the column does not share volume with the Well wall. Only the outer
-        # sliver goes: the Well stays sealed along its inner face.
-        notches = []
-        for notch in mounts.notches:
-            centre = mounts.frame.to_plan(notch.rect.cx, notch.rect.cy)
-            notches.append(
-                ch.translate(
-                    ch.box_centered(
-                        notch.rect.width, notch.rect.depth, ring_height + 2.0
-                    ),
-                    centre[0],
-                    centre[1],
-                    plate_top + ring_height / 2.0,
-                )
-            )
-        if notches:
-            ring = ch.cut(ring, *notches)
+        # ADR-0024: the ring is continuous. Where a chassis band column reaches
+        # into the plate's border the plate below is still notched (the sheet
+        # gives way, the column is Deck material), but the ring above fills the
+        # same plan area and fuses to the band boss; the Well's outer face reads
+        # as one unbroken wall instead of five stray cutouts.
         body = ch.union(body, ring)
 
         # The Cutout is open through the top slab: the keycaps pass through it
@@ -325,6 +328,13 @@ class Chassis:
             for station in joint.stations
         ]
         body = ch.union(body, *band_bosses)
+
+        # ADR-0024: the same merge fillet the Tray's columns get, on the Deck's
+        # band bosses and on the Well's M2 bosses, applied before the insert
+        # holes, the seat pockets and the Seam pins so the chords still run the
+        # face's full height.
+        body = self._merge_column_walls(body)
+        body = self._merge_well_bosses(body, mounts)
 
         body = ch.union(body, self._seat(-1), self._seat(1))
         body = ch.cut(body, self._seat_pocket(-1), self._seat_pocket(1))
@@ -410,6 +420,59 @@ class Chassis:
 
 
     # -- joint features --------------------------------------------------
+    def _merge_columns(self, body, columns, faces_y):
+        """Fillet the chords where ``columns`` pierce the faces in ``faces_y``.
+
+        ADR-0024: both halves ease the reentrant corner where a boss or a band
+        column crosses a vertical face (the front/rear cavity walls, and the
+        Well ring's outer face in the Deck), so the surface reads as one smooth
+        ridge and the print has no crack starter in the most handled part of
+        the case. A failing edge is skipped with a SOFT warning, never blocking
+        the build.
+        """
+        from geometry import edge_treatment
+        from utilities.validation import ValidationReport
+
+        radius = self.config.chassis_joint.column_fillet
+        treatment = ValidationReport()
+        body = edge_treatment.merge_column_walls(
+            body, columns, faces_y, radius, treatment
+        )
+        for warning in treatment.warnings:
+            print(f"[pipeline] warn: {warning}")
+        return body
+
+    def _merge_column_walls(self, body):
+        """Ease the band columns' chords along the front/rear cavity walls."""
+        f = self.frame
+        columns = [
+            (
+                station.x,
+                station.y,
+                min(station.strict_boss, station.base_boss) / 2.0,
+                max(station.strict_boss, station.base_boss) / 2.0,
+            )
+            for station in f.chassis_joint.stations
+        ]
+        return self._merge_columns(body, columns, f.depth / 2.0 - f.wall)
+
+    def _merge_well_bosses(self, body, mounts):
+        """Ease the Well's M2 bosses into the ring's front/rear outer faces.
+
+        The plate's insert bosses sit `bore_margin + hole/2` outboard of the
+        ring's outer face, so each one's disc pierces that face and leaves two
+        vertical chords there. They take the same merge fillet as the band
+        columns: the ring reads as one wall with its bosses. The band columns'
+        own chords on that face stay sharp -- they sit under a millimetre from
+        the M2 boss beside them, so no fillet can roll between the two.
+        """
+        plate = mounts.frame.rect
+        columns = [
+            (m.x, m.y, m.boss_diameter / 2.0, m.boss_diameter / 2.0)
+            for m in mounts.mounts
+        ]
+        return self._merge_columns(body, columns, (abs(plate.y0), abs(plate.y1)))
+
     def _column(self, station: Any):
         """One Tray column: conical below the cone's neck, strict above.
 

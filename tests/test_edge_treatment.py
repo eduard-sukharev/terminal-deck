@@ -1,5 +1,7 @@
 """Edge treatment: concave joints, bed-face chamfer (ADR 0003)."""
 
+import math
+
 import pytest
 
 from utilities import cad_helpers
@@ -9,8 +11,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 from geometry.edge_treatment import (  # noqa: E402
-    bed_chamfer, concave_edges, cone_cut_edges, relieve_concave_joints,
-    round_cone_cut,
+    bed_chamfer, column_junction_edges, concave_edges, cone_cut_edges,
+    merge_column_walls, relieve_concave_joints, round_cone_cut,
 )
 from geometry.printability import BED_DOWN, PrintOrientation  # noqa: E402
 from utilities.validation import ValidationReport  # noqa: E402
@@ -164,6 +166,92 @@ def test_bed_chamfer_follows_the_declared_orientation():
     # Mirror images: the chamfered edges are at opposite ends of Z.
     top_faces = [f for f in cad_helpers.faces(up) if cad_helpers.face_center(f)[2] > 2.9 and cad_helpers.face_area(f) > 1000]
     assert top_faces and cad_helpers.face_area(top_faces[0]) < 40 * 30
+
+
+def _wall_column(x: float = 0.0, y: float = 15.5, diameter: float = 7.3):
+    """``_tray()`` with a column crossing its front wall face (cavity face 18).
+
+    The joint stations sit 2.5 mm inboard of the cavity face, so the column's
+    axis is at 15.5 and its radius (3.65) reaches 1.15 mm past that face.
+    """
+    return cad_helpers.union(
+        _tray(),
+        cad_helpers.translate(
+            cad_helpers.cylinder_centered(diameter, 18.0), x, y, 11.0
+        ),
+    )
+
+
+def _column(x: float, y: float, diameter: float):
+    """A column's plan axis and its radius band -- one diameter, no frustum."""
+    return (x, y, diameter / 2.0, diameter / 2.0)
+
+
+def _column_probe(shape, half: float, face: float, z: float) -> list[float]:
+    """Material in the corner just past the chord and just off the wall face."""
+    out = []
+    for dx in (0.8, 1.1):
+        for dy in (0.3, 0.6):
+            probe = cad_helpers.translate(
+                cad_helpers.box_centered(0.2, 0.2, 0.4), half + dx, face - dy, z
+            )
+            out.append(cad_helpers.volume_mm3(cad_helpers.intersect(shape, probe)))
+    return out
+
+
+def test_column_junction_edges_finds_the_two_wall_chords():
+    """ADR-0024: only the vertical chords on a front/rear cavity wall face."""
+    column = _column(0.0, 15.5, 7.3)
+    edges = column_junction_edges(_wall_column(), [column], 18.0)
+    assert len(edges) == 2
+    half = math.sqrt((7.3 / 2.0) ** 2 - 2.5**2)
+    assert sorted(round(e.key[0], 2) for e in edges) == [
+        round(-half, 2), round(half, 2)
+    ]
+    assert all(abs(abs(e.key[1]) - 18.0) < 1e-2 for e in edges)
+    assert all(e.curve_type == "line" for e in edges)
+
+
+def test_a_column_on_an_x_wall_keeps_its_chords_sharp():
+    """The X walls, the corner chamfer and the Well ring are never picked."""
+    column = _column(25.5, 0.0, 7.3)
+    shape = _wall_column(x=25.5, y=0.0)
+    assert column_junction_edges(shape, [column], 18.0) == []
+
+
+def test_a_frustum_chord_is_found_through_its_radius_band():
+    """The Tray's column tapers below the cone's neck: its chord tilts, still Z."""
+    shape = cad_helpers.union(
+        _tray(),
+        cad_helpers.translate(
+            cad_helpers.frustum_centered(7.8, 7.3, 18.0), 0.0, 15.5, 11.0
+        ),
+    )
+    column = (0.0, 15.5, 7.3 / 2.0, 7.8 / 2.0)
+    edges = column_junction_edges(shape, [column], 18.0)
+    assert len(edges) == 2
+    report = ValidationReport()
+    merged = merge_column_walls(shape, [column], 18.0, 1.5, report)
+    assert report.warnings == []
+    assert merged.volume > shape.volume
+
+
+def test_merge_column_walls_fills_the_reentrant_corner():
+    """The fillet adds a bead beside each chord -- material where there was air."""
+    column = _column(0.0, 15.5, 7.3)
+    shape = _wall_column()
+    half = math.sqrt((7.3 / 2.0) ** 2 - 2.5**2)
+
+    report = ValidationReport()
+    merged = merge_column_walls(shape, [column], 18.0, 1.5, report)
+    assert report.warnings == []
+    assert merged.volume > shape.volume
+    assert column_junction_edges(merged, [column], 18.0) == []
+
+    before = _column_probe(shape, half, 18.0, 11.0)
+    after = _column_probe(merged, half, 18.0, 11.0)
+    assert max(before) < 1e-9, "the sharp corner is air beside the chord"
+    assert min(after) > 0.0, "the merged corner is filled beside the chord"
 
 
 def _treated_stepped_sections(extra: float):

@@ -1028,11 +1028,17 @@ def test_eight_insert_holes_at_the_well_stations(data, deck, mounts):
     insert_radius = mounts.insert_hole_diameter / 2.0
     boss_radius = mounts.boss_diameter / 2.0
     cylinders = _cylinder_faces(deck)
+    # The bores are the Z-axis cylinders of the insert radius *on a station*:
+    # ADR-0024's merge fillets are cylinders of their own radius along the band
+    # walls and must not be mistaken for one.
     holes = [
         c
         for c in cylinders
         if abs(c["radius"] - insert_radius) < 1e-3
         and abs(c["axis"][2] - 1.0) < 1e-6
+        and any(
+            math.hypot(c["x"] - m.x, c["y"] - m.y) < 1e-2 for m in mounts.mounts
+        )
     ]
     assert len(holes) == len(mounts.mounts) == 8
 
@@ -1112,34 +1118,94 @@ def test_no_insert_boss_or_ledge_enters_the_well_cutout(data, deck, mounts):
     assert ch.volume_mm3(ch.intersect(deck, column)) == pytest.approx(0, abs=1e-6)
 
 
-def test_ring_is_interrupted_where_the_plate_is_notched(data, deck, mounts):
-    """A band column may not share volume with the ring (the plate's notch).
+def test_ring_covers_the_plate_notches(data, deck, mounts):
+    """The sheet gives way at a band station; the Well ring above does not.
 
-    The notch removes the ring's outer reach only: the inner sliver of the
-    ring stays, so the Well remains sealed end to end. Above the plate the
-    notch itself is filled by the band column, which now runs the Deck's full
-    height, so the probe keeps clear of that column's disc.
+    ADR-0014 cut the ring's outer reach away at each front-wall station, which
+    read as five stray holes in the Well. ADR-0024 makes the ring continuous:
+    it fills the same plan area and fuses to the band column, so the Well's
+    outer face is one unbroken wall. The plate below stays notched (its own
+    pattern) and the ring's inner face stays sealed end to end.
     """
     assert mounts.notches, "the plate is not notched under the band columns"
+    # Above the plate's top (17.8) and below the Deck's top slab (30.3).
+    z = 25.5
     for notch in mounts.notches:
         plan = mounts.frame.to_plan_rect(notch.rect)
-        # Above the plate's top (17.8) and below the Deck's top slab (30.3) the
-        # only Deck material here may be the band column: the notch cut the
-        # ring's outer reach away. Probe the notch's inboard corner -- outboard
-        # of the column's disc and of the ring's remaining sliver.
-        probe = ch.box_centered(0.2, 0.2, 6.0)
-        probe = ch.translate(probe, plan.x0 + 0.25, plan.y1 - 0.25, 25.5)
-        assert ch.volume_mm3(ch.intersect(deck, probe)) == pytest.approx(
-            0, abs=1e-6
-        ), f"the ring fills the plate notch at {notch.source}"
+        filled = _material_bounds(
+            deck,
+            plan.x0 + 0.25, plan.y0 + 0.25, plan.x1 - 0.25, plan.y1 - 0.25,
+            z - 0.1, z + 0.1,
+        )
+        assert filled is not None, f"the Well is cut open over {notch.source}"
 
-        # ... but the ring's inner sliver keeps the Well continuous.
+        # ... and the ring's inner sliver keeps the Well continuous.
         sealed = _material_bounds(
             deck,
             plan.x0 + 0.65, plan.y1 + 0.1, plan.x1 - 0.65, plan.y1 + 0.7,
             22.5, 28.5,
         )
         assert sealed is not None, f"the notch severed the ring at {notch.source}"
+    # The filled ring is one piece with the shell, not a floating sliver.
+    assert ch.solid_count(deck) == 1
+
+
+def test_the_well_bosses_merge_into_the_rings_outer_face(data, deck, mounts):
+    """ADR-0024: each M2 boss's chords on the ring's outer face are filleted.
+
+    The bosses sit `bore_margin + hole/2` outboard of that face, so their discs
+    pierce it; the reentrant corner beside each chord takes
+    `chassis_joint.column_fillet`, and the ring reads as one wall with its
+    bosses. The band columns' own chords on the same face stay sharp (they are
+    too close to the M2 boss beside them for a fillet to roll between).
+    """
+    from geometry.edge_treatment import column_junction_edges
+
+    config, _, _, frame = data
+    merge = config.chassis_joint.column_fillet
+    plate = mounts.frame.rect
+    radius = mounts.boss_diameter / 2.0
+    boss_columns = [(m.x, m.y, radius, radius) for m in mounts.mounts]
+    faces = (abs(plate.y0), abs(plate.y1))
+
+    assert column_junction_edges(deck, boss_columns, faces) == []
+    band_columns = [
+        (
+            s.x,
+            s.y,
+            min(s.strict_boss, s.base_boss) / 2.0,
+            max(s.strict_boss, s.base_boss) / 2.0,
+        )
+        for s in frame.chassis_joint.stations
+    ]
+    # The sharp chords the fillet deliberately leaves: the band columns on the
+    # ring's face, which the M2 boss beside them crowds out.
+    assert column_junction_edges(deck, band_columns, faces)
+
+    z = (mounts.plate_top + frame.chassis_top) / 2.0
+    for mount in mounts.mounts:
+        out = min(
+            abs(mount.x - plate.x0), abs(plate.x1 - mount.x),
+            abs(mount.y - plate.y0), abs(plate.y1 - mount.y),
+        )
+        half = math.sqrt(radius**2 - out**2)
+        assert half > merge, "the fillet has to fit the chord (HARD check)"
+        face = (
+            plate.y0
+            if abs(mount.y - plate.y0) < abs(plate.y1 - mount.y)
+            else plate.y1
+        )
+        # The bead sits outboard of the ring's face, beside the chord.
+        for dx in (0.6, 0.9):
+            probe = ch.translate(
+                ch.box_centered(0.2, 0.2, 0.4),
+                mount.x + half + dx,
+                face + math.copysign(0.4, face),
+                z,
+            )
+            assert ch.volume_mm3(ch.intersect(deck, probe)) > 1e-9, (
+                f"no merge fillet beside the chord of {mount.name}"
+            )
 
 
 def test_the_band_does_not_breach_the_plate_border_or_a_boss(data, deck, mounts):

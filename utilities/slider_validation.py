@@ -770,6 +770,7 @@ def _add_mount_checks(
     names = (
         "keyboard-mounts-stations",
         "keyboard-mounts-fit",
+        "keyboard-mounts-fillet",
         "keyboard-mounts-screw",
         "keyboard-mounts-head",
         "keyboard-mounts-parting",
@@ -817,6 +818,37 @@ def _add_mount_checks(
             if not mounts.ok
             else ""
         ),
+    )
+
+    # ADR-0024: each boss's disc pierces the Well ring's outer face and its two
+    # vertical chords take the merge fillet, so the fillet plus one minimum
+    # feature must fit inside the tightest chord (the hull below stays the
+    # boss's own derivation).
+    plate_rect = mounts.frame.rect
+    merge = config.chassis_joint.column_fillet
+    min_feature = config.material.minimum_feature
+    tightest = min(
+        math.sqrt(
+            max(
+                (mount.boss_diameter / 2.0) ** 2
+                - min(
+                    abs(mount.x - plate_rect.x0),
+                    abs(plate_rect.x1 - mount.x),
+                    abs(mount.y - plate_rect.y0),
+                    abs(plate_rect.y1 - mount.y),
+                )
+                ** 2,
+                0.0,
+            )
+        )
+        for mount in mounts.mounts
+    )
+    report.add(
+        "keyboard-mounts-fillet",
+        tightest >= merge + min_feature - 1e-6,
+        f"merge fillet {merge:.2f} + min feature {min_feature:.2f} fits the "
+        f"tightest Well chord {tightest:.2f} (the Ø{mounts.boss_diameter:.2f} "
+        f"boss piercing the ring's outer face)",
     )
 
     # The screw is a stock length derived from the grip (the plate thickness)
@@ -1706,6 +1738,29 @@ def run_slider_checks(
         f"{2.0 * max(s.mouth_radius for s in cj.stations):.2f}) and the head "
         f"pocket Ø{cj.recess.pocket_diameter:.2f} each keep {min_feature:.2f} "
         f"of column at every station",
+    )
+    # ADR-0024: a wall column's disc crosses its front/rear cavity wall face,
+    # leaving two vertical chords on that face; both halves take the merge
+    # fillet. The tightest chord is the strict column's (above the access cone's
+    # neck -- the smallest diameter), and it must hold the fillet plus one
+    # minimum feature, or the two fillets would meet across the column's
+    # exposed face.
+    merge = config.chassis_joint.column_fillet
+    face_out = cj.depth / 2.0 - config.wall_thickness - (cj.depth / 2.0 - cj.side_inset)
+    wall_stations = [
+        s for s in cj.stations
+        if abs(abs(s.y) - (cj.depth / 2.0 - cj.side_inset)) <= 1e-9
+    ]
+    strict_radius = min(
+        (s.strict_boss for s in wall_stations), default=cj.smallest_boss()
+    ) / 2.0
+    chord = math.sqrt(max(strict_radius**2 - face_out**2, 0.0))
+    report.add(
+        "slide-chassis-joint-column-fillet",
+        chord >= merge + min_feature - 1e-6,
+        f"merge fillet {merge:.2f} + min feature {min_feature:.2f} fits the "
+        f"tightest wall chord {chord:.2f} (the Ø{2.0 * strict_radius:.2f} strict "
+        f"column crossing the cavity face {face_out:.2f} from its axis)",
     )
     # ADR-0021: the head is buried one wall below the Parting plane, reached
     # down a cone whose mouth keeps a printable lip to the outer skin; the

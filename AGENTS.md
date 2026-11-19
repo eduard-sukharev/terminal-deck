@@ -18,7 +18,9 @@ parametricity, reusability.
 > slider, and ADR-0021 (deep conical head recesses for the Tray's band screws)
 > deepens its screws; ADR-0022 runs the base taper through the long-wall
 > stations' cones, and ADR-0023 fillets the cones' mouth rims (1.0 mm) and
-> through-lips (0.47 mm) while the walls' edges with the floor stay sharp. The data skeleton
+> through-lips (0.47 mm) while the walls' edges with the floor stay sharp;
+> ADR-0024 fills the Well ring back over the plate's notches and fillets each
+> wall column into its cavity wall (1.5 mm) in both halves. The data skeleton
 > and the CAD shell are implemented: `--layout slider` (the only layout) derives
 > the budget and builds/exports the chassis (Tray + Deck, split at the band
 > joint), screen lid (Bezel + Back plate, split at the band joint), the printed
@@ -182,7 +184,9 @@ intuition. Wire-up lives in `main.py` (`BuildPipeline`, `run()`).
   `geometry/joint.py` and `geometry/chassis_joint.py`, the Well/plate pattern in
   `geometry/well_mounts.py`, the Seam cut in `geometry/split.py`, the Seam pins
   in `geometry/seam_joint.py`, and the Tray's base taper in
-  `geometry/base_taper.py`, the rail stations in `geometry/rail_mounts.py`).
+  `geometry/base_taper.py`, the rail stations in `geometry/rail_mounts.py`, and
+  every concave/bed/cone edge treatment plus the columns' wall-merge fillet in
+  `geometry/edge_treatment.py`).
   The drag-chain channel, vents and connector cutouts are the next refinement.
 - `geometry/well_mounts.py` is the single source for the Well and the plate's
   mounting pattern (ADR-0014): the plate frame (the keyboard's 180° placement),
@@ -369,10 +373,29 @@ Gotchas:
   (4.5) from the vertical walls (boss capped at 7.80); **five** of the
   **front-wall** stations (two corners, two side, one centreline) reach into the
   keyboard plate's front border, so the plate is notched at each (5.30 × 1.45,
-  1.10 bite) and the Well ring's outer reach is interrupted there — the ring
-  stays sealed on its inner face. The rear-wall stations sit in the free band
-  behind the keyboard. At this width a Tray column at mid-side would run through
-  the plate.
+  1.10 bite). The **Well ring above is continuous** (ADR-0024): it fills the
+  same plan area and fuses to the band boss, so the Well's outer face is one
+  unbroken wall while the sheet below gives way — the ring stays sealed on its
+  inner face (its printable remainder is `ring − intrusion` = 1.25). The
+  rear-wall stations sit in the free band behind the keyboard. At this width a
+  Tray column at mid-side would run through the plate.
+- **A wall column fillets into its cavity wall; a Well boss into the ring
+  (ADR-0024).** A station sits 2.5 mm inboard of the front/rear cavity face
+  while its strict column is Ø7.30, so the cylinder pierces the face and leaves
+  two vertical reentrant chords per side — a crack starter in the most handled
+  part of the case. `geometry.edge_treatment.merge_column_walls` fillets them at
+  `chassis_joint.column_fillet` (1.5 mm) **in both halves**, right after the
+  columns are unioned and before the taper fill/cut, the access cones, the
+  insert holes and the Seam pins (applied late, the same edges arrive segmented
+  into stubs a fillet cannot roll off). The eight Well M2 bosses take the same
+  fillet on the ring's front/rear outer faces, which their discs pierce 2.0 mm
+  out — a second call with its own column set, because the chords where a
+  *band* column crosses that face must stay sharp: at the five notched stations
+  its chord passes ~0.1 mm from the M2 boss's, so no fillet rolls between them
+  (as is the corner chamfer and the end stations' X walls). The HARD checks
+  `slide-chassis-joint-column-fillet` and `keyboard-mounts-fillet` require
+  `column_fillet + minimum_feature` to fit the tightest wall chord (2.66 mm, the
+  strict column) and the tightest Well chord (2.24 mm).
 - **The chassis splits at the Parting plane, band-only (ADR-0012).** The 6 mm
   band is split 3 mm each side of `parting_z`, and **both halves are
   prismatic** (ADR-0019 removed the Tray's draft): the band width, the base

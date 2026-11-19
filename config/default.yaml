@@ -72,6 +72,10 @@ chassis_joint:
                        # the lips take the largest radius that keeps the head
                        # pocket's neck intact, and the walls' edges with the
                        # floor stay sharp
+  column_fillet: 1.5   # the merge fillet where a wall column's disc crosses a
+                       # front/rear cavity wall face, in both the Tray and the
+                       # Deck (ADR-0024); it plus one minimum feature must fit
+                       # the tightest chord
 
 # Merged boss (ADR 0003): a boss, column, standoff or lug whose outer surface is
 # closer than `threshold_factor * wall` to a wall face is fused into that wall

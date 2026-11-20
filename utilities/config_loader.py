@@ -537,9 +537,10 @@ class Edges:
     of a concave joint; ``bed_chamfer`` (mm) is the 45 degree chamfer on each
     Section's bed-face outer edge against elephant's foot, and on the Tray's
     access cones' outside edges (their mouth rims at the bed and the lips the
-    base taper flares open, ADR-0027). Chamfers are the default everywhere
-    (including every outside face); the vertical concave joints are the only
-    fillets, hidden inside the assembly.
+    base taper flares open, ADR-0027). Applied per Section (ADR-0030), it also
+    runs along the Seam and leaves the joined halves a deliberate V-groove.
+    Chamfers are the default everywhere (including every outside face); the
+    vertical concave joints are the only fillets, hidden inside the assembly.
     """
 
     chamfer_factor: float = 0.5

@@ -23,7 +23,10 @@ parametricity, reusability.
 > replaces ADR-0023's cone-edge fillets with the 45° chamfer of
 > `edges.bed_chamfer` (the walls' edges with the floor stay sharp); ADR-0029
 > webs each corner band column into its X wall so it merges into both walls
-> instead of creasing the inner corner chamfer. The data
+> instead of creasing the inner corner chamfer, and ADR-0030 breaks every
+> printed Section's bed edge (the Tray's floor, the Deck's and Bezel's closed
+> face) per Section, so the visible Seam becomes a deliberate V-groove and the
+> whole reference part is the union of the treated Sections. The data
 > skeleton
 > and the CAD shell are implemented: `--layout slider` (the only layout) derives
 > the budget and builds/exports the chassis (Tray + Deck, split at the band
@@ -285,6 +288,23 @@ is checked by `keyboard/validation.py`.
   shell's cavity corners also carry the **derived inner chamfer**
   (`cad_helpers.inner_corner_chamfer(chamfer, wall)`, ADR-0016): a square
   cavity corner meets a 4 mm outer chop on a 2 mm wall in a knife edge.
+- **Every printed Section's bed edge is broken at `edges.bed_chamfer`, per
+  Section (ADR-0030).** The break is applied *after* the split
+  (`edge_treatment.chamfer_sections`), so the Seam — part of that Section's bed
+  face boundary — takes the same 0.5 mm bevel and the joined halves read as a
+  deliberate V-groove instead of a hairline. The Tray's bed is its floor, the
+  Deck's and the Bezel's is the closed face (they print face down). The whole
+  reference part is the **union of the treated Sections**, so the assembly and
+  the glTF show what is printed; `main.sections_of` re-splits that union
+  losslessly. Two edges are deliberately left out of the break:
+  `edge_treatment.bed_edges` drops a bed edge on a strongly sloped wall
+  (`_SLOPED_BED`, ~11.5° off vertical) — a symmetric chamfer there is a
+  shallower overhang and OCC mis-trims it (the Tray's 18.9° base foot grows a
+  wedge below the bed), so the Tray's front/rear foot keeps the base taper as
+  its break; and the access-cone mouths are skipped by the station discs, since
+  `chamfer_cone_cut` already breaks them. `cad_helpers._assert_inside` rejects
+  any edge treatment that grows the part's bounding box, which is how that OCC
+  bug was caught.
 - Layouts contain **no CAD** — only placements.
 - Slide math lives in `components/slide.py`, cable routing in
   `routing/cable_routing.py`, fasteners in `utilities/fasteners.py` — never

@@ -87,7 +87,9 @@ merged_boss:
 # `chamfer_factor * wall`; `bed_chamfer` is the 45 deg chamfer on each
 # Section's bed-face outer edge (elephant's foot) and on the Tray's access
 # cones' outside edges — their mouth rims at the bed and the lips the base
-# taper flares open (ADR-0025, ADR-0027). The only fillets are the
+# taper flares open (ADR-0025, ADR-0027). It is applied *per Section*, so the
+# Seam — part of that Section's bed boundary — takes the same bevel and the
+# joined halves read as a V-groove (ADR-0030). The only fillets are the
 # vertical concave joints, hidden inside the assembly.
 edges:
   chamfer_factor: 0.5

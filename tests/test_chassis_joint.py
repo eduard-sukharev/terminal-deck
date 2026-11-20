@@ -435,20 +435,26 @@ def test_tray_and_deck_sections_fit_and_rejoin(data, solids):
 # -- ADR-0025 / ADR-0027: the cone edges take the chamfer -------------------
 @pytest.fixture(scope="module")
 def unchamfered_tray(data):
-    """The Tray before the cone edge chamfers, for selector assertions.
+    """The Tray before its edge breaks, for selector assertions.
 
-    The treatment is bypassed only while the part is built, so the patch is
-    restored before the tests call ``chamfer_cone_cut`` themselves.
+    Both the cone treatment and the bed-edge break (ADR-0030) are bypassed
+    only while the part is built, so the patch is restored before the tests
+    call ``chamfer_cone_cut`` themselves. The bed break has to be off too: its
+    bevel round the corner pads is a *conical* face, and ``cone_cut_edges``
+    would read it as another access cone.
     """
     from geometry import edge_treatment
 
     original = edge_treatment.chamfer_cone_cut
+    original_sections = Chassis._chamfer_sections
     edge_treatment.chamfer_cone_cut = lambda body, *args, **kwargs: body
+    Chassis._chamfer_sections = lambda self, body, *args, **kwargs: body
     try:
         config, _, frame, _ = data
         tray = Chassis(config, frame).build_tray()
     finally:
         edge_treatment.chamfer_cone_cut = original
+        Chassis._chamfer_sections = original_sections
     return tray
 
 

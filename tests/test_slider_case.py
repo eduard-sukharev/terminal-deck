@@ -312,14 +312,25 @@ def test_the_bezel_has_no_overhang_where_it_prints_face_down(data, pieces):
     tops are the print's first layers, with nothing under them but the wall.
     Each one rises at 45 degrees into that wall instead (ADR-0011), so the
     whole Bezel prints without support.
+
+    The only exception is the bed-edge chamfer itself (ADR-0030): on the
+    drafted side walls a symmetric chamfer is a ~48.5 degree bevel, which is a
+    first-layer bridge like the Tray's elephant's-foot break, not a ledge.
+    Faces inside that chamfer band are therefore ignored.
     """
     from geometry.printability import PrintOrientation, overhang_faces
 
+    config, _, _, frame = data
     bezel = pieces["screen_lid_bezel"][0]
     found = overhang_faces(bezel, PrintOrientation((0.0, 0.0, 1.0)))
-    assert found == [], [
+    band = 2.0 * config.edges.bed_chamfer
+    others = [
+        face for face in found
+        if abs(face.center[2] - frame.lid_top) > band
+    ]
+    assert others == [], [
         f"{face.area:.1f} mm^2 at {tuple(round(c, 1) for c in face.center)}"
-        for face in found
+        for face in others
     ]
 
 
@@ -1344,3 +1355,93 @@ def test_the_placed_plate_does_not_share_volume_with_the_deck(data, deck, mounts
             mount.world_xy[1],
             budget.well.plate_bottom + 0.75,
         ) > 0.0, f"{mount.name}: no plate material under the boss"
+
+
+# -- ADR-0030: the bed edges and the Seam are broken ----------------------
+
+
+def _finish(shape, x, y, z, size=0.1):
+    """Volume of a small probe, for the 0.5 mm edge breaks."""
+    probe = ch.translate(ch.box_centered(size, size, size), x, y, z)
+    return ch.volume_mm3(ch.intersect(shape, probe))
+
+
+def _sections(data, pieces, name):
+    from geometry.split import split_part
+
+    config, _, _, frame = data
+    part, depth = pieces[name]
+    return split_part(part, config.slide.split[name], depth, frame.wall)
+
+
+def test_the_tray_floor_is_broken_on_the_vertical_walls_and_along_the_seam(data, pieces):
+    """ADR-0030: the Tray's floor takes the break round its vertical walls,
+    and -- because the break is applied per Section -- along the bent Seam too,
+    leaving the joined halves a 1 mm V-groove. The tapered front/rear foot
+    keeps the draft: a symmetric chamfer there is not a 45 degree bevel, so it
+    is left out (`edge_treatment.bed_edges`)."""
+    left, right = _sections(data, pieces, "chassis_tray")
+
+    # the X-wall floor edge (vertical wall) loses its corner
+    assert _finish(left, -120.583 + 0.05, 0.0, 0.05) == pytest.approx(0.0)
+    assert _finish(left, -120.583 + 0.55, 0.0, 0.05) > 0.0
+    # the Seam's middle run at x = 10: a V on the floor
+    assert _finish(left, 10.0 - 0.3, 0.0, 0.05) == pytest.approx(0.0)
+    assert _finish(left, 10.0 - 0.7, 0.0, 0.05) > 0.0
+    assert _finish(right, 10.0 + 0.3, 0.0, 0.05) == pytest.approx(0.0)
+    assert _finish(right, 10.0 + 0.7, 0.0, 0.05) > 0.0
+
+
+def test_the_deck_top_is_broken_at_the_perimeter_the_well_and_the_seam(data, pieces, mounts):
+    """ADR-0030: the Deck prints face down, so its *top* is the bed face. The
+    break runs round the closed face, round the Well's mouth and along the
+    straight Seam; the bearing-clamp pockets keep their own `top_chamfer`."""
+    _, _, _, frame = data
+    top = frame.chassis_top
+    cut = mounts.cutout_rect
+    left, right = _sections(data, pieces, "chassis_deck")
+
+    assert _finish(left, -120.583 + 0.05, 50.0, top - 0.05) == pytest.approx(0.0)
+    assert _finish(left, -120.583 + 0.6, 50.0, top - 0.05) > 0.0
+    # the Seam at x = -14, probed clear of the Well's opening
+    assert _finish(left, -14.0 - 0.3, 50.0, top - 0.05) == pytest.approx(0.0)
+    assert _finish(left, -14.0 - 0.7, 50.0, top - 0.05) > 0.0
+    # the Well's mouth (the front edge of the Cutout, on the right Section)
+    assert _finish(right, 50.0, cut.y0 - 0.15, top - 0.05) == pytest.approx(0.0)
+    assert _finish(right, 50.0, cut.y0 - 0.8, top - 0.05) > 0.0
+
+
+def test_the_bezel_face_is_broken_at_the_perimeter_and_seam(data, pieces):
+    """ADR-0030: the Bezel prints on its face, so its face takes the break
+    round the perimeter and along the straight Seam (its one deliberate
+    overhang, a first-layer bridge on the drafted walls)."""
+    config, _, _, frame = data
+    half = frame.lid_face_width / 2.0
+    top = frame.lid_top
+    left = _sections(data, pieces, "screen_lid_bezel")[0]
+
+    assert _finish(left, -half + 0.08, 50.0, top - 0.05) == pytest.approx(0.0)
+    assert _finish(left, -half + 0.65, 50.0, top - 0.05) > 0.0
+    assert _finish(left, -14.0 - 0.3, 50.0, top - 0.05) == pytest.approx(0.0)
+    assert _finish(left, -14.0 - 0.7, 50.0, top - 0.05) > 0.0
+
+
+def test_the_access_cone_mouths_keep_one_chamfer_only(data, solids):
+    """The Tray's perimeter break must not double-chamfer the cone mouths.
+
+    `chamfer_cone_cut` already grows each mouth to `mouth_radius + 0.5`; the
+    bed pass excludes those discs, or the corner pads' ring would shrink.
+    """
+    config, _, budget, _ = data
+    chassis, _ = solids
+    size = config.edges.bed_chamfer
+    corner = [s for s in budget.chassis_joint.stations if s.is_corner][0]
+    r = corner.mouth_radius
+
+    # just outside the single chamfer: material; well inside it: air
+    assert _finish(
+        chassis, corner.x + r - 0.3, corner.y, 0.02
+    ) == pytest.approx(0.0)
+    assert _finish(chassis, corner.x + r + 0.6, corner.y, 0.02) > 0.0
+    # and a full second chamfer would have grown the hole to r + 2 * size
+    assert _finish(chassis, corner.x + r + size + 0.2, corner.y, 0.02) > 0.0

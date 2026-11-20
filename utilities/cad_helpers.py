@@ -976,6 +976,31 @@ def edge_info(edge: Any) -> EdgeInfo:
     )
 
 
+def edge_normals(shape: Any) -> dict[tuple, list[tuple[float, float, float]]]:
+    """Outward normals of the faces meeting at each edge, keyed by its ``key``.
+
+    Used to decide whether a bed edge borders a vertical or a strongly sloped
+    wall: a symmetric 45 degree chamfer is only a 45 degree bevel against a
+    vertical face.
+    """
+    found: dict[tuple, list[tuple[float, float, float]]] = {}
+    for edge, faces in _edge_faces(shape):
+        try:
+            mid = edge.position_at(0.5)
+            key = _edge_key(edge)
+        except Exception:  # a degenerate edge: not a candidate anyway
+            continue
+        normals = []
+        for face in faces:
+            try:
+                n = face.normal_at(mid)
+                normals.append((n.X, n.Y, n.Z))
+            except Exception:  # a degenerate spot: fall back to the face's normal
+                normals.append(face_normal(face))
+        found[key] = normals
+    return found
+
+
 def concave_edges(shape: Any) -> list[EdgeInfo]:
     """Every inside-corner edge of ``shape``."""
     found = []
@@ -1046,6 +1071,28 @@ def _locate(shape: Any, infos: list[EdgeInfo]) -> list[Any]:
     return [edge for edge in shape.edges() if _edge_key(edge) in wanted]
 
 
+def _assert_inside(before: Any, after: Any) -> None:
+    """Raise when an edge treatment grew the solid's bounding box.
+
+    A chamfer or a fillet only rounds a corner in place: it can neither add to
+    the envelope nor move a face outward (a concave fillet fills a reentrant
+    corner *inside* the box, so the volume may grow -- the box may not). A
+    result that exceeds the box is OCC mis-trimming the new face rather than a
+    real treatment, and some come back reported valid. A chamfer along the
+    Tray's tapered base foot in particular produces a spurious wedge below the
+    bed; treating it as a failure lets the caller isolate and skip that edge
+    instead of shipping the corrupt solid.
+    """
+    tol = 1e-3
+    b0, b1 = before.bounding_box(), after.bounding_box()
+    if (
+        b1.max.X > b0.max.X + tol or b1.min.X < b0.min.X - tol
+        or b1.max.Y > b0.max.Y + tol or b1.min.Y < b0.min.Y - tol
+        or b1.max.Z > b0.max.Z + tol or b1.min.Z < b0.min.Z - tol
+    ):
+        raise ValueError("edge treatment grew the solid: OCC mis-trimmed a face")
+
+
 def _checked(before: Any, after: Any) -> Any:
     if after is None or not after.is_valid or len(after.solids()) < 1:
         raise ValueError("edge treatment produced an invalid solid")
@@ -1092,6 +1139,7 @@ def _isolated(shape: Any, infos: list[EdgeInfo], size: float, mode: str) -> Any:
         except Exception as exc:
             raise ValueError(f"edge treatment failed: {exc}") from exc
         result = b3d.import_brep(dst)
+    _assert_inside(shape, result)
     solids = result.solids()
     if len(solids) != len(shape.solids()):
         raise ValueError("edge treatment changed the solid count")
@@ -1121,6 +1169,7 @@ def _isolated_variable(shape: Any, pairs: list[tuple[EdgeInfo, float]]) -> Any:
         except Exception as exc:
             raise ValueError(f"edge treatment failed: {exc}") from exc
         result = b3d.import_brep(dst)
+    _assert_inside(shape, result)
     solids = result.solids()
     if len(solids) != len(shape.solids()):
         raise ValueError("edge treatment changed the solid count")

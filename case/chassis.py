@@ -239,6 +239,12 @@ class Chassis:
         # ADR-0006: the Seam's glued-filament pins, grown into the half before
         # the split so each Section prints its own share of every fin.
         body = self._add_seam_pins(body, "chassis_tray", f.depth)
+        # ADR-0030: break each printed Section's bed edge. The Tray prints
+        # floor down, so its bed face is the floor; after the split that edge
+        # runs along the bent Seam too, leaving the joined halves a V-groove.
+        body = self._chamfer_sections(
+            body, "chassis_tray", BED_DOWN, f.depth, self._cone_mouth_discs()
+        )
         return ch.clean(body)
 
     def build_deck(self):
@@ -398,7 +404,53 @@ class Chassis:
         body = ch.cut(body, *plate_holes)
 
         body = self._add_seam_pins(body, "chassis_deck", f.depth)
+        # ADR-0030: the Deck prints closed face down, so its bed face is the
+        # top: the break runs round the closed face, the Well's mouth and the
+        # straight Seam (the seat pockets keep their own `top_chamfer`).
+        body = self._chamfer_sections(body, "chassis_deck", FACE_DOWN, f.depth)
         return ch.clean(body)
+
+    def _cone_mouth_discs(self):
+        """Discs over the access cone mouths the Tray's bed chamfer must skip.
+
+        The cones already took their own bed chamfer (``chamfer_cone_cut``);
+        the through-stations' mouths that open onto the floor's outer wire sit
+        at ``mouth_radius + bed_chamfer`` from the axis, so a second pass would
+        eat the corner pads' ring.
+        """
+        size = self.config.edges.bed_chamfer
+        return [
+            (station.x, station.y, station.mouth_radius + size)
+            for station in self.frame.chassis_joint.stations
+        ]
+
+    def _chamfer_sections(self, body, name, orientation, depth, exclude=()):
+        """Split a half on its Seam, break each Section's bed edge, rejoin.
+
+        ``bed_chamfer`` is applied per Section, so the Seam is part of that
+        Section's bed face boundary and gets the same 45 degree bevel: the
+        joined halves read as a V-groove along the Seam rather than a raw
+        hairline (ADR-0030). The whole half is the union of the treated
+        Sections, so the reference export and the assembly show the printed
+        edges. ``exclude`` names the discs ``bed_chamfer`` must leave alone.
+        """
+        from geometry import edge_treatment
+        from utilities.validation import ValidationReport
+
+        report = ValidationReport()
+        whole = edge_treatment.chamfer_sections(
+            body,
+            self.config.slide.split[name],
+            depth,
+            self.frame.wall,
+            orientation,
+            self.config.edges.bed_chamfer,
+            report,
+            exclude,
+        )
+        for warning in report.warnings:
+            print(f"[pipeline] warn: {warning}")
+        return whole
 
     def _add_seam_pins(self, body, name: str, depth: float):
         """Grow the Seam's glued-filament pins into a half, before the split."""

@@ -57,7 +57,11 @@ _CHASSIS_SOURCES: tuple[str, ...] = (
     "case/slider_frame.py",
     "geometry/base_taper.py",
     "geometry/chassis_joint.py",
+    "geometry/corner_web.py",
+    "geometry/edge_treatment.py",
+    "geometry/head_recess.py",
     "geometry/joint.py",
+    "geometry/printability.py",
     "geometry/rail_mounts.py",
     "geometry/ribs.py",
     "geometry/seam_joint.py",
@@ -67,7 +71,10 @@ _DECK_SOURCES: tuple[str, ...] = _CHASSIS_SOURCES + ("geometry/well_mounts.py",)
 _LID_SOURCES: tuple[str, ...] = (
     "case/screen_lid.py",
     "case/slider_frame.py",
+    "geometry/edge_treatment.py",
+    "geometry/head_recess.py",
     "geometry/joint.py",
+    "geometry/printability.py",
     "geometry/seam_joint.py",
     "geometry/split.py",
 )

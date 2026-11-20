@@ -278,7 +278,37 @@ class ScreenLid:
         body = ch.cut(body, window, pocket)
         # ADR-0006: the Seam's pins hang from the front panel's inner face.
         body = self._add_seam_pins(body, "screen_lid_bezel")
+        # ADR-0030: the Bezel prints on its face, so its bed face is the front
+        # panel: the break runs round the face, the glass opening and the
+        # straight Seam, leaving the joined halves a V-groove there.
+        body = self._chamfer_sections(body)
         return ch.clean(body)
+
+    def _chamfer_sections(self, body):
+        """Split the Bezel on its Seam, break each Section's face edge, rejoin.
+
+        The face is the Bezel's bed face, so ``bed_chamfer`` also breaks the
+        glass opening (it opens onto the face's outer wire as a notch, since
+        the Seam crosses it) and the Seam itself (ADR-0030).
+        """
+        from geometry import edge_treatment
+        from geometry.printability import FACE_DOWN
+        from utilities.validation import ValidationReport
+
+        f = self.frame
+        report = ValidationReport()
+        whole = edge_treatment.chamfer_sections(
+            body,
+            self.config.slide.split["screen_lid_bezel"],
+            f.lid_height,
+            f.wall,
+            FACE_DOWN,
+            self.config.edges.bed_chamfer,
+            report,
+        )
+        for warning in report.warnings:
+            print(f"[pipeline] warn: {warning}")
+        return whole
 
     def _band_post(self, x0, x1, y0, y1, free_x, free_y):
         """One band post: the screw's block plus its 45 degree support cap.

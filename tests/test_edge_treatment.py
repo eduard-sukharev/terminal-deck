@@ -11,9 +11,9 @@ pytestmark = pytest.mark.skipif(
 )
 
 from geometry.edge_treatment import (  # noqa: E402
-    bed_chamfer, boss_base_edges, chamfer_cone_cut, column_junction_edges,
-    concave_edges, cone_cut_edges, fillet_boss_bases, fillet_junctions,
-    merge_column_walls, rect_base_edges, rect_junction_edges,
+    bed_chamfer, bed_edges, boss_base_edges, chamfer_cone_cut,
+    column_junction_edges, concave_edges, cone_cut_edges, fillet_boss_bases,
+    fillet_junctions, merge_column_walls, rect_base_edges, rect_junction_edges,
     relieve_concave_joints, web_base_edges, web_junction_edges,
 )
 from geometry.printability import BED_DOWN, PrintOrientation  # noqa: E402
@@ -178,6 +178,36 @@ def test_bed_chamfer_trims_the_bed_face_outer_edge():
     assert chamfered.volume == pytest.approx(plate.volume - 0.5 * 0.5 * 0.5 * 2 * (40 + 30), rel=1e-3)
     bb = cad_helpers.bounding_box(chamfered)
     assert bb.zmin == pytest.approx(-3.0)
+
+
+def test_bed_edges_skips_a_strongly_sloped_wall():
+    """A 45 degree break is only a true bevel against a vertical face.
+
+    The box's four bed edges all qualify; the tapered box's front/rear ones
+    border a wall that flares outward going up, so they are left out (OCC
+    mis-trims them) while its vertical left/right edges stay.
+    """
+    box = cad_helpers.box_centered(40, 30, 6)
+    assert len(bed_edges(box, BED_DOWN)) == 4
+
+    wedge = cad_helpers.tapered_box(40.0, 30.0, 40.0, 46.0, -3.0, 3.0)
+    kept = bed_edges(wedge, BED_DOWN)
+    assert len(kept) == 2
+    # the surviving pair is the one along Y on the vertical X walls
+    assert all(abs(edge.key[0]) == pytest.approx(20.0) for edge in kept)
+
+
+def test_bed_edges_honours_the_exclude_discs():
+    """The Tray's access-cone mouths take their own break, so the discs skip
+    those boundary edges (a second bevel would eat the corner pads' ring)."""
+    box = cad_helpers.box_centered(40, 30, 6)
+    front_mid = (0.0, -15.0)
+    kept = bed_edges(box, BED_DOWN, exclude=[(*front_mid, 1.0)])
+    assert len(kept) == 3
+    assert all(
+        math.hypot(edge.key[0] - front_mid[0], edge.key[1] - front_mid[1]) > 1.0
+        for edge in kept
+    )
 
 
 def test_bed_chamfer_follows_the_declared_orientation():

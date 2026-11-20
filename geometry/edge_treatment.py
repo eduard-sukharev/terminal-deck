@@ -189,12 +189,106 @@ def relieve_concave_joints(shape, orientation: PrintOrientation, size: float, re
     return _apply(shape, vertical, size, cad_helpers.fillet_edges, "concave fillet", report)
 
 
-def bed_chamfer(shape, orientation: PrintOrientation, size: float, report):
-    """Chamfer the outer edge of the bed face by ``size`` mm (elephant's foot)."""
+def _excluded(info: cad_helpers.EdgeInfo, discs, tol: float = 0.05) -> bool:
+    """True when ``info``'s midpoint falls in one of the ``(x, y, r)`` discs."""
+    x, y, _ = info.key[:3]
+    return any(math.hypot(x - cx, y - cy) <= radius + tol for cx, cy, radius in discs)
+
+
+#: |cos| between a wall's normal and the print Z above which the wall is too
+#: sloped for a symmetric chamfer at the bed to be a true 45 degree bevel.
+_SLOPED_BED = 0.2
+
+
+def bed_edges(
+    shape,
+    orientation: PrintOrientation,
+    exclude=(),
+    slope_limit: float = _SLOPED_BED,
+) -> list[cad_helpers.EdgeInfo]:
+    """The bed's outer-wire edges that a 45 degree chamfer can actually break.
+
+    An edge bordering a strongly sloped wall is left out: the symmetric
+    chamfer there is no longer a 45 degree bevel but a shallower, unsupported
+    overhang, and OCC mis-trims it (the Tray's tapered base foot grows a wedge
+    below the bed instead of losing its corner). ``exclude`` names
+    ``(x, y, radius)`` discs whose boundary edges are skipped too -- the
+    Tray's access-cone mouths already took their own break in
+    ``chamfer_cone_cut``, and a second bevel would eat the corner pads' ring.
+    """
+    infos = cad_helpers.bed_boundary_edges(shape, orientation.normal)
+    if not infos:
+        return []
+    normals = cad_helpers.edge_normals(shape)
+    bed = orientation.normal
+    kept = []
+    for info in infos:
+        # The bed face is the one whose normal is the bed normal (dot ~ 1);
+        # the other face is the wall the chamfer must be a true bevel against.
+        others = [
+            n for n in normals.get(info.key, ())
+            if sum(a * b for a, b in zip(n, bed)) < 0.999
+        ]
+        if any(abs(n[2]) > slope_limit for n in others):
+            continue
+        if exclude and _excluded(info, exclude):
+            continue
+        kept.append(info)
+    return kept
+
+
+def bed_chamfer(
+    shape,
+    orientation: PrintOrientation,
+    size: float,
+    report,
+    exclude=(),
+):
+    """Chamfer the outer edges of the bed face by ``size`` mm (elephant's foot).
+
+    :func:`bed_edges` picks the edges and applies the print-orientation tests;
+    ``exclude`` is passed through.
+    """
     if size <= 0.0:
         return shape
-    infos = cad_helpers.bed_boundary_edges(shape, orientation.normal)
+    infos = bed_edges(shape, orientation, exclude)
     return _apply(shape, infos, size, cad_helpers.chamfer_edges, "bed-edge chamfer", report)
+
+
+def chamfer_sections(
+    whole,
+    split,
+    depth: float,
+    wall: float,
+    orientation: PrintOrientation,
+    size: float,
+    report,
+    exclude=(),
+):
+    """Split ``whole`` into its printable Sections, break each bed edge, rejoin.
+
+    The bed edge of a Section runs round its *own* bed face, which after the
+    split includes the Seam. Breaking it therefore leaves every Section a
+    45 degree bevel along the Seam: the assembled halves show a deliberate
+    V-groove instead of an un-hideable hairline (ADR-0030). On the Tray that is
+    the bent Seam on its floor, on the Deck and the Bezel the straight one on
+    the closed face. Returning the union of the treated Sections keeps the
+    reference part and the assembly showing the edges of the printed pieces.
+
+    ``exclude`` is passed to :func:`bed_chamfer` per Section.
+    """
+    from geometry.split import split_part
+
+    sections = split_part(whole, split, depth, wall)
+    treated = [
+        bed_chamfer(section, orientation, size, report, exclude)
+        for section in sections
+    ]
+    result = cad_helpers.union(*treated)
+    if cad_helpers.solid_count(result) < 1:
+        # A degenerate rejoin must never ship: fall back to the Sections.
+        return cad_helpers.make_compound(treated)
+    return result
 
 
 def seam_corner_points(seams, depth: float) -> list[tuple[float, float]]:

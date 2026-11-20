@@ -154,6 +154,21 @@ class Chassis:
         # the bed.
         body = self._treat_wall_columns(body, f.wall, 1.0, BED_DOWN)
 
+        # ADR-0029: a corner column would still clip the inner corner chamfer
+        # (its disc reaches 2.95 mm from the station, past the 2.83 mm relief),
+        # leaving a 30-40 degree crease the merge fillet cannot roll. A web from
+        # the column's axis into the X wall fills that corner, so the column
+        # merges into both walls; the web's own chord and base are then eased.
+        # The web comes after the wall-merge fillets: its step in the front wall
+        # face sits close to the corner column's inboard chord, and OCC needs
+        # that chord's fillet to run on the unbroken face first. Its radius is
+        # the column's widest (base) radius so the frustum never pokes through
+        # the web's inboard face below the access cone's neck.
+        corner_radius = joint.corner_stations[0].base_boss / 2.0
+        webs = self._corner_webs(corner_radius)
+        body = ch.union(body, *self._corner_web_solids(webs, 0.0, z1, outer))
+        body = self._treat_corner_webs(body, webs, f.wall, 1.0, BED_DOWN)
+
 
         # The taper's fill, now that the columns (and their merge fillets) are
         # in: the cavity-side wedge is backfilled under the sloped outer face.
@@ -433,6 +448,65 @@ class Chassis:
 
 
     # -- joint features --------------------------------------------------
+    def _corner_webs(self, radius):
+        """The corner columns' webs into the X walls (ADR-0029)."""
+        from geometry.corner_web import corner_webs
+
+        f = self.frame
+        webs = corner_webs(
+            f.chassis_joint, f.wall, self.config.corners.chamfer, radius
+        )
+        if not webs.ok:
+            raise ValueError(
+                "the corner webs are invalid: " + "; ".join(webs.failures)
+            )
+        return webs
+
+    def _corner_web_solids(self, webs, z0, z1, outer):
+        """One clipped prism per corner web, from ``z0`` to ``z1``."""
+        from utilities import cad_helpers as ch
+
+        solids = []
+        for web in webs.webs:
+            x0, x1, y0, y1 = web.plan()
+            prism = ch.box_centered(x1 - x0, y1 - y0, z1 - z0)
+            prism = ch.translate(
+                prism, (x0 + x1) / 2.0, (y0 + y1) / 2.0, (z0 + z1) / 2.0
+            )
+            solids.append(ch.intersect(prism, outer))
+        return solids
+
+    def _treat_corner_webs(self, body, webs, plane_z, axis, orientation):
+        """Ease each web's X-wall chord and its base in one variable pass."""
+        from geometry import edge_treatment
+        from utilities.validation import ValidationReport
+
+        joint = self.config.chassis_joint
+        report = ValidationReport()
+        chords = edge_treatment.web_junction_edges(body, webs.webs, orientation)
+        bases = edge_treatment.web_base_edges(
+            body, webs.webs, plane_z, axis, orientation
+        )
+        body = edge_treatment.fillet_junctions(
+            body, chords, bases, joint.column_fillet, joint.boss_base_fillet,
+            report,
+        )
+        # The corner blend at the wall end of the base edge can leave a short
+        # sharp stub behind (the two fillet surfaces need a transition there).
+        # A second, base-only pass takes it: it no longer shares a vertex with
+        # a fresh chord fillet, so it can roll on its own.
+        leftover = edge_treatment.web_base_edges(
+            body, webs.webs, plane_z, axis, orientation
+        )
+        if leftover:
+            body = edge_treatment.web_base_residual(
+                body, webs.webs, plane_z, axis, joint.boss_base_fillet,
+                report, orientation,
+            )
+        for warning in report.warnings:
+            print(f"[pipeline] warn: {warning}")
+        return body
+
     def _band_columns(self):
         """The twelve band stations as ``(x, y, r_min, r_max)`` column discs."""
         return [

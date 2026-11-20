@@ -14,7 +14,7 @@ from geometry.edge_treatment import (  # noqa: E402
     bed_chamfer, boss_base_edges, chamfer_cone_cut, column_junction_edges,
     concave_edges, cone_cut_edges, fillet_boss_bases, fillet_junctions,
     merge_column_walls, rect_base_edges, rect_junction_edges,
-    relieve_concave_joints,
+    relieve_concave_joints, web_base_edges, web_junction_edges,
 )
 from geometry.printability import BED_DOWN, PrintOrientation  # noqa: E402
 from utilities.validation import ValidationReport  # noqa: E402
@@ -274,6 +274,41 @@ def test_merge_column_walls_fills_the_reentrant_corner():
     after = _column_probe(merged, half, 18.0, 11.0)
     assert max(before) < 1e-9, "the sharp corner is air beside the chord"
     assert min(after) > 0.0, "the merged corner is filled beside the chord"
+
+
+def _corner_web_shape():
+    """A tray corner with a column and its web into the X wall (ADR-0029)."""
+    from geometry.corner_web import CornerWeb
+
+    web = CornerWeb(x=24.0, y=15.5, radius=3.65, x_wall=28.0, y_wall=18.0)
+    column = cad_helpers.translate(
+        cad_helpers.cylinder_centered(7.3, 18.0), 24.0, 15.5, 11.0
+    )
+    x0, x1, y0, y1 = web.plan()
+    prism = cad_helpers.box_centered(x1 - x0, y1 - y0, 18.0)
+    prism = cad_helpers.translate(
+        prism, (x0 + x1) / 2.0, (y0 + y1) / 2.0, 11.0
+    )
+    return cad_helpers.union(_tray(), column, prism), web
+
+
+def test_web_junction_edges_finds_the_x_wall_chord():
+    """ADR-0029: the web's inboard face crosses the X wall in one chord."""
+    shape, web = _corner_web_shape()
+    edges = web_junction_edges(shape, [web])
+    assert len(edges) == 1
+    assert edges[0].curve_type == "line"
+    assert abs(edges[0].key[0] - 28.0) < 1e-2
+    assert abs(edges[0].key[1] - 11.85) < 1e-2
+
+
+def test_web_base_edges_finds_the_floor_edge():
+    """ADR-0029: the web meets the floor in one straight edge along X."""
+    shape, web = _corner_web_shape()
+    edges = web_base_edges(shape, [web], 2.0, 1.0, BED_DOWN)
+    assert len(edges) == 1
+    assert abs(edges[0].key[1] - 11.85) < 1e-2
+    assert abs(edges[0].key[2] - 2.0) < 1e-2
 
 
 def _treated_stepped_sections(extra: float):

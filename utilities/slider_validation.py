@@ -1757,6 +1757,31 @@ def run_slider_checks(
         f"tightest wall chord {chord:.2f} (the Ø{2.0 * strict_radius:.2f} strict "
         f"column crossing the cavity face {face_out:.2f} from its axis)",
     )
+    # ADR-0029: a corner station's disc also clips the inner corner chamfer
+    # (ADR-0016) by under a millimetre, leaving a 30-40 degree gorge the merge
+    # fillet cannot roll. A web from the column's axis into the X wall fills
+    # that corner; the web must reach the wall and cover the chamfer's foot, or
+    # the column would still cross the chop.
+    from geometry.corner_web import corner_webs
+
+    corner_web_radius = min(
+        (s.strict_boss for s in cj.corner_stations), default=cj.smallest_boss()
+    ) / 2.0
+    webs = corner_webs(
+        cj, config.wall_thickness, config.corners.chamfer, corner_web_radius
+    )
+    report.add(
+        "slide-chassis-joint-corner-web",
+        webs.ok,
+        (
+            f"the {len(webs.webs)} corner columns' webs reach the X wall and "
+            f"cover the inner corner chamfer (r {corner_web_radius:.2f}), so "
+            f"each corner boss merges into both walls"
+            if webs.webs and webs.ok
+            else "; ".join(webs.failures)
+            or "no corner stations to web"
+        ),
+    )
     # ADR-0021: the head is buried one wall below the Parting plane, reached
     # down a cone whose mouth keeps a printable lip to the outer skin; the
     # head's seat ring must be wide enough to bear on.

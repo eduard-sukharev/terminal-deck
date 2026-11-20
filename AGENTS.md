@@ -21,7 +21,9 @@ parametricity, reusability.
 > and fillets each wall column into its cavity wall (1.5 mm) in both halves,
 > and ADR-0027 makes the taper reach the stations' axes at the table and
 > replaces ADR-0023's cone-edge fillets with the 45° chamfer of
-> `edges.bed_chamfer` (the walls' edges with the floor stay sharp). The data
+> `edges.bed_chamfer` (the walls' edges with the floor stay sharp); ADR-0029
+> webs each corner band column into its X wall so it merges into both walls
+> instead of creasing the inner corner chamfer. The data
 > skeleton
 > and the CAD shell are implemented: `--layout slider` (the only layout) derives
 > the budget and builds/exports the chassis (Tray + Deck, split at the band
@@ -426,6 +428,26 @@ Gotchas:
   `slide-chassis-joint-column-fillet` and `keyboard-mounts-fillet` require
   `column_fillet + minimum_feature` to fit the tightest wall chord (2.66 mm, the
   strict column) and the tightest Well chord (2.24 mm).
+- **A corner column webs into the X wall (ADR-0029).** The corner station sits
+  2.95 mm from the cavity's inner corner chamfer (ADR-0016) while its disc
+  reaches 3.65/3.90 mm, so it bit 0.70–0.95 mm into the 45° chop and left a
+  chord in a 36–41° gorge that no fillet can roll (a 1.5 mm round needs ≈4 mm
+  of surface per side; the chamfer face has 1.26 mm to its corner). The screws
+  stay put: `geometry/corner_web.py` gives each corner column a **web** into
+  the X wall — a prism from the station's axis to the wall, as wide as the
+  column and tangent to it, overshooting the wall by 0.5 and clipped to the
+  part's `outer` solid (the web must never break the skin past the outer
+  chamfer plane). Tangent sides mean no crease against the cylinder; the web's
+  one vertical chord on the X wall (a clean 90° corner) and its straight base
+  edge take `fillet_junctions` (1.5 chord / 0.6 base) in one pass via
+  `web_junction_edges` / `web_base_edges`. `web_base_residual` re-rounds the
+  ~0.86 mm stub the variable blend can leave at the base edge's wall end
+  (backing the cove off until it fits; SOFT if nothing does). Both webs are
+  applied **after** `_treat_wall_columns` / `_treat_deck_junctions`: the step a
+  web leaves in the front/rear wall face crowds the corner column's inboard
+  chord, which OCC must fillet on the unbroken face first. The Tray's web uses
+  the widest (base) column radius so the frustum below the cone's neck cannot
+  poke through it. `slide-chassis-joint-corner-web` is HARD.
 - **The chassis splits at the Parting plane, band-only (ADR-0012).** The 6 mm
   band is split 3 mm each side of `parting_z`, and **both halves are
   prismatic** (ADR-0019 removed the Tray's draft): the band width, the base

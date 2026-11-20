@@ -592,6 +592,66 @@ def test_columns_merge_into_the_cavity_walls(data, solids):
                 )
 
 
+def test_corner_columns_merge_into_both_walls(data, solids):
+    """ADR-0029: each corner column's web fills the inner corner chamfer.
+
+    The corner station sits 2.95 mm from the cavity's inner chamfer plane while
+    its disc reaches 3.65/3.90 mm, so it used to bite 0.7-0.95 mm into the
+    45 degree chop and leave a 30-40 degree crease the merge fillet cannot roll.
+    A web from the column's axis into the X wall fills the corner, makes the
+    column merge into both walls, and its own chord and base take the fillets.
+    """
+    from geometry.corner_web import corner_webs
+    from geometry.edge_treatment import web_base_edges, web_junction_edges
+    from geometry.printability import BED_DOWN, FACE_DOWN
+    from utilities.cad_helpers import inner_corner_chamfer
+
+    config, budget, frame, _ = data
+    tray, deck = solids
+    joint = budget.chassis_joint
+    wall = config.wall.thickness
+    relief = inner_corner_chamfer(config.corners.chamfer, wall)
+    half_x = joint.band_width / 2.0 - wall
+    half_y = frame.depth / 2.0 - wall
+    webs = corner_webs(
+        joint, wall, config.corners.chamfer,
+        joint.corner_stations[0].base_boss / 2.0,
+    )
+    assert webs.ok, webs.failures
+
+    # Data: every web reaches the X wall and covers the chamfer's foot, so the
+    # column's disc crosses the filled corner instead of the bare chop.
+    foot = half_y - relief
+    for web in webs.webs:
+        assert abs(web.y_out) >= foot - 1e-6
+        assert abs(web.x_out) > abs(web.x_wall)
+
+    # Both halves: the web's X-wall chord and its base are filleted (nothing is
+    # left for the selectors to pick).
+    assert web_junction_edges(tray, webs.webs, BED_DOWN) == []
+    assert web_junction_edges(deck, webs.webs, FACE_DOWN) == []
+    assert web_base_edges(tray, webs.webs, wall, 1.0, BED_DOWN) == []
+    ceiling = frame.chassis_top - wall
+    assert web_base_edges(deck, webs.webs, ceiling, -1.0, FACE_DOWN) == []
+
+    # Both halves: no vertical concave crease is left on the inner chamfer
+    # plane beside a corner station (the defect this replaces).
+    for shape, orientation in ((tray, BED_DOWN), (deck, FACE_DOWN)):
+        for edge in ch.concave_edges(shape):
+            if abs(edge.tangent[2]) < 0.94:
+                continue
+            x, y, _ = edge.key[:3]
+            if abs(x) < 105.0 or abs(y) < 58.0:
+                continue
+            distance = (
+                half_x + half_y - relief - abs(x) - abs(y)
+            ) / math.sqrt(2.0)
+            assert abs(distance) > 0.1, (
+                f"a vertical concave edge is still on the corner chamfer plane "
+                f"at ({x:.2f}, {y:.2f})"
+            )
+
+
 def _probe(shape, x, y, z, size=0.1):
     """Material in a tiny box centered at ``x, y, z`` (mm^3)."""
     box = ch.translate(ch.box_centered(size, size, size), x, y, z)

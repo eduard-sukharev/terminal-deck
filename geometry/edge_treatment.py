@@ -69,6 +69,44 @@ def concave_edges(shape) -> list[ConcaveEdge]:
     return [ConcaveEdge(info) for info in cad_helpers.concave_edges(shape)]
 
 
+def web_base_residual(
+    shape: Any,
+    webs: Any,
+    plane_z: float,
+    axis: float,
+    radius: float,
+    report: Any,
+    orientation: PrintOrientation = BED_DOWN,
+) -> Any:
+    """Re-round a short stub the corner blend left on a web's base edge.
+
+    The variable pass that eases a web's X-wall chord and its base leaves a
+    transition where the two fillet surfaces meet; near the wall that transition
+    can leave a short sharp stub of the original base edge. It no longer shares
+    a vertex with a fresh chord fillet, so a base-only pass can roll it -- but
+    only at a cove small enough to fit the stub, so the radius is capped at half
+    the shortest stub. Edges that still don't take the fillet are skipped with
+    a SOFT warning.
+    """
+    infos = web_base_edges(shape, webs, plane_z, axis, orientation)
+    if not infos:
+        return shape
+    smallest = min(info.length for info in infos)
+    size = min(radius, smallest / 2.0)
+    # The stub is bounded by the chord blend on one side and the column base on
+    # the other, so even the half-length cove can be a fraction too big: back
+    # off until it rolls. Only when nothing fits is the stub reported.
+    tries = [size, size * 0.75, size * 0.5, size * 0.25]
+    for attempt in tries:
+        try:
+            return cad_helpers.fillet_edges(shape, infos, attempt)
+        except Exception:
+            continue
+    return _apply(
+        shape, infos, size, cad_helpers.fillet_edges, "corner web base fillet", report
+    )
+
+
 def _apply(shape, infos, size: float, treat, label: str, report):
     """Treat ``infos`` on ``shape``, isolating and skipping any that fail."""
     if not infos:
@@ -468,6 +506,67 @@ def rect_base_edges(
         for cx, y0, y1, half in rects:
             low, high = (y0, y1) if y0 <= y1 else (y1, y0)
             if abs(abs(x - cx) - half) <= tol and low - tol <= y <= high + tol:
+                found.append(info)
+                break
+    return found
+
+
+def web_junction_edges(
+    shape: Any,
+    webs: Any,
+    orientation: PrintOrientation = BED_DOWN,
+    tol: float = 0.06,
+) -> list[cad_helpers.EdgeInfo]:
+    """The vertical chords where a corner web crosses the X wall (ADR-0029).
+
+    A corner column's web (:mod:`geometry.corner_web`) runs from the column's
+    axis into the vertical X wall, tangent to the column and as wide as it. Its
+    inboard face crosses the X wall face in one vertical reentrant chord -- a
+    clean 90 degree inside corner, unlike the 30-40 degree gorge on the corner
+    chamfer the web replaces, so the merge fillet fits here. ``webs`` are
+    :class:`geometry.corner_web.CornerWeb` instances; the edge must run along
+    print Z and its midpoint must sit on a web's chord point.
+    """
+    found = []
+    for edge in concave_edges(shape):
+        if not edge.vertical(orientation):
+            continue
+        x, y, _ = edge.info.key[:3]
+        for web in webs:
+            cx, cy = web.chord
+            if abs(x - cx) <= tol and abs(y - cy) <= tol:
+                found.append(edge.info)
+                break
+    return found
+
+
+def web_base_edges(
+    shape: Any,
+    webs: Any,
+    plane_z: float,
+    axis: float,
+    orientation: PrintOrientation = BED_DOWN,
+    tol: float = 0.06,
+) -> list[cad_helpers.EdgeInfo]:
+    """The concave base edge where a corner web meets its floor or ceiling.
+
+    The web's inboard face meets the Tray's floor (or the Deck's ceiling) in one
+    straight reentrant edge along X, from the point tangent to the column to the
+    chord on the X wall. ``webs`` are
+    :class:`geometry.corner_web.CornerWeb` instances. The round is gated by
+    ``axis`` and ``orientation`` exactly as :func:`boss_base_edges` does.
+    """
+    if axis * orientation.normal[2] >= 0.0:
+        return []
+    found = []
+    for edge in concave_edges(shape):
+        info = edge.info
+        if abs(info.key[2] - plane_z) > tol:
+            continue
+        x, y = info.key[0], info.key[1]
+        for web in webs:
+            x0, x1 = web.base_span
+            if abs(y - web.base_midpoint[1]) <= tol and x0 - tol <= x <= x1 + tol:
                 found.append(info)
                 break
     return found

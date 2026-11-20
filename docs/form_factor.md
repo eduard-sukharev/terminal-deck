@@ -131,10 +131,10 @@ to tilt it.**
   toward the face panel, so the two halves meet at the closed face at the full
   width. The front/rear end walls stay vertical on both halves: the guide span
   and rod end clamps are pinned to the 140 mm face budget. The Tray's end walls
-  still read as a taper — a 15° base taper that runs from the table up to the
-  band's bottom, as a draft (the cavity follows, so the wall keeps its
-  thickness), dying into a pad at every band station
-  (`geometry/base_taper.py`).
+  still read as a taper — its face at the table reaches the band stations' axes
+  (`side_inset`, ≈18.9° off vertical) and runs up to the band's bottom, as a
+  draft (the cavity follows, so the wall keeps its thickness), dying into a pad
+  at the four corner stations (`geometry/base_taper.py`, ADR-0027).
 * **Keyboard Well** — a walled recess in the Deck: a 2.0 mm-thick ring of
   walls around a rectangular **Cutout**, descending from the Deck's top face
   (32.30) to the plate's top face (17.80), a 14.50 mm-deep Well. The keycaps

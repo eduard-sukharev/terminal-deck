@@ -11,10 +11,10 @@ pytestmark = pytest.mark.skipif(
 )
 
 from geometry.edge_treatment import (  # noqa: E402
-    bed_chamfer, boss_base_edges, column_junction_edges, concave_edges,
-    cone_cut_edges, fillet_boss_bases, fillet_junctions, merge_column_walls,
-    rect_base_edges, rect_junction_edges, relieve_concave_joints,
-    round_cone_cut,
+    bed_chamfer, boss_base_edges, chamfer_cone_cut, column_junction_edges,
+    concave_edges, cone_cut_edges, fillet_boss_bases, fillet_junctions,
+    merge_column_walls, rect_base_edges, rect_junction_edges,
+    relieve_concave_joints,
 )
 from geometry.printability import BED_DOWN, PrintOrientation  # noqa: E402
 from utilities.validation import ValidationReport  # noqa: E402
@@ -42,13 +42,27 @@ def test_cone_cut_edges_split_the_bed_rim_from_the_interior_ring():
     assert all(i.curve_type == "circle" for i in rims)
 
 
-def test_round_cone_cut_fillets_the_bed_rim_only():
+def test_chamfer_cone_cut_chamfers_the_bed_rim_not_fillets_it():
     plate = _plate_with_conical_hole()
+    rims, lips = cone_cut_edges(plate, 15.0, 0.0)
+    assert rims and not lips
+    before = sorted(i.length for i in rims)
     report = ValidationReport()
-    out = round_cone_cut(plate, 15.0, 0.0, 1.0, report)
+    out = chamfer_cone_cut(plate, 15.0, 0.0, 0.5, report)
     assert not report.warnings
     assert cad_helpers.volume_mm3(out) < cad_helpers.volume_mm3(plate)
-    # the plate's own wall/floor edges are still straight
+    # A 45 degree chamfer removes more material than a fillet of equal size.
+    filleted = cad_helpers.fillet_edges(plate, rims, 0.5)
+    assert cad_helpers.volume_mm3(out) < cad_helpers.volume_mm3(filleted)
+    # The bed opening grows by the chamfer size on every side: the chamfer
+    # face is itself a cone, so the new bed boundary is a circle of the larger
+    # radius (never a rounded torus).
+    after_rims, after_lips = cone_cut_edges(out, 15.0, 0.0)
+    assert not after_lips
+    assert sorted(i.length for i in after_rims) == pytest.approx(
+        [length + 2.0 * math.pi * 0.5 for length in before]
+    )
+    # the plate's own wall/floor edges stay straight
     lines = 0
     for face in cad_helpers.faces(out):
         for wire in face.wires():

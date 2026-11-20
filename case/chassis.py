@@ -116,13 +116,14 @@ class Chassis:
         )
         body = ch.cut(outer, cavity)
 
-        # The base taper on the vertical front/rear walls (ADR-0019, ADR-0022)
-        # is a draft from the table up to the band's bottom -- the cavity
-        # follows, so the wall keeps its thickness. Both of its solids (the
-        # cavity-side fill and the outer wedge) come after the station columns:
-        # the slice then passes through the long-wall bosses instead of leaving
-        # them proud of the sloped face, and the merge fillets see the plain
-        # cavity face.
+        # The base taper on the vertical front/rear walls (ADR-0019, ADR-0022,
+        # ADR-0027) is a draft from the table up to the band's bottom -- the
+        # cavity follows, so the wall keeps its thickness -- and its face at
+        # the table passes through the long-wall stations' axes. Both of its
+        # solids (the cavity-side fill and the outer wedge) come after the
+        # station columns: the slice then passes through the long-wall bosses
+        # instead of leaving them proud of the sloped face, and the merge
+        # fillets see the plain cavity face.
 
         # The accessory rail's stations (ADR-0020): a pad at each M4 station on
         # the X walls, braced into the floor by two 45 degree gussets. The pad
@@ -186,33 +187,21 @@ class Chassis:
             holes.extend((through, cavity))
         body = ch.cut(body, *holes)
 
-        # Ease the access cones' own edges (ADR-0023): the mouth rims where a
-        # cone or a column frustum leaves the floor face, and the lips where
-        # the taper flares a through-station's cone open. The lip fillet is
-        # radius-limited so it never climbs the cone into the head pocket's
-        # neck; the long edges where the walls meet the floor stay sharp -- the
-        # selector never picks them. A failing edge is skipped with a SOFT
+        # Ease the access cones' own outside edges (ADR-0025, ADR-0027): the
+        # mouth rims where a cone or a column frustum leaves the floor face,
+        # and the lips where the taper flares a through-station's cone open.
+        # Both are convex, so both take the 45 degree chamfer -- never a fillet
+        # -- and the long edges where the walls meet the floor stay sharp (the
+        # selector never picks them). A failing edge is skipped with a SOFT
         # warning, never blocking the build. The bed face is re-trimmed to
-        # z = 0 afterwards in case a fillet surface wanders a hair below it.
+        # z = 0 afterwards for an exact printed bed.
         from geometry import edge_treatment
-        from geometry.base_taper import lip_fillet_limit
         from utilities.validation import ValidationReport
 
-        radius = self.config.chassis_joint.taper_fillet
-        lip_limit = min(
-            lip_fillet_limit(
-                f.base_taper,
-                joint.recess,
-                station.mouth_radius,
-                station.margin,
-                self.config.material.minimum_feature,
-            )
-            for station in f.base_taper.through_stations(joint)
-        )
-        lip_radius = min(radius, lip_limit)
+        size = self.config.edges.bed_chamfer
         treatment = ValidationReport()
-        body = edge_treatment.round_cone_cut(
-            body, f.base_taper.angle, 0.0, radius, treatment, lip_radius=lip_radius
+        body = edge_treatment.chamfer_cone_cut(
+            body, f.base_taper.angle, 0.0, size, treatment
         )
         for warning in treatment.warnings:
             print(f"[pipeline] warn: {warning}")

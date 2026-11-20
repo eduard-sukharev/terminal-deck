@@ -17,10 +17,12 @@ parametricity, reusability.
 > taper) and ADR-0020 (the printed accessory rail on those walls) define the
 > slider, and ADR-0021 (deep conical head recesses for the Tray's band screws)
 > deepens its screws; ADR-0022 runs the base taper through the long-wall
-> stations' cones, and ADR-0023 fillets the cones' mouth rims (1.0 mm) and
-> through-lips (0.47 mm) while the walls' edges with the floor stay sharp;
-> ADR-0024 fills the Well ring back over the plate's notches and fillets each
-> wall column into its cavity wall (1.5 mm) in both halves. The data skeleton
+> stations' cones, ADR-0024 fills the Well ring back over the plate's notches
+> and fillets each wall column into its cavity wall (1.5 mm) in both halves,
+> and ADR-0027 makes the taper reach the stations' axes at the table and
+> replaces ADR-0023's cone-edge fillets with the 45° chamfer of
+> `edges.bed_chamfer` (the walls' edges with the floor stay sharp). The data
+> skeleton
 > and the CAD shell are implemented: `--layout slider` (the only layout) derives
 > the budget and builds/exports the chassis (Tray + Deck, split at the band
 > joint), screen lid (Bezel + Back plate, split at the band joint), the printed
@@ -157,9 +159,10 @@ intuition. Wire-up lives in `main.py` (`BuildPipeline`, `run()`).
   solids at their placements; `case.slider_frame.SliderFrame` derives the
   world-frame dimensions from the layout + budget; `case.chassis.Chassis`
   builds the two halves at the Parting plane (ADR-0012): `build_tray()` is the
-  prismatic bowl (ADR-0019: vertical X walls, a 15° base draft on the end
-  walls that runs up to the band's bottom and steps around the station pads —
-  `geometry/base_taper.py`) and the twelve straight screw columns;
+  prismatic bowl (ADR-0019: vertical X walls, a base taper on the end walls
+  that reaches the band stations' axes at the table and steps around the
+  station pads — `geometry/base_taper.py`) and the twelve straight screw
+  columns;
   `build_deck()` is the purely prismatic Deck: the keyboard Well, the two
   bearing-clamp seats (merged seat blocks with foot pockets) and the insert
   bosses; `build()` returns their compound; `tray_sections()` /
@@ -420,22 +423,25 @@ Gotchas:
   band is split 3 mm each side of `parting_z`, and **both halves are
   prismatic** (ADR-0019 removed the Tray's draft): the band width, the base
   width and the closed-face width are one number (`width`). The Tray's vertical
-  end walls carry a 15° base taper from the table up to the band's bottom
-  (`chassis_joint.taper_angle` / `taper_runout`, `geometry/base_taper.py`) —
-  a draft, so the cavity follows and the wall keeps its thickness. ADR-0022
-  runs the taper **through** the six long-wall stations: at the table the
-  sloped face sits 2.32 mm inside the access cone's mouth (no floor sliver),
-  the pier ring around the pocket is 1.45 at the taper's top and only grows,
-  and each wall is one full-width run (214.5 mm). **Only the four corners
+  end walls carry a base taper from the table up to the band's bottom
+  (`geometry/base_taper.py`) — a draft, so the cavity follows and the wall
+  keeps its thickness. ADR-0027 derives its reach, not its angle: the face at
+  the table sits `side_inset` (4.5) inside the wall, exactly on the six
+  long-wall stations' axes, so the angle is ~18.89° over the 13.15 mm band
+  bottom and the base depth is 131.0. ADR-0022 runs the taper **through** those
+  stations: the outboard half of each access cone's mouth is cut away and the
+  opening flares into the lip (an ellipse whose cusp sits at z ≈ 9.11), the
+  pier ring around the pocket is 1.45 at the taper's top and only grows, and
+  each wall is one full-width run (214.4 mm). **Only the four corners
   keep a pad** (stop Ø13.80 — pad + runout), the rounded stops the taper
   starts and ends on, set off the corner as before. The HARD checks are
-  `chassis-taper-draft`, `-band`, `-opens`, `-pad`, `-stop` and `-fillet` in
-  `utilities/slider_validation`. ADR-0023 fillets the cones' own outside
-  edges — the mouth rims at the bed (`chassis_joint.taper_fillet` = 1.0 mm,
-  tangent run only ~1.02 mm) and the lips where the taper flares a cone open
-  (radius-limited to 0.47 mm so the fillet stops one minimum feature below
-  the pocket's neck; a larger radius would climb the cone and seal the
-  driver access). The selector (`geometry.edge_treatment.cone_cut_edges`)
+  `chassis-taper-draft`, `-band`, `-opens`, `-pad`, `-stop` and `-chamfer` in
+  `utilities/slider_validation`. ADR-0025/ADR-0027 give the cones' own outside
+  edges the 45° chamfer of `edges.bed_chamfer` (0.5 mm) — the mouth rims at the
+  bed and the lips where the taper flares a cone open — never a fillet: a 0.5
+  lip chamfer leaves 2.29 mm below the pocket's neck. The lips are chamfered
+  first and the rims re-selected afterwards (the reverse order leaves lip stubs
+  OCC cannot treat). The selector (`geometry.edge_treatment.cone_cut_edges`)
   matches only cone-against-plane edges at the bed or on the taper's outer
   slope: the long edges where the walls meet the floor, the interior rings
   at the cavity floor and the cavity-side flares stay sharp.
@@ -547,8 +553,9 @@ Gotchas:
   so is the Deck, so the two halves are widest at the closed face and the Tray
   is one width from the table up. The front/rear end walls
   stay vertical too — drafting them would eat the rod end-clamp clearance inside
-  the 140 mm guide span — and the Tray's end walls leave the table with a 15°
-  base taper instead (`geometry/base_taper.py`). The slide budget adds the
+  the 140 mm guide span — and the Tray's end walls leave the table with a base
+  taper instead, reaching the band stations' axes (`geometry/base_taper.py`,
+  ADR-0027). The slide budget adds the
   lid's `draft_allowance` to the side pod so the guide hardware keeps its shell
   clearance as the lid cavity narrows toward the face.
 - The face is flat and the keyboard has no slope: do not add a

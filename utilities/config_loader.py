@@ -80,7 +80,7 @@ class Draft:
     panel, so the two halves are widest where they meet. The front/rear end
     walls stay vertical because the guide span and the rod end clamps are
     pinned to the 140 mm face-height budget; the Tray's end walls leave the
-    table with the base taper instead (``chassis_joint.taper_angle``).
+    table with the base taper instead (``geometry.base_taper``).
     """
 
     lid: float = 7.0
@@ -465,19 +465,21 @@ class ChassisJoint:
 
     ``station_inset`` and ``side_inset`` are both measured from a *vertical*
     wall's outer face now: the X walls no longer pull the floor skin inward, so
-    a station's margin is a plain plan distance. ``taper_angle`` /
-    ``taper_runout`` size the base taper on the vertical front/rear walls
-    (ADR-0019): the taper runs from the table up to the band's bottom as a
-    draft (the cavity follows, so the wall keeps its thickness). ADR-0022 runs
-    it through the long-wall stations' cones; only the corners keep a pad.
-    ``taper_fillet`` rounds the access cones' mouth rims (ADR-0023); the lips
-    where the taper flares a cone open take the largest radius that keeps the
-    head pocket's neck intact, and the walls' edges with the floor stay sharp.
-    ``column_fillet`` is the merge fillet where a column's disc crosses a
-    front/rear cavity wall face (ADR-0024), applied in both halves.
-    ``boss_base_fillet`` rounds the ring where a boss springs from its floor or
-    ceiling (ADR-0025); it stays below ``column_fillet`` because its endpoints
-    land on the merge round the chords leave.
+    a station's margin is a plain plan distance. The base taper on the vertical
+    front/rear walls (ADR-0019) runs from the table up to the band's bottom as
+    a draft (the cavity follows, so the wall keeps its thickness); its reach at
+    the table is derived as ``side_inset``, so the face passes through the
+    long-wall stations' axes (ADR-0027). ADR-0022 runs it through the
+    stations' cones; only the corners keep a pad. ``taper_runout`` fades the
+    taper into those pads. The access cones' outside edges -- the mouth rims at
+    the bed and the lips where the taper flares a cone open -- take the 45
+    degree chamfer of ``edges.bed_chamfer`` (ADR-0025, ADR-0027); the walls'
+    edges with the floor stay sharp. ``column_fillet`` is the merge fillet
+    where a column's disc crosses a front/rear cavity wall face (ADR-0024),
+    applied in both halves. ``boss_base_fillet`` rounds the ring where a boss
+    springs from its floor or ceiling (ADR-0025); it stays below
+    ``column_fillet`` because its endpoints land on the merge round the chords
+    leave.
     """
 
     band: float = 6.0
@@ -487,9 +489,7 @@ class ChassisJoint:
     side_inset: float = 4.5
     screw: str = "M3"
     head: str = "button"
-    taper_angle: float = 15.0
     taper_runout: float = 3.0
-    taper_fillet: float = 1.0
     column_fillet: float = 1.5
     boss_base_fillet: float = 0.6
 
@@ -500,12 +500,8 @@ class ChassisJoint:
             raise ValueError("chassis_joint.boss_margin must be positive")
         if self.station_inset <= 0 or self.side_inset <= 0:
             raise ValueError("chassis_joint insets must be positive")
-        if not 0.0 <= self.taper_angle < 45.0:
-            raise ValueError("chassis_joint.taper_angle must be in [0, 45) degrees")
         if self.taper_runout <= 0.0:
             raise ValueError("chassis_joint.taper_runout must be positive")
-        if self.taper_fillet <= 0.0:
-            raise ValueError("chassis_joint.taper_fillet must be positive")
         if self.column_fillet <= 0.0:
             raise ValueError("chassis_joint.column_fillet must be positive")
         if not 0.0 < self.boss_base_fillet < self.column_fillet:
@@ -539,9 +535,11 @@ class Edges:
 
     ``chamfer_factor`` scales ``wall.thickness`` into the stress-relief size
     of a concave joint; ``bed_chamfer`` (mm) is the 45 degree chamfer on each
-    Section's bed-face outer edge against elephant's foot. Chamfers are the
-    default everywhere (including every outside face); the vertical concave
-    joints are the only fillets, hidden inside the assembly.
+    Section's bed-face outer edge against elephant's foot, and on the Tray's
+    access cones' outside edges (their mouth rims at the bed and the lips the
+    base taper flares open, ADR-0027). Chamfers are the default everywhere
+    (including every outside face); the vertical concave joints are the only
+    fillets, hidden inside the assembly.
     """
 
     chamfer_factor: float = 0.5
@@ -1177,9 +1175,7 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
             side_inset=float(chassis_joint_raw.get("side_inset", 4.5)),
             screw=str(chassis_joint_raw.get("screw", "M3")),
             head=str(chassis_joint_raw.get("head", "button")),
-            taper_angle=float(chassis_joint_raw.get("taper_angle", 15.0)),
             taper_runout=float(chassis_joint_raw.get("taper_runout", 3.0)),
-            taper_fillet=float(chassis_joint_raw.get("taper_fillet", 1.0)),
             column_fillet=float(chassis_joint_raw.get("column_fillet", 1.5)),
         ),
         merged_boss=MergedBoss(**{k: float(v) for k, v in (raw.get("merged_boss") or {}).items()}),

@@ -432,44 +432,95 @@ def test_tray_and_deck_sections_fit_and_rejoin(data, solids):
             assert z <= BUILD_VOLUME[2] + 1e-6
 
 
-# -- ADR-0023: the cone edge fillets ---------------------------------------
+# -- ADR-0025 / ADR-0027: the cone edges take the chamfer -------------------
 @pytest.fixture(scope="module")
-def unfilleted_tray(data):
-    """The Tray before the cone edge fillets, for selector assertions."""
+def unchamfered_tray(data):
+    """The Tray before the cone edge chamfers, for selector assertions.
+
+    The treatment is bypassed only while the part is built, so the patch is
+    restored before the tests call ``chamfer_cone_cut`` themselves.
+    """
     from geometry import edge_treatment
 
-    original = edge_treatment.round_cone_cut
-    edge_treatment.round_cone_cut = lambda body, *args, **kwargs: body
+    original = edge_treatment.chamfer_cone_cut
+    edge_treatment.chamfer_cone_cut = lambda body, *args, **kwargs: body
     try:
         config, _, frame, _ = data
-        yield Chassis(config, frame).build_tray()
+        tray = Chassis(config, frame).build_tray()
     finally:
-        edge_treatment.round_cone_cut = original
+        edge_treatment.chamfer_cone_cut = original
+    return tray
 
 
-def test_the_taper_fillet_selects_only_the_cones_edges(data, unfilleted_tray):
+def test_the_taper_chamfer_selects_only_the_cones_edges(data, unchamfered_tray):
     from geometry.edge_treatment import cone_cut_edges
 
     _, budget, _, _ = data
     taper = budget.base_taper
     recess = budget.chassis_joint.recess
-    rims, lips = cone_cut_edges(unfilleted_tray, taper.angle, 0.0)
-    assert rims and lips
+    rims, lips = cone_cut_edges(unchamfered_tray, taper.angle, 0.0)
+    # ADR-0027: the face at the table passes through the long-wall stations'
+    # axes, so each of the six through-stations contributes one inboard
+    # half-ring (the outboard half is air), plus the four corner pads' and the
+    # two end stations' full rings.
+    assert len(rims) == 12 and len(lips) == 6
     # every selected edge is an arc of a cone: the long straight edges where
     # the walls meet the floor are never picked
-    assert all(i.curve_type in ("circle", "ellipse") for i in rims + lips)
+    assert all(i.curve_type == "circle" for i in rims)
+    assert all(i.curve_type == "ellipse" for i in lips)
     # rims are the mouth rings at the bed face -- nothing from the cavity
     # floor at one wall above it
     assert all(abs(i.key[2]) < 0.01 for i in rims)
-    # lips sit on the taper's outer slope, below the pocket's neck
-    assert all(1.0 < i.key[2] < recess.z_neck for i in lips)
+    # lips sit on the taper's outer slope, above the table and below the
+    # pocket's neck (the closed ellipse's midpoint is its cusp)
+    assert all(0.0 < i.key[2] < recess.z_neck for i in lips)
 
 
-def test_the_wall_floor_edges_stay_sharp_after_the_fillet(data, solids):
+def test_the_cone_edges_are_chamfered_not_filleted(data, unchamfered_tray, solids):
+    """The convex cone edges take the 45 degree chamfer, not a fillet."""
+    from geometry import edge_treatment
+    from geometry.edge_treatment import cone_cut_edges
+    from utilities.validation import ValidationReport
+
+    config, budget, _, _ = data
+    tray, _ = solids
+    taper = budget.base_taper
+    chamfer = config.edges.bed_chamfer
+    report = ValidationReport()
+    treated = edge_treatment.chamfer_cone_cut(
+        unchamfered_tray, taper.angle, 0.0, chamfer, report
+    )
+    # The chamfer runs cleanly: no edge is skipped, and it removes material.
+    assert not report.warnings
+    assert ch.volume_mm3(treated) < ch.volume_mm3(unchamfered_tray)
+    # The lips are consumed by their chamfer, and the bed opening grows by the
+    # chamfer size on every station (the chamfer face is itself a cone, so the
+    # new bed boundary is a larger circle -- never a rounded torus).
+    rims, lips = cone_cut_edges(treated, taper.angle, 0.0)
+    assert not lips
+    mouth = {round(s.mouth_radius, 6) for s in budget.chassis_joint.stations}
+    assert len(mouth) == 1
+    radius = mouth.pop() + chamfer
+    # Six half-rings (the through-stations, whose outboard half is air) and
+    # six full rings (four corner pads, two end stations) -- all at the grown
+    # radius, all circles.
+    assert all(i.curve_type == "circle" for i in rims)
+    assert len(rims) == 12
+    assert sorted(i.length for i in rims) == pytest.approx(
+        sorted([math.pi * radius] * 6 + [2.0 * math.pi * radius] * 6),
+        rel=1e-3,
+    )
+    # ...and the chamfer leaves the Tray's own outer shape in place.
+    assert ch.bounding_box_mm(treated)[:2] == pytest.approx(
+        ch.bounding_box_mm(tray)[:2], abs=0.01
+    )
+
+
+def test_the_wall_floor_edges_stay_sharp_after_the_chamfer(data, solids):
     _, budget, frame, _ = data
     tray, _ = solids
     # the taper's long floor edge on each wall is still a straight segment:
-    # filleting it would have replaced it with a curved surface
+    # a chamfer there would have replaced it with a second flat
     lines = 0
     for face in ch.faces(tray):
         for wire in face.wires():
@@ -483,7 +534,7 @@ def test_the_wall_floor_edges_stay_sharp_after_the_fillet(data, solids):
                 ):
                     lines += 1
     assert lines >= 2
-    # ...and the fillet did not wander below the bed or into the parting plane
+    # ...and the treatment did not wander below the bed or into the Parting
     assert _vertex_zmin(tray) == pytest.approx(0.0, abs=0.01)
     assert _vertex_zmax(tray) == pytest.approx(frame.parting_z, abs=0.01)
 

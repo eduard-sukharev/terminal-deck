@@ -1,12 +1,13 @@
-"""The Tray's end-wall base taper (ADR-0019).
+"""The Tray's end-wall base taper (ADR-0019, ADR-0027).
 
 The Tray's X walls are vertical (the accessory rail's face) and its front/rear
-walls are vertical too, but they leave the table with a 15 degree base taper
-that runs up to the joint band and dies into a pad around every band station.
-The taper is a draft: the cavity follows the outer face, so the wall keeps its
-thickness. These tests pin the pure data (height, inset, pad, stop, the runs
-of full taper) and the solid (both faces on the data's lines, the wall's
-thickness preserved, the pads swallowing the columns).
+walls are vertical too, but they leave the table at the band stations' axes --
+the face at the table is inset by `side_inset`, so it passes through the
+long-wall screws' axes -- and runs up to the joint band. The taper is a draft:
+the cavity follows the outer face, so the wall keeps its thickness. These tests
+pin the pure data (height, inset, angle, pad, stop, the runs of full taper) and
+the solid (both faces on the data's lines, the wall's thickness preserved, the
+pads swallowing the columns).
 """
 
 import math
@@ -16,13 +17,12 @@ import pytest
 from case.chassis import Chassis
 from case.slider_frame import SliderFrame
 from components.slide import compute_slide_budget
-from geometry import head_recess
 from geometry.base_taper import (
     base_taper,
     build_cutter,
     build_fill,
     cone_lip_z,
-    lip_fillet_limit,
+    lip_chamfer_limit,
 )
 from layouts import make_layout
 from main import BuildPipeline
@@ -61,14 +61,16 @@ def test_the_taper_runs_from_the_table_to_the_band(data):
     config, budget, _, _ = data
     taper = budget.base_taper
     joint = budget.chassis_joint
-    assert taper.angle == pytest.approx(config.chassis_joint.taper_angle)
+    # ADR-0027: the reach at the table is the stations' own axis distance, and
+    # the angle off vertical follows from it over the taper's height.
+    assert taper.inset == pytest.approx(joint.side_inset)
+    assert taper.angle == pytest.approx(
+        math.degrees(math.atan2(taper.inset, taper.height))
+    )
     # "Taper + band": the taper runs from the table up to the band's bottom,
     # so it stops one half-band (3 mm) below the Parting plane.
     assert taper.height == pytest.approx(joint.band_z0)
     assert joint.parting_z - taper.height == pytest.approx(joint.band / 2.0)
-    assert taper.inset == pytest.approx(
-        math.tan(math.radians(taper.angle)) * taper.height
-    )
     # The base is a couple of millimetres deeper than a chamfer-scale taper:
     # the wall is drafted, not trimmed, so the inset may pass the wall.
     assert taper.inset > config.wall_thickness
@@ -124,7 +126,7 @@ def test_the_pads_keep_the_head_recesses_their_ring(data):
 
 
 def test_the_taper_opens_through_the_side_stations(data):
-    """ADR-0022: at the table the taper face lies inside the cone mouth."""
+    """ADR-0027: at the table the taper face reaches the stations' axes."""
     config, budget, _, _ = data
     taper = budget.base_taper
     joint = budget.chassis_joint
@@ -133,8 +135,9 @@ def test_the_taper_opens_through_the_side_stations(data):
     for station in joint.stations:
         if abs(abs(station.y) - wall_y) > 1e-9 or station.is_corner:
             continue
-        # No floor sliver: the sloped face at the table is inside the mouth.
-        assert station.margin - taper.inset - station.mouth_radius <= 0.0
+        # The face at the table passes through the axis: the outboard half of
+        # the cone mouth is cut away, the inboard half remains as the rim.
+        assert station.margin - taper.inset == pytest.approx(0.0)
         # The pocket's pier survives: the ring at the taper's top only grows
         # with height, so its minimum over the taper is at the top.
         assert station.margin - joint.recess.pocket_radius >= 2.0 * minimum
@@ -301,7 +304,7 @@ def test_the_tray_wall_is_unbroken_at_the_corner_pad_shoulder(data, tray):
                 assert _material_at(tray, x, y, z, 0.3) > 0, (x, y, z)
 
 
-# -- ADR-0023: the cone edge fillets ---------------------------------------
+# -- ADR-0025 / ADR-0027: the cone edges take the chamfer ------------------
 def test_through_stations_are_the_wall_stations_without_corners(data):
     _, budget, _, _ = data
     taper = budget.base_taper
@@ -321,29 +324,31 @@ def test_the_lip_sits_between_the_table_and_the_pocket_neck(data):
         z_lip = cone_lip_z(
             taper, joint.recess, station.mouth_radius, station.margin
         )
+        # Reaching the station axes pushes the lip up to ~9.1 mm, but it stays
+        # well below the pocket's neck.
         assert 0.0 < z_lip < joint.recess.z_neck
 
 
-def test_the_lip_fillet_is_limited_by_the_pocket_neck(data):
+def test_the_lip_leaves_room_for_the_bed_chamfer(data):
     config, budget, _, _ = data
     taper = budget.base_taper
     joint = budget.chassis_joint
-    limit = min(
-        lip_fillet_limit(
+    chamfer = config.edges.bed_chamfer
+    for station in taper.through_stations(joint):
+        limit = lip_chamfer_limit(
             taper,
             joint.recess,
-            s.mouth_radius,
-            s.margin,
+            station.mouth_radius,
+            station.margin,
             config.material.minimum_feature,
         )
-        for s in taper.through_stations(joint)
-    )
-    assert 0.0 < limit < config.chassis_joint.taper_fillet
-
-
-def test_the_rim_fillet_run_is_shallow(data):
-    _, budget, _, _ = data
-    recess = budget.chassis_joint.recess
-    run = head_recess.cone_rim_fillet_run(recess, 3.30, 1.0)
-    assert run == pytest.approx(1.02, abs=0.01)
-    assert head_recess.cone_rim_fillet_run(recess, 3.30, 0.5) < run
+        # The 45 degree chamfer runs about its leg up the lip, so the limit is
+        # the room left below the pocket's neck minus one minimum feature.
+        assert limit >= chamfer
+        assert limit == pytest.approx(
+            joint.recess.z_neck
+            - config.material.minimum_feature
+            - cone_lip_z(
+                taper, joint.recess, station.mouth_radius, station.margin
+            )
+        )

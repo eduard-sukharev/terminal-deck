@@ -545,12 +545,17 @@ still meet at full width. The chassis' 6 mm joint band is therefore prismatic
 on both halves (ADR-0012).
 
 The Tray's front/rear end walls are vertical as well, and they leave the table
-in a **base taper**: a `chassis_joint.taper_angle` (15°) draft that runs from
-the table up to the bottom of the joint band (`geometry/base_taper.py`,
-ADR-0019), so the slope stops 3 mm below the Parting plane. The cavity follows
-the same line, one wall in, so the wall keeps its thickness over the whole
-slope; the taper is suppressed inside a pad around every band station, which
-keeps the head recesses' 0.85 mm ring and swallows the station columns.
+in a **base taper** (`geometry/base_taper.py`, ADR-0019/ADR-0022/ADR-0027): a
+draft that runs from the table up to the bottom of the joint band, so the slope
+stops 3 mm below the Parting plane. Its reach is derived, not its angle: the
+face at the table sits `side_inset` inside the wall, exactly on the long-wall
+band stations' axes (~18.9° over the 13.15 mm band bottom), so the outboard
+half of each access cone's mouth is cut away. The cavity follows the same line,
+one wall in, so the wall keeps its thickness over the whole slope; the taper is
+suppressed inside a pad at the four corner stations only, which keeps the head
+recesses' ring and swallows the station columns. The cones' outside edges -- the
+mouth rims at the bed and the taper-flared lips -- take the 45° chamfer of
+`edges.bed_chamfer`, never a fillet (ADR-0025/ADR-0027).
 
 The Screen lid's Back plate and its Band joint are **prismatic** (ADR-0011):
 the lid is at full width from `panel_outer_z` up to `band_z1`, and only the

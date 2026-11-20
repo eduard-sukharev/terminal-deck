@@ -176,7 +176,8 @@ _Avoid:_ "centre cut", "straight split".
 
 **Tray** — The Chassis's floor and walls (bosses, ribs, vents, cutouts) below
 the Parting plane: prismatic from its base to the plane (ADR-0019), with its
-vertical end walls leaving the table in a 15° base taper. Carries the twelve
+vertical end walls leaving the table in a base taper whose face reaches the band
+stations' axes (ADR-0027; ~18.9° off vertical). Carries the twelve
 straight columns the Deck's screws pass through into the Deck's insert bosses.
 _Avoid:_ "base" (retired clamshell term).
 

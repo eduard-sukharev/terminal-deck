@@ -1,4 +1,4 @@
-"""Edge treatment of concave joints and bed faces (ADR-0025).
+"""Edge treatment of concave joints and bed faces (ADR-0025, ADR-0027).
 
 The material dihedral picks the treatment (``docs/design_spec.md`` § Edge
 Treatment): a convex (``<= 90`` through the material) edge is an outside face
@@ -191,19 +191,19 @@ def round_seam_corners(shape, orientation: PrintOrientation, seams, depth: float
 def cone_cut_edges(
     shape: Any, angle_deg: float, bed_z: float
 ) -> tuple[list[cad_helpers.EdgeInfo], list[cad_helpers.EdgeInfo]]:
-    """The access cones' outside edges, split into mouth rims and lips (ADR-0023).
+    """The access cones' outside edges, split into mouth rims and lips (ADR-0027).
 
     A **rim** borders a conical face and a horizontal plane at the part's bed
     (``bed_z``) -- the mouth ring where the access cone or the column frustum
     leaves the floor face. A **lip** borders a conical face and the taper's
     *outer* sloped face (a plane tilted ``angle_deg`` off vertical with a
     downward normal, ``nz < 0``) -- where the taper's slice flares the cone
-    open. Everything else stays sharp: the pocket's neck ring (cone against
-    the cylindrical pocket), the clearance hole, the interior rings where a
-    cone breaks the cavity floor, the flares against the cavity-side draft
-    (their slope faces up, ``nz > 0``), and in particular the long edges
-    where the front/rear walls meet the floor -- the fillet is only ever on
-    the cones' own outside edges.
+    open. Both are convex and take the chamfer. Everything else stays sharp:
+    the pocket's neck ring (cone against the cylindrical pocket), the clearance
+    hole, the interior rings where a cone breaks the cavity floor, the flares
+    against the cavity-side draft (their slope faces up, ``nz > 0``), and in
+    particular the long edges where the front/rear walls meet the floor -- the
+    treatment is only ever on the cones' own outside edges.
     """
     tilt = math.sin(math.radians(angle_deg))
     infos: dict[tuple, cad_helpers.EdgeInfo] = {}
@@ -244,35 +244,33 @@ def cone_cut_edges(
     return rims, lips
 
 
-def round_cone_cut(
+def chamfer_cone_cut(
     shape: Any,
     angle_deg: float,
     bed_z: float,
-    radius: float,
+    size: float,
     report: Any,
-    lip_radius: float | None = None,
 ) -> Any:
-    """Fillet the access cones' mouth rims by ``radius`` and their lips by
-    ``lip_radius`` (ADR-0023; defaults to ``radius``).
+    """Chamfer the access cones' outside edges by ``size`` mm (ADR-0025, ADR-0027).
 
-    The one fillet on an outside face: the cones' rims and flared lips are
-    hard to ease with a chamfer without reading as a second taper, and the
-    wall/floor edges stay sharp by construction -- they are never selected.
-    Edges that don't take the fillet are skipped with a SOFT warning.
+    Both classes :func:`cone_cut_edges` selects are convex (the material sits on
+    one side of the edge), so both take the 45 degree chamfer, never a fillet:
+    the **mouth rims** at the bed and the **lips** where the taper's sloped face
+    flares a cone open.
+
+    The lips go first and the rims are re-selected afterwards: a rim chamfer
+    meeting a lip at the bed leaves stubs of that lip that OCC cannot chamfer,
+    while the lip first keeps the rim a clean arc. Edges that don't take the
+    chamfer are skipped with a SOFT warning.
     """
     rims, lips = cone_cut_edges(shape, angle_deg, bed_z)
     shape = _apply(
-        shape, rims, radius, cad_helpers.fillet_edges, "cone rim fillet", report
+        shape, lips, size, cad_helpers.chamfer_edges, "cone lip chamfer", report
     )
-    shape = _apply(
-        shape,
-        lips,
-        radius if lip_radius is None else lip_radius,
-        cad_helpers.fillet_edges,
-        "cone lip fillet",
-        report,
+    rims, _ = cone_cut_edges(shape, angle_deg, bed_z)
+    return _apply(
+        shape, rims, size, cad_helpers.chamfer_edges, "cone rim chamfer", report
     )
-    return shape
 
 
 def column_junction_edges(

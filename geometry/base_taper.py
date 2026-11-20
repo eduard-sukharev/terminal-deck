@@ -1,13 +1,15 @@
-"""The Tray's base taper on its vertical front/rear walls (ADR-0019, ADR-0022).
+"""The Tray's base taper on its vertical front/rear walls (ADR-0019, ADR-0022, ADR-0027).
 
 The Tray's X walls are vertical because the accessory rail bolts to a flat,
 square face; its front/rear end walls are vertical too (the guide span and the
 rod end clamps are pinned to the 140 mm face budget). The end walls still read
-as a taper: each leaves the table `chassis_joint.taper_angle` (15 degrees) off
-vertical and runs at that angle up to the **bottom of the joint band**, so the
-base is inset, the wall stands straight above it and the band itself stays
-prismatic -- the old "taper + band" silhouette, on the pair of walls that may
-lean.
+as a taper: each leaves the table at the **band stations' axis** -- the face at
+the table sits one ``chassis_joint.side_inset`` inside the wall, exactly where
+the long-wall screws stand -- and runs up to the **bottom of the joint band**,
+so the base is inset, the wall stands straight above it and the band itself
+stays prismatic -- the old "taper + band" silhouette, on the pair of walls that
+may lean. ``BaseTaper.angle`` is the resulting angle off vertical (derived, not
+configured).
 
 The taper is a **draft**: :func:`build_cutter` takes the wedge off the outside
 and :func:`build_fill` puts the same wedge back inside the cavity, so the wall
@@ -15,13 +17,14 @@ keeps its thickness over the whole taper instead of thinning to a knife edge at
 the table.
 
 Only the **corner** stations keep a pad (ADR-0022). The long-wall stations
-stand mid-run, and there the taper runs **through** their access cones: at the
-table the taper's sloped face lies inside the cone mouth's plan circle, so the
-opening is the cone flared by the taper with no sliver of floor skin to print
-as a knife edge; higher up the wall's draft restores the pier around the cone
-in one constant-thickness slope. The corners keep their pads because the
-chamfered corner leaves no run to open into -- a pad there is the rounded stop
-the wall's taper starts and ends on, set off the corner as today.
+stand mid-run, and there the taper runs **through** their access cones: the
+face at the table passes through the station's axis (ADR-0027), so the outboard
+half of the cone's mouth is cut away and the opening flares from the inboard
+half-ring up to the lip, with no sliver of floor skin to print as a knife edge;
+higher up the wall's draft restores the pier around the cone in one
+constant-thickness slope. The corners keep their pads because the chamfered
+corner leaves no run to open into -- a pad there is the rounded stop the wall's
+taper starts and ends on, set off the corner as today.
 
 Everything here is pure data -- the plan of the taper, its segments along the
 wall and the pad circles -- so the drawings, the checks and the CAD agree; only
@@ -41,7 +44,11 @@ _EXTRA = 0.2
 
 @dataclass(frozen=True)
 class BaseTaper:
-    """One Tray end wall's base taper, sized from the band joint (mm)."""
+    """One Tray end wall's base taper, sized from the band joint (mm).
+
+    ``inset`` is the reach at the table (the joint's ``side_inset``) and
+    ``angle`` the resulting lean off vertical -- derived, never configured.
+    """
 
     angle: float
     height: float
@@ -113,25 +120,22 @@ def cone_lip_z(taper: BaseTaper, recess: Any, mouth_radius: float, margin: float
     return (taper.inset + mouth_radius - margin) / slope
 
 
-def lip_fillet_limit(
+def lip_chamfer_limit(
     taper: BaseTaper,
     recess: Any,
     mouth_radius: float,
     margin: float,
     minimum_feature: float,
 ) -> float:
-    """Largest fillet radius on the lip that keeps the head pocket intact (mm).
+    """Longest 45 degree chamfer leg the lip takes below the head pocket (mm).
 
-    A radius ``r`` fillet on the lip (cone against the sloped face, a shallow
-    ``taper angle - cone half-angle`` dihedral) climbs the cone by
-    ``r x cot(dihedral / 2)``; it must stop one ``minimum_feature`` below the
-    pocket's neck so the driver cone stays a clean surface. Returns zero or
-    negative when even a vanishing fillet would breach the neck.
+    The lip is the near-vertical crest where the taper's sloped face opens the
+    access cone. A leg ``c`` of a 45 degree chamfer runs about ``c`` up that
+    crest, so it must stop one ``minimum_feature`` below the pocket's neck.
+    Returns a value at or below zero when even a token chamfer would breach it.
     """
     z_lip = cone_lip_z(taper, recess, mouth_radius, margin)
-    dihedral = taper.angle - recess.cone_angle(mouth_radius)
-    run_budget = recess.z_neck - minimum_feature - z_lip
-    return run_budget * math.tan(math.radians(dihedral / 2.0))
+    return recess.z_neck - minimum_feature - z_lip
 
 
 def _corner_stations(joint: Any, half_depth: float) -> list[Any]:
@@ -181,10 +185,12 @@ def base_taper(config: Any, joint: Any) -> BaseTaper:
     ``height`` is the bottom of the joint band: the taper runs from the table
     to where the band starts, so the band itself stays prismatic and the slope
     stops 3 mm short of the Parting plane -- the "taper + band" silhouette. The
-    inset then follows the configured angle. The pads follow the recess the
-    joint already sized, but only the corner stations carry one (ADR-0022):
-    everywhere else the taper runs straight through the wall, opening into the
-    long-wall stations' access cones.
+    **inset is derived** (ADR-0027): the outer face at the table sits
+    ``side_inset`` inside the wall, exactly on the long-wall stations' axes, and
+    the angle off vertical follows from that over ``height``. The pads follow
+    the recess the joint already sized, but only the corner stations carry one
+    (ADR-0022): everywhere else the taper runs straight through the wall,
+    opening into the long-wall stations' access cones.
     """
     settings = config.chassis_joint
     minimum_feature = config.material.minimum_feature
@@ -198,9 +204,14 @@ def base_taper(config: Any, joint: Any) -> BaseTaper:
             "taper has nothing to stop on"
         )
 
-    angle = settings.taper_angle
     height = joint.band_z0
-    inset = math.tan(math.radians(angle)) * height
+    inset = joint.side_inset
+    if not 0.0 < inset < half_depth - wall:
+        raise ValueError(
+            "the base taper's reach must stay inside the wall: "
+            f"inset {inset:.2f} of a {half_depth:.2f} mm half-depth"
+        )
+    angle = math.degrees(math.atan2(inset, height))
     mouth = max(station.mouth_radius for station in stations)
     # The pad keeps one minimum feature of material outside the access cone
     # mouth (ADR-0021), so the floor's lip never breaks into the tapered face.
@@ -210,7 +221,7 @@ def base_taper(config: Any, joint: Any) -> BaseTaper:
     # Where a stop circle crosses the tapered face at the table: the taper
     # resumes that far to either side of the station.
     gap = half_depth - abs(stations[0].y) - inset
-    if stop_radius <= gap:
+    if gap < 0.0 or stop_radius <= gap:
         raise ValueError(
             "the taper's stop circle does not reach the tapered face: the pad "
             f"radius {stop_radius:.2f} <= {gap:.2f} mm"
@@ -335,4 +346,11 @@ def build_fill(taper: BaseTaper):
     return ch.union(near, far)
 
 
-__all__ = ["BaseTaper", "base_taper", "build_cutter", "build_fill"]
+__all__ = [
+    "BaseTaper",
+    "base_taper",
+    "build_cutter",
+    "build_fill",
+    "cone_lip_z",
+    "lip_chamfer_limit",
+]

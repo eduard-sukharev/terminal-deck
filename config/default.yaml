@@ -61,17 +61,10 @@ chassis_joint:
                        # the Parting plane in a deep conical access cavity
                        # (ADR-0021; the lid's band joint keeps ADR-0018's
                        # keyhole)
-  taper_angle: 15.0    # base taper on the vertical front/rear walls: draft
-                       # angle from vertical (ADR-0019); runs from the table up
-                       # to the band's bottom, the cavity following so the wall
-                       # keeps its thickness; it runs through the long-wall
-                       # stations' cones and dies into a pad at the corners
-                       # only (ADR-0022), so the taper reads full-width
-  taper_runout: 3.0    # how far that taper fades into a station pad
-  taper_fillet: 1.0    # the fillet on the access cones' mouth rims (ADR-0023);
-                       # the lips take the largest radius that keeps the head
-                       # pocket's neck intact, and the walls' edges with the
-                       # floor stay sharp
+  taper_runout: 3.0    # how far the base taper fades into a station pad
+                       # (the taper's own reach at the table and its angle are
+                       # derived: the face passes through the long-wall
+                       # stations' axes, inset = side_inset -- ADR-0027)
   column_fillet: 1.5   # the merge fillet where a wall column's disc crosses a
                        # front/rear cavity wall face, in both the Tray and the
                        # Deck (ADR-0024); it plus one minimum feature must fit
@@ -92,7 +85,9 @@ merged_boss:
 # Edge treatment (ADR 0003): chamfer-first — outside faces are always
 # chamfered. Concave joints get a stress-relief chamfer of
 # `chamfer_factor * wall`; `bed_chamfer` is the 45 deg chamfer on each
-# Section's bed-face outer edge (elephant's foot). The only fillets are the
+# Section's bed-face outer edge (elephant's foot) and on the Tray's access
+# cones' outside edges — their mouth rims at the bed and the lips the base
+# taper flares open (ADR-0025, ADR-0027). The only fillets are the
 # vertical concave joints, hidden inside the assembly.
 edges:
   chamfer_factor: 0.5

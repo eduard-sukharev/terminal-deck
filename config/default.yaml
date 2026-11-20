@@ -8,15 +8,14 @@ corners:
   chamfer: 4            # 45 deg chamfer on the outer case corners (chamfer-first, no fillets outside)
 
 draft:
-  lid: 7.0              # degrees from vertical on the screen lid's X side
-                        # walls: the lid widens from its face panel down to the
-                        # back panel, so the two halves are widest where they
-                        # meet. The Tray's side walls are *vertical* (ADR-0019):
-                        # the accessory rail bolts to a flat, square face, and a
-                        # drafted wall would put the rail on a slope. The front
-                        # and rear end walls are vertical too (the guide span
-                        # and rod end clamps are pinned to the 140 mm face
-                        # budget); they leave the table with the base taper.
+  lid: 7.0              # degrees from vertical on the screen lid's X (left/right)
+                        # walls (ADR-0031). The lid narrows from its band up to
+                        # the face panel; its Y (front/rear) walls take the
+                        # Tray's derived base-taper angle. The X draft stays
+                        # small: the display is close to these walls, and a
+                        # larger angle would widen the case. The Tray's side
+                        # walls are *vertical* (ADR-0019): the accessory rail
+                        # bolts to a flat, square face.
 
 clearance:
   shell: 0.35           # air gap between a component and the shell interior

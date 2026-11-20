@@ -72,15 +72,16 @@ class Corners:
 
 @dataclass(frozen=True)
 class Draft:
-    """Draft on the screen lid's X side walls (degrees from vertical).
+    """Draft on the screen lid (degrees from vertical, ADR-0031).
 
-    The Tray's side walls are **vertical** (ADR-0019): the accessory rail bolts
-    to a flat, square face, and a drafted wall would put the rail on a slope.
-    The lid keeps its taper -- it widens from its face panel down to the back
-    panel, so the two halves are widest where they meet. The front/rear end
-    walls stay vertical because the guide span and the rod end clamps are
-    pinned to the 140 mm face-height budget; the Tray's end walls leave the
-    table with the base taper instead (``geometry.base_taper``).
+    The lid narrows from its prismatic band up to the face panel. Its Y
+    (front/rear) walls take the Tray's derived base-taper angle
+    (``geometry.base_taper.base_taper_angle``), so the two halves lean at the
+    same slope. Its X (left/right) walls keep a smaller draft: the display sets
+    that cap, and a larger angle would widen the case.
+
+    The **Tray's X walls stay vertical** (ADR-0019): the accessory rail bolts to
+    a flat, square face, and a drafted wall would put the rail on a slope.
     """
 
     lid: float = 7.0
@@ -635,14 +636,21 @@ class SlideRod:
     """A steel guide rod clamped to the screen lid's back panel."""
 
     diameter: float = 6.0
-    end_support: float = 3.0  # lid material beyond the rod's usable span
+    end_support: float = 3.75  # lid material beyond the rod's usable span
     side_margin: float = 2.5  # how far the stance sits inside its tightest bound
+    #: The purchased (or stocked) rod length (WCS6). When set, the usable span
+    #: is this length and the face-height budget's remainder goes into
+    #: ``end_support``; a rod longer than the budget allows, or one the clamps
+    #: no longer fit on, fails the build (``rod_stock_ok``).
+    stock_length: float | None = None
 
     def __post_init__(self) -> None:
         if self.diameter <= 0 or self.end_support < 0:
             raise ValueError("slide.rod needs diameter > 0 and end_support >= 0")
         if self.side_margin < 0:
             raise ValueError("slide.rod.side_margin must be >= 0")
+        if self.stock_length is not None and self.stock_length <= 0:
+            raise ValueError("slide.rod.stock_length must be > 0")
 
 
 @dataclass(frozen=True)
@@ -1044,8 +1052,11 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
         ),
         rod=SlideRod(
             diameter=float(slide_rod.get("diameter", 6.0)),
-            end_support=float(slide_rod.get("end_support", 3.0)),
+            end_support=float(slide_rod.get("end_support", 3.75)),
             side_margin=float(slide_rod.get("side_margin", 2.5)),
+            stock_length=None
+            if slide_rod.get("stock_length") is None
+            else float(slide_rod["stock_length"]),
         ),
         fpc_guard=FpcGuard(
             total=float(slide_fpc_guard.get("total", 1.6)),
@@ -1056,7 +1067,7 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
             fit=float(slide_fpc_guard.get("fit", 0.4)),
         ),
         rod_clamp=RodClamp(
-            length=float(slide_rod_clamp.get("length", 9.0)),
+            length=float(slide_rod_clamp.get("length", 8.25)),
             height=float(slide_rod_clamp.get("height", 10.0)),
             width=float(slide_rod_clamp.get("width", 22.0)),
             clearance=float(slide_rod_clamp.get("clearance", 0.5)),

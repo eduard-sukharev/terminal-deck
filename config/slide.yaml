@@ -51,7 +51,11 @@ slide:
 
   rod:
     diameter: 6.0
-    end_support: 3.0         # lid material beyond the rod's usable span
+    stock_length: 130.0      # purchased WCS6 rod length (ADR-0031): the usable
+                             # span is this length, never a cut of our own
+    end_support: 3.75        # lid material beyond the rod's usable span;
+                             # with a stock length this is the face budget's
+                             # remainder ((140 - 2.5 - 130) / 2)
     side_margin: 2.5         # keep the stance a margin inside its tightest
                              # bound (the Deck seat vs the chassis band corner
                              # boss is a plan-space proxy for a Z-separated pair)
@@ -70,7 +74,10 @@ slide:
     fit: 0.4                 # clearance to the driver's FPC connector body
 
   rod_clamp:                 # printed end clamps: 2 per rod, on the lid back panel
-    length: 9.0              # grip length along the rod at each end
+    length: 8.25             # grip length along the rod at each end: with the
+                             # 130 mm stock rod the two clamps plus their
+                             # clearances are the rod's remainder over the
+                             # bearing's travel (ADR-0031)
     height: 7.5              # block height above the back panel's inner face: a saddle
                              # over the rod's top half, still inside the bezel cavity
     width: 22.0              # across the rod; the screws sit outside the slot

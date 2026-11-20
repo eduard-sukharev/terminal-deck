@@ -22,7 +22,7 @@ from typing import Any
 from routing.cable_routing import CONNECTOR_HDMI, MIN_BEND_RADIUS_MM
 
 from components.keycap_set import CAP_PLATE_GAP
-from geometry.base_taper import base_taper
+from geometry.base_taper import base_taper, base_taper_angle
 from geometry.chassis_joint import chassis_joint as chassis_band_joint
 from geometry.joint import lid_joint
 from utilities import fasteners
@@ -174,12 +174,24 @@ class SlideBudget:
     hardware_width: float
     side_pod: float
     draft_allowance: float
+    #: The lid's Y (front/rear) wall draft (degrees): the Tray's base-taper
+    #: angle, so the two halves lean at one slope (ADR-0031).
+    lid_taper_angle: float
+    #: The purchased rod length, or ``None`` for a cut-to-the-budget rod.
+    rod_stock: float | None
     usable_half: float
     rod_x: float
     rod_clamp_width: float
     rod_raise: float
     head_crown: float
     display_cavity: float
+    #: The lid's back panel thickness and the band's height (mm): with
+    #: ``lid_thickness`` they give the height of the lid's drafted walls.
+    lid_back: float
+    band_height: float
+    #: The panel's outline (mm): the content the drafted lid cavity must clear.
+    display_width: float
+    display_height: float
     lid_thickness: float
     rod_x_bounds: RodBounds
     guard_planform: tuple[float, float, float, float]
@@ -231,9 +243,21 @@ class SlideBudget:
         return abs(self.lid_height - self.chassis_height) <= 1e-9
 
     @property
+    def lid_face_taper_height(self) -> float:
+        """How tall the lid's drafted walls are: band's top to the face's inner face."""
+        return self.lid_thickness - self.lid_back - self.band_height
+
+    @property
     def chain_bend_ok(self) -> bool:
         """The drag chain must not bend the cable tighter than its minimum."""
         return self.chain_bend_radius >= self.cable_min_bend_radius
+
+    @property
+    def rod_stock_ok(self) -> bool:
+        """A stock rod must fit the closed face without being cut (ADR-0031)."""
+        if self.rod_stock is None:
+            return True
+        return self.lid_height <= self.face_height_limit + 1e-9
 
     def summary(self) -> str:
         """Human-readable budget, printed by the data pipeline."""
@@ -256,7 +280,15 @@ class SlideBudget:
             f"  rod clamps: {self.rod_clamp_length:.1f} mm each end, "
             f"slot {self.slot_span:.2f} / {self.slot_needed:.2f} mm needed",
             f"  lid: {self.lid_height:.2f} mm, overlap in the open pose "
-            f"{self.lid_overlap:.2f} mm",
+            f"{self.lid_overlap:.2f} mm, front/rear taper "
+            f"{self.lid_taper_angle:.2f} deg (face depth "
+            f"{self.lid_height - 2.0 * math.tan(math.radians(self.lid_taper_angle)) * self.lid_face_taper_height:.2f})",
+            f"  rod: {self.rod_usable:.2f} mm usable"
+            + (
+                f", stock {self.rod_stock:.2f} mm (not cut)"
+                if self.rod_stock is not None
+                else ""
+            ),
             f"  chassis joint: {self.chassis_joint.station_count} stations, "
             f"band {self.chassis_joint.band:.1f} mm at z "
             f"{self.chassis_joint.parting_z:.2f}, "
@@ -416,8 +448,21 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
     rear_band_min = max(rear_band_clamp, rear_band_contents)
     chassis_height_min = keyboard_top + rear_band_min + wall
 
-    guide_span = rod_usable + 2 * rod.end_support
-    lid_height = guide_span + slide.top_bezel
+    # The guide span: what the lid has to carry. The hardware (travel, bearing,
+    # rod clamps and their gaps) sets the **minimum**; a stock rod (ADR-0031)
+    # may be longer, and the extra length becomes the lid material beyond each
+    # clamp, exactly as without one. A stock rod is never cut, so the lid is
+    # as long as the rod plus `top_bezel` -- and `slide-stock-rod` (HARD) fails
+    # when that is longer than the 140 mm face allows.
+    guide_min = rod_usable + 2.0 * rod.end_support
+    stock = rod.stock_length
+    if stock is not None:
+        stock_span = stock + 2.0 * rod.end_support
+        guide_span = max(guide_min, stock_span)
+        lid_height = guide_span + slide.top_bezel
+    else:
+        guide_span = guide_min
+        lid_height = guide_span + slide.top_bezel
     # The lid is the larger half: its guide span is fixed by the purchased
     # bearing and the end clamps, so the chassis grows to meet it instead of
     # the lid overhanging the chassis at the rear. The lid defines the
@@ -491,22 +536,18 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
     )
     thickness = chassis_thickness + slide.lid_clearance + lid_thickness
 
-    # -- Width: the content plus the lid's drafted side wall --------------
-    # The guide hardware is inboard now, so nothing but the display sets the
-    # width. The *lid's* X side walls are drafted (the Tray's are vertical,
-    # ADR-0019): the cavity narrows from the prismatic band toward the face
-    # panel, so the side pod has to include the draft inset over the display's
-    # height. The allowance stays a lid term, never a chassis one.
+    # -- Width: the content plus the lid's drafted side wall (ADR-0031) ----
+    # The guide hardware is inboard now, so nothing but the content sets the
+    # width. The lid's X walls lean with its Y walls (one slope, ADR-0031), so
+    # the side pod is the wall, the shell clearance and the draft inset over
+    # the display's height. The keyboard plate bears on the Well ring and is
+    # sized there (ADR-0014): beside it the pod's draft allowance is spare, so
+    # the plate's half-width plus the wall is the narrower of the two bounds.
     display_top = display_cavity + display.height
     cavity_z1 = lid_thickness - slide.lid_front  # the front panel's inner face
-    taper_height = max(
-        0.0, min(display_top, cavity_z1) - slide.joint.band
-    )
+    taper_height = max(0.0, min(display_top, cavity_z1) - slide.joint.band)
     draft_allowance = math.tan(math.radians(config.draft.lid)) * taper_height
     side_pod = wall + shell + draft_allowance
-    # The keyboard plate is wider than the display (ADR-0014: it grew to bear
-    # on the Well ring), so the Well plate is the width driver; the display is
-    # only the fallback content reference.
     content_width = max(plate_width, display.width)
     width = content_width + 2 * side_pod
     # The Tray <-> Deck band joint (ADR-0012): the Parting plane and the ten
@@ -535,7 +576,8 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
     # the band joint's head recesses, which it has to step around.
     taper = base_taper(config, chassis_band)
     # `usable_half` is the inner wall at the content's plane: what the layout
-    # may fill before the shell clearance runs out.
+    # may fill before the shell clearance runs out. The plate is sized from the
+    # Cutout and the mounts (ADR-0014), not from this bound.
     usable_half = width / 2.0 - side_pod
 
     # -- Guide stance: bounded by the three features it must clear --------
@@ -638,12 +680,18 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
         hardware_width=hardware_width,
         side_pod=side_pod,
         draft_allowance=draft_allowance,
+        lid_taper_angle=base_taper_angle(config, chassis_thickness),
+        rod_stock=rod.stock_length,
         usable_half=usable_half,
         rod_x=rod_x,
         rod_clamp_width=slide.rod_clamp.width,
         rod_raise=rod_raise,
         head_crown=head_crown,
         display_cavity=display_cavity,
+        lid_back=slide.lid_back,
+        band_height=joint.band,
+        display_width=display.width,
+        display_height=display.height,
         lid_thickness=lid_thickness,
         rod_x_bounds=rod_bounds,
         guard_planform=guard_planform,

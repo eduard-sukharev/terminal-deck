@@ -37,6 +37,8 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
+from geometry.parting import parting_height
+
 #: The taper's cross-sections overshoot the part on both ends, so the booleans
 #: trim clean faces instead of leaving a skin (mm).
 _EXTRA = 0.2
@@ -179,6 +181,26 @@ def _segments(
     return tuple(runs)
 
 
+def base_taper_angle(config: Any, chassis_top: float) -> float:
+    """The Tray's base taper angle off vertical (degrees, ADR-0027/ADR-0031).
+
+    The taper's face at the table sits ``chassis_joint.side_inset`` inside the
+    wall and runs up to the band's bottom, so the angle is that reach over that
+    height -- derived, never configured. The lid's Y walls lean at the same
+    angle (ADR-0031), so this is the single source for both.
+    """
+    band_z0 = parting_height(config.parting, chassis_top) - (
+        config.chassis_joint.band / 2.0
+    )
+    inset = config.chassis_joint.side_inset
+    if band_z0 <= 0.0 or not 0.0 < inset:
+        raise ValueError(
+            "the base taper has no reach to derive an angle from: "
+            f"inset {inset:.2f} over {band_z0:.2f} mm"
+        )
+    return math.degrees(math.atan2(inset, band_z0))
+
+
 def base_taper(config: Any, joint: Any) -> BaseTaper:
     """Size both Tray end walls' base taper from the band joint.
 
@@ -211,7 +233,7 @@ def base_taper(config: Any, joint: Any) -> BaseTaper:
             "the base taper's reach must stay inside the wall: "
             f"inset {inset:.2f} of a {half_depth:.2f} mm half-depth"
         )
-    angle = math.degrees(math.atan2(inset, height))
+    angle = base_taper_angle(config, joint.chassis_top)
     mouth = max(station.mouth_radius for station in stations)
     # The pad keeps one minimum feature of material outside the access cone
     # mouth (ADR-0021), so the floor's lip never breaks into the tapered face.

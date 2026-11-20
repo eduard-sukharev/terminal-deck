@@ -55,8 +55,11 @@ class SliderFrame:
     width: float
     depth: float
     lid_draft_angle: float
+    #: The lid's front/rear (Y) wall draft (degrees): the Tray's base taper.
+    lid_taper_angle: float
     chassis_base_width: float
     lid_face_width: float
+    lid_face_height: float
     chassis_top: float
     parting_z: float
     chassis_band_z0: float
@@ -170,16 +173,23 @@ class SliderFrame:
         joint = budget.lid_joint
         band_z0 = panel_inner_z
         band_z1 = panel_inner_z + joint.band
-        # X side-wall draft: the Tray's are vertical (ADR-0019: the accessory
-        # rail needs a flat face), the lid's widen from the face panel down to
-        # the back panel, so the two halves match at the closed face. The Deck
+        # X side-wall draft (ADR-0031): the Tray's are vertical (ADR-0019: the
+        # accessory rail needs a flat face); the lid narrows from its face
+        # panel down to the prismatic band, so the two halves meet at the
+        # closed face at the full width. The front/rear (Y) walls lean at the
+        # Tray's own base-taper angle, so both halves show one slope. The Deck
         # and both joint bands are prismatic; only the lid above its band
         # tapers.
         lid_draft_angle = config.draft.lid
+        lid_taper_angle = budget.lid_taper_angle
         draft_tan = math.tan(math.radians(lid_draft_angle))
         taper_height = lid_thickness - slide.lid_back - joint.band
         lid_face_width = budget.width - 2.0 * draft_tan * max(taper_height, 0.0)
-        if min(chassis_base_width, lid_face_width) <= 0.0:
+        lid_face_height = (
+            budget.lid_height
+            - 2.0 * math.tan(math.radians(lid_taper_angle)) * max(taper_height, 0.0)
+        )
+        if min(chassis_base_width, lid_face_width, lid_face_height) <= 0.0:
             raise ValueError(
                 "draft angle is too large for the case height: the drafted "
                 "face would collapse past the centreline"
@@ -261,8 +271,10 @@ class SliderFrame:
             width=budget.width,
             depth=budget.chassis_height,
             lid_draft_angle=lid_draft_angle,
+            lid_taper_angle=lid_taper_angle,
             chassis_base_width=chassis_base_width,
             lid_face_width=lid_face_width,
+            lid_face_height=lid_face_height,
             chassis_top=chassis_top,
             parting_z=parting_z,
             chassis_band_z0=chassis_band_z0,

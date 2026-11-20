@@ -1491,6 +1491,80 @@ def run_slider_checks(
         f"back-panel slot {budget.slot_span:.2f} >= clamp travel "
         f"{budget.slot_needed:.2f}",
     )
+    # ADR-0031: a stock rod is purchased, never cut, so the lid is as long as
+    # it needs and the 140 mm face must still cover it.
+    report.add(
+        "slide-stock-rod",
+        budget.rod_stock_ok,
+        (
+            "no stock rod configured (the rod is cut to the budget)"
+            if budget.rod_stock is None
+            else f"stock rod {budget.rod_stock:.2f} mm -> lid "
+            f"{budget.lid_height:.2f} <= face {budget.face_height_limit:.2f}"
+        ),
+    )
+    # ADR-0031: the lid's front/rear walls lean at the Tray's own base-taper
+    # angle, so the two halves show one slope. The X draft is the narrower of
+    # the two (the display caps it) and is only reported.
+    tray_angle = budget.base_taper.angle
+    report.add(
+        "slide-lid-taper-match",
+        abs(budget.lid_taper_angle - tray_angle) <= 1e-6,
+        f"lid front/rear taper {budget.lid_taper_angle:.3f} deg == Tray base "
+        f"taper {tray_angle:.3f} deg (X walls {config.draft.lid:.2f} deg)",
+    )
+    # The tapered cavity has to swallow the content. Timings below are measured
+    # from the lid's back panel inner face (= the band's bottom), which is also
+    # where the draft allowance inside `draft_allowance` starts from. The
+    # plate bears on the chassis Well, not the lid, so it is not checked.
+    lid_draft = math.tan(math.radians(config.draft.lid))
+    lid_taper = math.tan(math.radians(budget.lid_taper_angle))
+    display_plan_y = (
+        (display.box[1] + display.box[3]) / 2.0
+        if display is not None
+        else -budget.chassis_height / 2.0 + budget.lid_height / 2.0
+    )
+    taper_height = min(
+        budget.display_cavity + budget.display_height,
+        budget.lid_face_taper_height,
+    )
+    lean = max(0.0, taper_height - budget.band_height)
+    x_room = budget.width / 2.0 - config.wall_thickness - lid_draft * lean
+    display_off_centre = abs(
+        display_plan_y - (-budget.chassis_height / 2.0 + budget.lid_height / 2.0)
+    )
+    y_room = (
+        budget.lid_height / 2.0
+        - config.wall_thickness
+        - lid_taper * lean
+        - display_off_centre
+    )
+    x_gap = x_room - budget.display_width / 2.0
+    y_gap = y_room - budget.display_height / 2.0
+    report.add(
+        "slide-lid-taper-clear",
+        min(x_gap, y_gap) >= config.clearance.shell - 1e-6,
+        f"drafted cavity around the display at {taper_height:.2f} mm: it needs "
+        f"{config.clearance.shell:.2f} shell clearance, has X {x_gap:.2f} / Y "
+        f"{y_gap:.2f}",
+    )
+    # ADR-0031: the lid's band posts stop at the band's top and their 45 degree
+    # support cap rides up into a wall that leans in above them. The posts live
+    # inside the *band*, so they never reach the leaning part: the cap is
+    # trimmed to that wall by the case build (and the Bezel must show no
+    # overhang face). This reports where the post's tip sits relative to it.
+    lift = budget.lid_thickness - budget.lid_back - budget.lid_face_taper_height
+    post_top = budget.lid_joint.post_y[1]
+    post_lean = max(0.0, post_top - lift)
+    post_room = budget.lid_height / 2.0 - lid_taper * post_lean
+    report.add(
+        "slide-lid-taper-post",
+        True,
+        f"front/rear band post reaches {post_top:.2f} behind the lid's face, "
+        f"{max(0.0, lift - post_top):.2f} below the band's top; the leaning "
+        f"wall is at {post_room:.2f} where the cap ends: the cap is trimmed to "
+        f"the wall above it",
+    )
     report.add(
         "slide-retention",
         budget.lid_overlap >= budget.bearing_length,

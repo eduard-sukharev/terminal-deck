@@ -123,8 +123,10 @@ class ScreenLid:
     def _outer_shell(self):
         """The Bezel's outside: the prismatic band plus the drafted face tray.
 
-        Every feature of the Bezel has to stay inside this solid; it is what
-        the wall thickness and the outer chamfers are measured from.
+        The tray narrows from the band up to the face panel on all four walls:
+        X at ``draft.lid``, Y at the Tray's base-taper angle (ADR-0031). Every
+        feature of the Bezel has to stay inside this solid; it is what the wall
+        thickness and the outer chamfers are measured from.
         """
         from utilities import cad_helpers as ch
 
@@ -142,7 +144,7 @@ class ScreenLid:
                     f.width,
                     f.lid_height,
                     f.lid_face_width,
-                    f.lid_height,
+                    f.lid_face_height,
                     z1,
                     top,
                     chamfer=chamfer,
@@ -164,9 +166,10 @@ class ScreenLid:
         outer = self._outer_shell()
 
         # Open cavity: the band's inside is straight, the rest follows the
-        # drafted side walls, keeping the wall thickness constant. Its vertical
-        # corners carry the inner chamfer, so the corner stays one `wall` thick
-        # behind the outer chop instead of meeting it in a knife edge.
+        # drafted walls (X at `draft.lid`, Y at the Tray's base taper, ADR-0031),
+        # keeping the wall thickness constant. Its vertical corners carry the
+        # inner chamfer, so the corner stays one `wall` thick behind the outer
+        # chop instead of meeting it in a knife edge.
         cavity_chamfer = ch.inner_corner_chamfer(chamfer, wall)
         cavity_z1 = top - f.lid_front
         cavity = ch.tapered_box(
@@ -185,13 +188,18 @@ class ScreenLid:
                 + 2.0 * ch.draft_inset(f.lid_draft_angle, f.lid_front)
                 - 2.0 * wall
             )
+            top_height = (
+                f.lid_face_height
+                + 2.0 * ch.draft_inset(f.lid_taper_angle, f.lid_front)
+                - 2.0 * wall
+            )
             cavity = ch.union(
                 cavity,
                 ch.tapered_box(
                     f.width - 2.0 * wall,
                     f.lid_height - 2.0 * wall,
                     top_width,
-                    f.lid_height - 2.0 * wall,
+                    top_height,
                     z1,
                     cavity_z1,
                     chamfer=cavity_chamfer,

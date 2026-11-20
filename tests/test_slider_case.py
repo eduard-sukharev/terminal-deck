@@ -120,7 +120,9 @@ def test_the_tray_is_prismatic_and_the_lid_is_drafted(data, solids):
     """
     _, _, _, frame = data
     chassis, lid = solids
-    assert 5.0 <= frame.lid_draft_angle <= 10.0
+    # ADR-0031: the X draft is capped by the display inside the case width
+    # (13.43 deg would already need a wider case).
+    assert 5.0 <= frame.lid_draft_angle <= 13.4
 
     for z in (0.5, frame.chassis_band_z0 + 0.5, frame.chassis_top - 0.5):
         assert _width_at(chassis, z) == pytest.approx(frame.width, abs=0.1)
@@ -138,6 +140,41 @@ def test_the_tray_is_prismatic_and_the_lid_is_drafted(data, solids):
     taper_half = ch.draft_inset(frame.lid_draft_angle, 0.5)
     assert l_top == pytest.approx(
         frame.lid_face_width + 2.0 * taper_half, abs=0.1
+    )
+
+
+def _depth_at(shape, z):
+    slab = ch.translate(ch.box_centered(1000.0, 1000.0, 0.01), 0.0, 0.0, z)
+    return ch.bounding_box_mm(ch.intersect(shape, slab))[1]
+
+
+def test_the_lid_narrows_toward_its_face_on_all_four_walls(data, solids):
+    """ADR-0031: the lid's front/rear walls lean at the Tray's base-taper angle.
+
+    The lid narrows from its prismatic band up to the face panel, so the two
+    halves meet at the closed face at full width. X takes `draft.lid` (capped
+    by the display inside the case width); Y takes the Tray's own derived
+    base-taper angle, so both halves show one slope.
+    """
+    _, _, budget, frame = data
+    _, lid = solids
+    angle = budget.base_taper.angle
+    assert frame.lid_taper_angle == pytest.approx(angle)
+    assert budget.lid_taper_angle == pytest.approx(angle)
+
+    d_bottom = _depth_at(lid, frame.band_z1 + 0.5)
+    d_top = _depth_at(lid, frame.lid_top - 0.5)
+    taper_half = ch.draft_inset(frame.lid_taper_angle, 0.5)
+    assert d_bottom == pytest.approx(frame.lid_height - 2.0 * taper_half, abs=0.1)
+    assert d_top < d_bottom - 5.0
+    assert d_top == pytest.approx(
+        frame.lid_face_height + 2.0 * taper_half, abs=0.1
+    )
+    # The face itself is the small end of the tray, not the wide one.
+    assert frame.lid_face_height < frame.lid_height
+    # Below the band the lid is prismatic, like the chassis it meets.
+    assert _depth_at(lid, frame.panel_outer_z + 0.5) == pytest.approx(
+        frame.lid_height, abs=0.1
     )
 
 
@@ -1417,11 +1454,15 @@ def test_the_bezel_face_is_broken_at_the_perimeter_and_seam(data, pieces):
     overhang, a first-layer bridge on the drafted walls)."""
     config, _, _, frame = data
     half = frame.lid_face_width / 2.0
+    half_y = frame.lid_face_height / 2.0
     top = frame.lid_top
     left = _sections(data, pieces, "screen_lid_bezel")[0]
 
     assert _finish(left, -half + 0.08, 50.0, top - 0.05) == pytest.approx(0.0)
     assert _finish(left, -half + 0.65, 50.0, top - 0.05) > 0.0
+    # The front/rear wall leans too (ADR-0031), so its face edge is skipped
+    # by `bed_edges` and keeps the draft as its break (ADR-0030).
+    assert _finish(left, -half / 2.0, -half_y + 0.08, top - 0.05) > 0.0
     assert _finish(left, -14.0 - 0.3, 50.0, top - 0.05) == pytest.approx(0.0)
     assert _finish(left, -14.0 - 0.7, 50.0, top - 0.05) > 0.0
 

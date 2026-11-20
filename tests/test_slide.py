@@ -84,15 +84,24 @@ def test_slider_layout_is_centred_on_the_chassis():
 
 def test_lid_draft_is_configured_and_inside_the_requested_range():
     _, config, components, _, _ = _data()
-    # ADR-0019: only the lid is drafted; the Tray's side walls are vertical.
-    assert 5.0 <= config.draft.lid <= 10.0
+    # ADR-0019/ADR-0031: only the lid is drafted; the Tray's side walls are
+    # vertical, and the X draft is capped by the display inside the case width.
+    assert 5.0 <= config.draft.lid <= 13.4
     budget = _budget(config, components)
     assert budget.draft_allowance > 0.0
-    # The guide hardware is inboard, under the display, so the side pod is the
-    # wall, the shell clearance and the draft inset of the tapered lid wall --
-    # no hardware, no `component_gap`, no `joint.corner_post`.
+    # The side pod is the wall, the shell clearance and the draft inset of the
+    # tapered lid wall -- the display's own allowance (ADR-0031).
+    display = components["display"].size()
     assert budget.side_pod == pytest.approx(
         config.wall_thickness + config.clearance.shell + budget.draft_allowance
+    )
+    # The plate bears on the Well ring and is swallowed whole at the
+    # prismatic band, so its half-width needs only the wall; the display runs
+    # higher, into the drafted part, and carries its own allowance. The
+    # content's half-width, wall included, is what the side pod wraps.
+    assert budget.well.plate_width >= display.width
+    assert budget.width == pytest.approx(
+        max(budget.well.plate_width, display.width) + 2.0 * budget.side_pod
     )
     assert budget.rod_x_bounds is not None
     assert budget.usable_half == pytest.approx(budget.well.plate_width / 2.0)
@@ -111,12 +120,15 @@ def test_width_derives_from_the_content_and_the_drafted_cavity():
     # Every term of the side pod is derived: the draft inset follows the
     # display's top height inside the tapered *lid* cavity (the Tray's X walls
     # are vertical, ADR-0019, so no chassis draft enters the width).
-    assert 0.0 < budget.draft_allowance < 3.0
-    # The keyboard plate is the wider content now (ADR-0014: the plate grew to
-    # bear on the Well ring), so it drives the width; the display is only the
-    # fallback content reference here.
+    assert 0.0 < budget.draft_allowance < 4.0
+    # The plate bears on the Well ring and is swallowed whole at the
+    # prismatic band, so its half-width needs only the wall; the display runs
+    # higher, into the drafted part, and carries its own allowance. The
+    # content's half-width, wall included, is what the side pod wraps.
     assert budget.well.plate_width >= display.width
-    assert budget.width == pytest.approx(budget.well.plate_width + 2.0 * budget.side_pod)
+    assert budget.width == pytest.approx(
+        max(budget.well.plate_width, display.width) + 2.0 * budget.side_pod
+    )
     # The side bezel drops from the old 30 mm pod to a few mm.
     assert budget.width < 250.0
     assert budget.width - budget.well.plate_width < 12.0

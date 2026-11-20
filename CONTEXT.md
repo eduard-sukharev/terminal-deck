@@ -131,8 +131,10 @@ _Avoid:_ "cable guard" (retired clamshell term), "cable track".
 vertical side walls (ADR-0020). Two M4 stations per wall sit on a printed
 washer puck: the puck captures a DIN 562 square nut in a square pocket in the
 wall's pad, and the rail blank's counterbored hole comes down on it. The
-picatinny profile (slots, hex top) is a later slice; the stance, pad, puck and
-screw are settled. The external battery pack and the USB hub hang on rails.
+pocket's ceiling is a 45° ramp so the Tray prints it without support
+(ADR-0028). The picatinny profile (slots, hex top) is a later slice; the
+stance, pad, puck and screw are settled. The external battery pack and the USB
+hub hang on rails.
 
 **Rear band** — The strip of Deck behind the keyboard, between the
 bearing-clamp seats. Holds the SBC and the drag-chain anchor; not used for the

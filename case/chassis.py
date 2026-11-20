@@ -339,6 +339,16 @@ class Chassis:
             body, mounts, bridged, plain, cavity_top
         )
 
+        # ADR-0029: the same web as the Tray's, so a corner boss merges into
+        # both the front/rear and the X wall and the corner chop is filled
+        # automatically. The Deck's boss is one diameter over its whole height,
+        # so the web uses the boss radius. It goes after the junction fillets
+        # for the same reason as the Tray's (the step it leaves in the front
+        # wall face crowds the corner boss's inboard chord).
+        webs = self._corner_webs(joint.boss / 2.0)
+        body = ch.union(body, *self._corner_web_solids(webs, z0, cavity_top, outer))
+        body = self._treat_corner_webs(body, webs, cavity_top, -1.0, FACE_DOWN)
+
         body = ch.union(body, self._seat(-1), self._seat(1))
         body = ch.cut(body, self._seat_pocket(-1), self._seat_pocket(1))
         body = self._pocket_mouth_chamfer(body)
@@ -679,18 +689,39 @@ class Chassis:
         )
 
     def _rail_pocket(self, station: Any):
-        """The square pocket the printed washer puck drops into."""
+        """The square pocket the printed washer puck drops into.
+
+        The pocket's ceiling is not flat: it is a 45 degree ramp over the
+        pocket's whole depth (``RailStation.pocket_ramp``), because a flat
+        ceiling at the pocket's top would hang over the pocket for the pad's
+        depth when the Tray prints floor down. The ramp climbs from the
+        nominal ceiling plane at the pocket's floor up to the pad's cavity
+        face and leaves ``pocket_lip`` of pad above the mouth. The cutter is a
+        profile rather than a chamfered box so the bevel is exact and OCC
+        never has to relieve the thin lip or the pier behind the pocket.
+        """
         from utilities import cad_helpers as ch
 
         over = 0.2
-        depth = station.pocket_depth + over
-        pocket = ch.box_centered(depth, station.pocket_side, station.pocket_side)
-        return ch.translate(
-            pocket,
-            station.side * (station.x_pad_in - over / 2.0 + depth / 2.0),
-            station.y,
-            station.z,
+        z0 = station.z - station.pocket_side / 2.0
+        z1 = z0 + station.pocket_side
+        xa = station.x_pad_in - over / 2.0
+        xb = station.pocket_floor + over / 2.0
+        # The 45 degree ramp passes through the nominal ceiling corner
+        # (pocket_floor, z1) and meets the pad's face at z1 + pocket_ramp, so
+        # the pier's 0.1 over-cut stops that far below the ceiling and the
+        # ramp closes it: no horizontal face is left anywhere over the pocket.
+        profile = [
+            (xa, z0),
+            (xb, z0),
+            (xb, z1 - over / 2.0),
+            (station.x_pad_in, z1 + station.pocket_ramp),
+            (xa, z1 + station.pocket_ramp),
+        ]
+        prism = ch.extrude_profile_y(
+            [(station.side * x, z) for x, z in profile], station.pocket_side
         )
+        return ch.translate(prism, 0.0, station.y, 0.0)
 
     def _rail_hole(self, station: Any):
         """The M4 clearance bore behind the pocket, through the wall."""

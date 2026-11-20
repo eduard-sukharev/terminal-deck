@@ -738,6 +738,13 @@ def extrude_profile_x(vertices_yz: list[tuple[float, float]], length: float) -> 
     return b3d.extrude(b3d.Face(wire), amount=length / 2.0, both=True)
 
 
+def extrude_profile_y(vertices_xz: list[tuple[float, float]], length: float) -> Any:
+    """Extrude a closed (X, Z) polygon along Y, centered on ``y = 0``."""
+    b3d = require_cad()
+    wire = b3d.Wire.make_polygon([(vx, 0.0, vz) for vx, vz in vertices_xz], close=True)
+    return b3d.extrude(b3d.Face(wire), amount=length / 2.0, both=True)
+
+
 #: How far (mm) the support cap's blank runs past the height where its 45
 #: degree faces meet, so the boolean trims the top to a clean edge instead of
 #: leaving a zero-width face.

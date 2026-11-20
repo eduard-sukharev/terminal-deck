@@ -182,8 +182,9 @@ to tilt it.**
   packs are swapped, is a later option only if the envelope allows.
 * **Accessory rails** — a printed MIL-STD-1913 rail blank (ADR-0020) bolts to
   two M4 stations per Tray side wall. Each station is a full-height pad with a
-  square pocket and two 45° gussets; a printed washer puck in the pocket
-  captures a DIN 562 square nut, so a one-sided M4 button screw clamps the rail.
+  square pocket (its ceiling a 45° ramp, ADR-0028) and two 45° gussets; a
+  printed washer puck in the pocket captures a DIN 562 square nut, so a
+  one-sided M4 button screw clamps the rail.
   The slot profile is a later slice; the interface, stance and screw are fixed.
 * **Well contents** — the keyboard plate closes the Well from below; the
   **RP2040 controller** sits under the plate, in the chassis thickness. The

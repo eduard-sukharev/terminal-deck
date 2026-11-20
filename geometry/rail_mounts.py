@@ -53,6 +53,11 @@ class RailStation:
     pocket opens at ``x_pad_in`` and its floor -- the face the puck bears on --
     is ``pocket_floor``. ``gusset_run`` is how far each 45 degree gusset runs
     from the pad's face along the wall before it is truncated.
+
+    The pocket has no flat ceiling: it is a 45 degree ramp (``pocket_ramp``)
+    over the pocket's whole depth, so the Tray prints it without support. The
+    ramp climbs from the ceiling plane at ``pocket_floor`` to the pad's face,
+    and ``pocket_lip`` is the pad left above the mouth at its top edge.
     """
 
     name: str
@@ -65,6 +70,7 @@ class RailStation:
     pad_depth: float
     pocket_side: float
     pocket_depth: float
+    pocket_lip: float
     gusset_run: float
     clearance_hole: float
     reasons: tuple[str, ...] = ()
@@ -78,6 +84,21 @@ class RailStation:
     def pocket_floor(self) -> float:
         """The pocket's floor: the face the washer puck bears on (mm)."""
         return self.x_pad_in + self.pocket_depth
+
+    @property
+    def pocket_ramp(self) -> float:
+        """The 45 degree ramp that replaces the pocket's ceiling (mm).
+
+        It runs the pocket's whole depth, so no horizontal ceiling face is
+        left to overhang the print: the ramp climbs 1 mm per mm from the
+        ceiling plane at ``pocket_floor`` up to the pad's cavity face.
+        """
+        return self.pocket_depth
+
+    @property
+    def pocket_ramp_top(self) -> float:
+        """Where the ramp meets the pad's cavity face, above the pocket (mm)."""
+        return self.z + self.pocket_side / 2.0 + self.pocket_ramp
 
     @property
     def gusset_height(self) -> float:
@@ -104,7 +125,8 @@ class RailStation:
             f"  {self.name:14s} x={self.side * self.x_outer:8.2f} "
             f"y={self.y:8.2f} z={self.z:6.2f} pad {self.pad_width:.2f} x "
             f"{self.pad_depth:.2f} pocket {self.pocket_side:.2f} x "
-            f"{self.pocket_depth:.2f} gussets {self.gusset_run:.2f} [{state}]"
+            f"{self.pocket_depth:.2f} (ramp {self.pocket_ramp:.2f}, lip "
+            f"{self.pocket_lip:.2f}) gussets {self.gusset_run:.2f} [{state}]"
         )
 
 
@@ -347,12 +369,25 @@ def rail_mounts(config: Any, joint: Any) -> RailMounts:
                     f"min feature {minimum:.2f} to the Parting plane "
                     f"({joint.parting_z:.2f})"
                 )
+            # The ceiling is a 45 degree ramp over the pocket's whole depth
+            # (its whole horizontal face would overhang the Tray's print), so
+            # the pad has to keep some material above the mouth. The lip is
+            # deliberately thinner than a minimum feature: it is the edge of
+            # the pad's wedge over the pocket, not a load-bearing wall.
+            pocket_lip = joint.parting_z - (pocket_z1 + pocket_depth)
+            if pocket_lip <= 0.0:
+                reasons_here.append(
+                    f"the 45 degree pocket ceiling rises {pocket_depth:.2f} mm "
+                    f"and leaves no pad above the mouth at z {pocket_z1:.2f} "
+                    f"(lip {pocket_lip:.2f})"
+                )
             prepared.append(
                 {
                     "name": f"{name}-{'left' if side < 0 else 'right'}",
                     "side": side,
                     "y": y,
                     "runs": runs,
+                    "pocket_lip": pocket_lip,
                     "reasons": reasons_here,
                 }
             )
@@ -378,6 +413,7 @@ def rail_mounts(config: Any, joint: Any) -> RailMounts:
             pad_depth=pad_depth,
             pocket_side=pocket_side,
             pocket_depth=pocket_depth,
+            pocket_lip=item["pocket_lip"],
             gusset_run=gusset_run,
             clearance_hole=screw.clearance,
             reasons=tuple(item["reasons"]),

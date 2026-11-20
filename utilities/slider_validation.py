@@ -640,14 +640,19 @@ def _add_rail_checks(report: ValidationReport, config: Any, budget: Any) -> None
         s.pocket_depth < s.pad_depth - 1e-9
         and s.z - s.pocket_side / 2.0 - mounts.wall >= min_feature - 1e-9
         and joint.parting_z - (s.z + s.pocket_side / 2.0) >= min_feature - 1e-9
+        and s.pocket_lip > 0.0
         for s in mounts.stations
     )
+    station = mounts.stations[0]
     report.add(
         "slide-rail-pocket",
         puck_floor_ok and pocket_rows and ring >= min_feature - 1e-6,
         f"puck floor {mounts.puck_floor:.2f} >= min feature "
-        f"{min_feature:.2f}; pocket {mounts.stations[0].pocket_side:.2f} in a "
-        f"{mounts.stations[0].pad_width:.2f} pad ({ring:.2f} mm ring), "
+        f"{min_feature:.2f}; pocket {station.pocket_side:.2f} in a "
+        f"{station.pad_width:.2f} pad ({ring:.2f} mm ring), "
+        f"ceiling a 45 degree ramp {station.pocket_ramp:.2f} deep with "
+        f"{station.pocket_lip:.2f} mm of pad above the mouth (a flat ceiling "
+        f"would overhang the print), "
         f"{mounts.protrusion:.2f} mm puck protrusion",
     )
 

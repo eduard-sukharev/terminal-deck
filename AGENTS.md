@@ -187,7 +187,8 @@ intuition. Wire-up lives in `main.py` (`BuildPipeline`, `run()`).
   `geometry/joint.py` and `geometry/chassis_joint.py`, the Well/plate pattern in
   `geometry/well_mounts.py`, the Seam cut in `geometry/split.py`, the Seam pins
   in `geometry/seam_joint.py`, and the Tray's base taper in
-  `geometry/base_taper.py`, the rail stations in `geometry/rail_mounts.py`, and
+  `geometry/base_taper.py`, the rail stations in `geometry/rail_mounts.py`, the
+  corner columns' web into the X wall in `geometry/corner_web.py`, and
   every concave/bed/cone edge treatment plus the columns' wall-merge fillet in
   `geometry/edge_treatment.py`).
   The drag-chain channel, vents and connector cutouts are the next refinement.
@@ -327,7 +328,13 @@ Gotchas:
   which must be a whole number of slot pitches so both screws land on rail
   bridge centres), each a full-height pad (`2 × wall` deep, `11.2` wide) with a
   square `10.0 × 10.0 × 2.6` pocket for the printed washer puck and two 45°
-  gussets sharing one obstacle-derived run (`3.05`). The puck captures a
+  gussets sharing one obstacle-derived run (`3.05`). **The pocket's ceiling is
+  a 45° ramp over its whole depth** (ADR-0028), the shelf above it chamfered
+  rather than left flat: the Tray prints floor down, so a flat ceiling would
+  hang over the pocket for the whole 2.6 mm. The ramp leaves `0.475` of pad
+  above the mouth -- below `minimum_feature` on purpose (it is the edge of the
+  pad's wedge, not a wall) -- and does not need the pad raised or the station
+  moved. The puck captures a
   DIN 562 M4 nut; the derived 8.8 mm stack pins the screw to **M4 × 10**. The
   rail blank is `21.2 × 80 × 5.0`, counterbored, overhanging the wall 9.6 mm a
   side. The pad and gussets must stay clear of the band joint's X-wall columns

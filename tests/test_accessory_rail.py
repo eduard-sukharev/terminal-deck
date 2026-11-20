@@ -88,6 +88,43 @@ def test_the_pocket_is_open_for_the_puck(mounts, tray):
         assert _material_at(tray, floor, off_axis, station.z, size=0.2) > 0.0
 
 
+def test_the_pocket_ceiling_ramps_to_the_pad_face(mounts, tray):
+    """The ceiling above the puck is a 45 degree ramp, not a flat overhang."""
+    for station in mounts.stations:
+        z1 = station.z + station.pocket_side / 2.0
+        x = station.side * (station.x_pad_in + 0.4)
+        # Below the ramp's face at this depth (it climbs 1 mm per mm): void,
+        # where the old flat ceiling left solid pad to cantilever.
+        assert _material_at(tray, x, station.y, z1 + 1.0, size=0.2) == pytest.approx(0)
+        # Above it: still pad, out to the Parting plane.
+        assert _material_at(tray, x, station.y, z1 + 2.6, size=0.2) > 0.0
+
+
+def test_the_pad_has_no_overhang_above_the_pocket(mounts, tray, data):
+    """Nothing over the pocket faces the bed: the Tray prints it unsupported."""
+    from geometry.printability import BED_DOWN, overhang_faces
+
+    _, budget, _ = data
+    parting_z = budget.chassis_joint.parting_z
+    found = overhang_faces(tray, BED_DOWN)
+    for station in mounts.stations:
+        x0, x1 = sorted(
+            (station.side * station.x_pad_in, station.side * station.x_inner)
+        )
+        ceiling = station.z + station.pocket_side / 2.0
+        for face in found:
+            cx, cy, cz = face.center
+            above_pocket = (
+                x0 - 1e-6 <= cx <= x1 + 1e-6
+                and abs(cy - station.y) <= station.pad_width / 2.0
+                and ceiling - 1e-6 <= cz <= parting_z + 1e-6
+            )
+            assert not above_pocket, (
+                f"{face.angle_from_vertical:.1f} deg overhang at "
+                f"({cx:.2f}, {cy:.2f}, {cz:.2f})"
+            )
+
+
 def test_the_m4_bore_runs_through_the_wall(mounts, tray):
     for station in mounts.stations:
         for depth in (0.5, 1.0, 1.5):

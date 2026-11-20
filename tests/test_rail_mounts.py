@@ -156,6 +156,28 @@ def test_pocket_keeps_clear_of_the_floor_and_the_parting_plane(data, mounts):
         )
 
 
+def test_the_pocket_ceiling_is_a_45_degree_ramp(data, mounts):
+    """No flat ceiling is left: the ramp runs the pocket's whole depth.
+
+    A flat ceiling would hang over the pocket by the pad's depth when the Tray
+    prints floor down; the ramp replaces it, and the pad above the mouth keeps
+    ``pocket_lip``. The lip is thinner than a minimum feature on purpose -- it
+    is the edge of the pad's wedge over the pocket, not a functional wall.
+    """
+    config, budget = data
+    for station in mounts.stations:
+        assert station.pocket_ramp == pytest.approx(station.pocket_depth)
+        assert station.pocket_lip == pytest.approx(
+            budget.chassis_joint.parting_z
+            - (station.z + station.pocket_side / 2.0)
+            - station.pocket_depth
+        )
+        assert station.pocket_ramp_top == pytest.approx(
+            budget.chassis_joint.parting_z - station.pocket_lip
+        )
+        assert 0.0 < station.pocket_lip < config.material.minimum_feature
+
+
 # ── Gussets and the band columns ───────────────────────────────────────
 
 
@@ -282,3 +304,18 @@ def test_rail_pocket_fails_when_the_pad_ring_disappears(data):
     # A negative fit is not an interface at all: the config refuses it.
     with pytest.raises(ValueError):
         _broken(config, fit=-0.2)
+
+
+def test_rail_pocket_fails_when_the_ramp_eats_the_whole_pad(data):
+    config, budget = data
+    # A Parting plane low enough that the 45 degree ceiling ramp reaches it at
+    # the pocket's mouth: the pad above the mouth would be gone.
+    joint = dataclasses.replace(budget.chassis_joint, parting_z=15.0)
+    assert any(
+        "no pad above the mouth" in reason
+        for reason in rail_mounts(config, joint).failures
+    )
+    shortened = dataclasses.replace(budget, chassis_joint=joint)
+    report = _report()
+    _add_rail_checks(report, config, shortened)
+    assert not _check(report, "slide-rail-pocket").passed

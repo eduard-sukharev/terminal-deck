@@ -32,6 +32,39 @@ def treat(in_path: str, out_path: str, mode: str, keys: list, size: float) -> No
     b3d.export_brep(result, out_path)
 
 
+def treat_chamfer_variable(in_path: str, out_path: str, items: list) -> None:
+    """Chamfer a network of edges, each with its own size.
+
+    ``items`` is ``[[key, size], ...]``. The edges may meet at vertices, so they
+    are chamfered in one ``BRepFilletAPI_MakeChamfer`` pass: OCC builds the
+    corner blend, and — unlike one pass per size — no edge key goes stale
+    between passes (a treated neighbour shortens the edge a later pass is
+    looking for, which silently drops it).
+    """
+    import build123d as b3d
+    from OCP.BRepFilletAPI import BRepFilletAPI_MakeChamfer
+
+    shape = b3d.import_brep(in_path)
+    wanted = {tuple(k): size for k, size in items}
+    builder = BRepFilletAPI_MakeChamfer(shape.wrapped)
+    added = 0
+    for edge in shape.edges():
+        size = wanted.get(_key(edge))
+        if size is not None:
+            builder.Add(size, edge.wrapped)
+            added += 1
+    if not added:
+        b3d.export_brep(shape, out_path)
+        return
+    builder.Build()
+    if not builder.IsDone():
+        raise ValueError("chamfer not done")
+    result = b3d.Part(builder.Shape())
+    if result is None or not result.is_valid:
+        raise ValueError("invalid result")
+    b3d.export_brep(result, out_path)
+
+
 def treat_variable(in_path: str, out_path: str, items: list) -> None:
     """Fillet a network of edges, each with its own radius.
 

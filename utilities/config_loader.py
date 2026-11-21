@@ -706,14 +706,21 @@ class RodClamp:
     width: float = 22.0  # block width across the rod (screws outside the slot)
     clearance: float = 0.5  # axial gap between the bearing's extreme and the clamp
     screw: str = "M2"
-    screw_span: float = 17.0  # centre distance of the two screws across the rod
+    screw_span: float = 16.0  # centre distance of the two screws across the rod
     set_screw: str = "M2"  # locks the rod axially in the clamp
+    # Edge treatment (chamfers) for the printed rod clamp:
+    bottom_edge_chamfer: float = 1.0  # 1mm chamfer on the two sharp bottom edges from the bore cut
+    general_chamfer: float = 0.5  # 0.5mm chamfer on all other convex edges (incl. bore circular edges)
+    top_edge_chamfer: float = 1.0  # 1mm chamfer on front/back top edges (along Y at Z=height)
+    # Screw holes (mounting + set screw) get no chamfer
 
     def __post_init__(self) -> None:
         if min(self.length, self.height, self.width, self.screw_span) <= 0:
             raise ValueError("slide.rod_clamp dimensions must be positive")
         if self.clearance < 0:
             raise ValueError("slide.rod_clamp.clearance must be >= 0")
+        if self.bottom_edge_chamfer < 0 or self.general_chamfer < 0 or self.top_edge_chamfer < 0:
+            raise ValueError("slide.rod_clamp chamfer values must be >= 0")
 
 
 @dataclass(frozen=True)
@@ -1072,8 +1079,11 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
             width=float(slide_rod_clamp.get("width", 22.0)),
             clearance=float(slide_rod_clamp.get("clearance", 0.5)),
             screw=str(slide_rod_clamp.get("screw", "M2")),
-            screw_span=float(slide_rod_clamp.get("screw_span", 17.0)),
+            screw_span=float(slide_rod_clamp.get("screw_span", 16.0)),
             set_screw=str(slide_rod_clamp.get("set_screw", "M2")),
+            bottom_edge_chamfer=float(slide_rod_clamp.get("bottom_edge_chamfer", 1.0)),
+            general_chamfer=float(slide_rod_clamp.get("general_chamfer", 0.5)),
+            top_edge_chamfer=float(slide_rod_clamp.get("top_edge_chamfer", 1.0)),
         ),
         bearing_clamp=BearingClamp(
             length=float(slide_bearing_clamp.get("length", 14.0)),

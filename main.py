@@ -416,6 +416,9 @@ class BuildPipeline:
                     config.slide.rod_clamp.screw,
                     frame.rod_clamp_screw_span,
                     config.slide.rod_clamp.set_screw,
+                    config.slide.rod_clamp.bottom_edge_chamfer,
+                    config.slide.rod_clamp.general_chamfer,
+                    config.slide.rod_clamp.top_edge_chamfer,
                 ),
             )
 

@@ -83,8 +83,13 @@ slide:
     width: 22.0              # across the rod; the screws sit outside the slot
     clearance: 0.5           # axial gap between the bearing's extreme and the clamp
     screw: M2
-    screw_span: 17.0         # centre distance of the two screws across the rod
+    screw_span: 16.0         # centre distance of the two screws across the rod (reduced by 1mm)
     set_screw: M2            # locks the rod axially in the clamp
+    # Edge treatment (chamfers) for the printed rod clamp:
+    bottom_edge_chamfer: 1.0   # 1mm chamfer on the two sharp bottom edges from the bore cut
+    general_chamfer: 0.5       # 0.5mm chamfer on all other convex edges (incl. bore circular edges)
+    top_edge_chamfer: 1.0      # 1mm chamfer on front/back top edges (along Y at Z=height)
+    # Screw holes (mounting + set screw) get no chamfer
 
   bearing_clamp:             # printed clamp: holds the bearing, straddles the panel
     length: 14.0             # grip length along the bearing (the bearing is 19)

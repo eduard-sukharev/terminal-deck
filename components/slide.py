@@ -741,6 +741,9 @@ def build_rod_clamp(
     screw: str,
     screw_span: float,
     set_screw: str,
+    bottom_edge_chamfer: float = 1.0,
+    general_chamfer: float = 0.5,
+    top_edge_chamfer: float = 1.0,
 ):
     """A printed clamp holding one rod end to the lid back panel.
 
@@ -748,6 +751,15 @@ def build_rod_clamp(
     passes along Y at ``z = rod_raise``; the clamp's two screws drop through it
     into heat-set inserts in the panel, and a set screw from the top locks the
     rod axially.
+
+    Edge treatment (chamfers) is applied to convex edges after all cuts:
+    - ``bottom_edge_chamfer``: the two sharp bottom edges where the rod bore
+      meets the bottom face (Z=0)
+    - ``general_chamfer``: all other convex edges, including circular edges
+      around the bore at various heights
+    - ``top_edge_chamfer``: the front/back top edges (along Y at Z=height)
+    - Screw holes (mounting clearance holes, counterbores, set screw hole) are
+      excluded from all chamfers.
     """
     from utilities import cad_helpers as ch
     from utilities.fasteners import head as head_spec
@@ -784,6 +796,64 @@ def build_rod_clamp(
         (height + rod_top) / 2.0,
     )
     part = ch.cut(part, set_hole)
+
+    # Edge treatment: chamfer convex edges selectively. All three groups are
+    # classified from the *same* solid and chamfered in one pass: treating them
+    # one size after the other leaves the next group's edge keys stale (a
+    # treated neighbour shortens them), and a stale key is silently not found.
+    if bottom_edge_chamfer > 0.0 or general_chamfer > 0.0 or top_edge_chamfer > 0.0:
+        all_convex = ch.convex_edges(part)
+
+        # Screw hole regions to exclude from chamfering
+        screw_x_positions = [screw_span / 2.0, -screw_span / 2.0]
+        set_screw_x = 0.0
+        # Tolerance around screw holes: cover the counterbore radius (largest diameter)
+        # Counterbore radius = spec_head.diameter / 2, add small margin
+        screw_x_tolerance = spec_head.diameter / 2.0 + 0.5
+        # Set screw hole: pilot hole radius + small margin
+        set_screw_x_tolerance = set_spec.clearance / 2.0 + 0.5
+
+        # The bore's two straight bottom edges sit at X = +/-sqrt(r^2 - raise^2),
+        # where r is the bore radius; match them exactly so a chamfered
+        # neighbour's new bevel edge is never mistaken for one.
+        bore_radius = rod_diameter / 2.0 + 0.1
+        bore_bottom_x = math.sqrt(max(bore_radius**2 - rod_raise**2, 0.0))
+        half_length = length / 2.0
+
+        pairs = []
+        for edge in all_convex:
+            x, y, z = edge.midpoint
+
+            # Skip edges belonging to mounting screw holes (clearance + counterbore)
+            # Screw holes are at X=±screw_span/2, Y=0. Only exclude edges near both X and Y.
+            if any(abs(x - sx) < screw_x_tolerance and abs(y) < screw_x_tolerance for sx in screw_x_positions):
+                continue
+            # Skip edges belonging to set screw hole (at X=0, Y=0)
+            if abs(x - set_screw_x) < set_screw_x_tolerance and abs(y) < set_screw_x_tolerance:
+                continue
+
+            if (
+                bottom_edge_chamfer > 0.0
+                and abs(z) < 0.1
+                and edge.curve_type == "line"
+                and abs(abs(x) - bore_bottom_x) < 0.15
+            ):
+                # The two sharp edges where the rod bore cuts the bottom face.
+                pairs.append((edge, bottom_edge_chamfer))
+            elif (
+                top_edge_chamfer > 0.0
+                and abs(z - height) < 0.1
+                and edge.curve_type == "line"
+                and abs(abs(y) - half_length) < 0.15
+            ):
+                # The front/back top edges (Y = +/-length/2), running along X.
+                pairs.append((edge, top_edge_chamfer))
+            elif general_chamfer > 0.0:
+                pairs.append((edge, general_chamfer))
+
+        if pairs:
+            part = ch.chamfer_edges_variable(part, pairs)
+
     return ch.clean(part)
 
 

@@ -1176,11 +1176,58 @@ def _isolated_variable(shape: Any, pairs: list[tuple[EdgeInfo, float]]) -> Any:
     return solids[0] if len(solids) == 1 else result
 
 
+def _isolated_chamfer_variable(shape: Any, pairs: list[tuple[EdgeInfo, float]]) -> Any:
+    """Chamfer a network of edges, each at its own size, in a child process."""
+    import os
+    import tempfile
+    from concurrent.futures.process import BrokenProcessPool
+
+    from utilities import _cad_worker
+
+    global _POOL
+    b3d = require_cad()
+    items = [[list(info.key), size] for info, size in pairs]
+    with tempfile.TemporaryDirectory() as tmp:
+        src, dst = os.path.join(tmp, "in.brep"), os.path.join(tmp, "out.brep")
+        b3d.export_brep(shape, src)
+        future = _pool().submit(_cad_worker.treat_chamfer_variable, src, dst, items)
+        try:
+            future.result(timeout=120)
+        except BrokenProcessPool as exc:
+            _POOL = None
+            raise ValueError("OCC crashed on this edge treatment") from exc
+        except Exception as exc:
+            raise ValueError(f"edge treatment failed: {exc}") from exc
+        result = b3d.import_brep(dst)
+    _assert_inside(shape, result)
+    solids = result.solids()
+    if len(solids) != len(shape.solids()):
+        raise ValueError("edge treatment changed the solid count")
+    return solids[0] if len(solids) == 1 else result
+
+
 def chamfer_edges(shape: Any, infos: list[EdgeInfo], size: float) -> Any:
     """Chamfer the edges at ``infos`` by ``size`` mm; raises if OCC cannot."""
     if not _locate(shape, infos):
         return shape
     return _isolated(shape, infos, size, "chamfer")
+
+
+def chamfer_edges_variable(shape: Any, pairs: list[tuple[EdgeInfo, float]]) -> Any:
+    """Chamfer a network of edges, each at its own size; raises if OCC cannot.
+
+    Use this whenever edges of different sizes meet, or when a later pass would
+    have to find an edge a previous pass already shortened: treating them one
+    size after the other leaves the second set's keys stale, and a stale key is
+    silently skipped by :func:`chamfer_edges` (the edge is simply not found).
+    One ``BRepFilletAPI_MakeChamfer`` pass also lets OCC build the corner blend
+    where two treated edges meet at a vertex.
+    """
+    if not pairs:
+        return shape
+    if not _locate(shape, [info for info, _ in pairs]):
+        return shape
+    return _isolated_chamfer_variable(shape, pairs)
 
 
 def fillet_edges(shape: Any, infos: list[EdgeInfo], size: float) -> Any:

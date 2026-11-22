@@ -26,7 +26,9 @@ parametricity, reusability.
 > instead of creasing the inner corner chamfer, and ADR-0030 breaks every
 > printed Section's bed edge (the Tray's floor, the Deck's and Bezel's closed
 > face) per Section, so the visible Seam becomes a deliberate V-groove and the
-> whole reference part is the union of the treated Sections. The data
+> whole reference part is the union of the treated Sections; ADR-0033 splits
+> the printed Bearing clamp on the bearing's axis and bolts both halves through
+> the Deck with one M3 pan-head screw each side. The data
 > skeleton
 > and the CAD shell are implemented: `--layout slider` (the only layout) derives
 > the budget and builds/exports the chassis (Tray + Deck, split at the band
@@ -128,7 +130,7 @@ fingerprint together with their whole piece, and the assembled targets
 - `screen_lid_back` / `screen_lid_back_left/right` — the flat back plate and its printable Sections
 - `slide` — guide rods + Rod clamps + LM…LUU bearings + Bearing clamps
 - `rod_clamp` — one printable Rod clamp
-- `bearing_clamp` — one printable Bearing clamp
+- `bearing_clamp` — the assembled Bearing clamp (reference); `bearing_clamp_lower`/`bearing_clamp_upper` — its two printable halves (ADR-0033)
 - `fpc_guard` — the printable FPC grille plate (bonded to the display's back)
 - `rail` — the printed MIL-STD-1913 rail blank; `rail_washer` — one printed washer puck (both ADR-0020)
 - `keyboard_plate` — the switch plate with the Well's ears, notches and M2 clearance holes; `keyboard_plate_left/right` — its Sections, split along the Plate Seam
@@ -613,12 +615,31 @@ Gotchas:
 - The lid's flat back slides over the keycaps: the Well sets that clearance.
   A keycap standing above the Deck is a collision over the whole travel.
 - The guide rods sit on the lid back panel's inner face, inset `slide.rod.end_support`
-  from each lid end; two printed Rod clamps hold each rod. The Bearing clamps
-  straddle the panel through a long slot, seat in a pocket in the Deck, and
-  slide along the slot. Neither the clamp nor the rod may protrude outside the
+  from each lid end; two printed Rod clamps hold each rod. The Bearing clamp is
+  **fixed to the Deck**: the lower half's foot sits in the Deck's seat pocket
+  and its belly passes through the panel's long slot, so the *panel* slides
+  over the clamp. It is split on the bearing's axis (ADR-0033) into halves that
+  print foot-down and crown-down, and one **M3 pan-head** screw each side of
+  the bearing is driven up from inside the chassis through the seat floor and
+  the lower half into the upper half's heat-set insert — the same screws clamp
+  the halves and bolt them to the Deck, and the head stays in the chassis
+  cavity so the seat floor is never recessed. The insert (`M3-long`) is
+  pressed in from the crown, flush, and lands on a **seat** (the hole is the
+  insert's diameter down to that plane, only the screw's clearance below), so
+  the joint's preload is carried in compression — not by the knurling. The
+  clamp and its span are derived
+  (`bearing_clamp_screw_span`/`bearing_clamp_width`), and the stack is a stock
+  M3 × 18. Neither the clamp nor the rod may protrude outside the
   closed envelope. The slot ends at the Rod clamps; the bearing stops
   `rod_clamp.clearance` short of each clamp at the extreme poses, so the panel
   under a clamp stays solid with a shallow rod groove for the clamp to pinch.
+- **Ordinary pan-head screws are the default; no countersunk heads**
+  (`docs/design_spec.md`). A new joint is designed for an ISO 7045 pan head
+  (Phillips) in a plain cylindrical recess, sized from
+  `utilities/fasteners.py` (`head(size)` returns `pan` unless a kind is given).
+  Flat/countersunk heads are not used unless a decision record says so; the
+  band joints' keyhole recess (ADR-0018) and the Tray's driver-access cone
+  (ADR-0021) are the documented exceptions, and neither is a fastener seat.
 - The rod's usable span is `travel + bearing + 2 * (rod_clamp.length +
   rod_clamp.clearance)`; the rod is inset by one `end_support` from the chassis
   front. Do not re-derive the rod or the bearing-clamp centre from the chassis

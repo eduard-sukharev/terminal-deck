@@ -1440,7 +1440,7 @@ def run_slider_checks(
         + slide.bearing_clamp.seat_wall
     )
     seat_half_y = (
-        slide.bearing_clamp.foot_length / 2.0
+        slide.bearing_clamp.length / 2.0
         + slide.bearing_clamp.seat_fit
         + slide.bearing_clamp.seat_wall
     )

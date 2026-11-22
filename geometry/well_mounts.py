@@ -775,13 +775,14 @@ def bearing_seat_obstacles(config, budget) -> tuple[Obstacle, ...]:
 
     Derived the way :class:`~case.slider_frame.SliderFrame` derives them: the
     pocket is the clamp foot plus the seat fit, and the block adds the seat wall
-    around it. The block hangs from the Deck's top face, so its underside is
-    above the plate -- the Z check states the gap rather than assuming it.
+    around it. The foot is the clamp's own length (ADR-0033). The block hangs
+    from the Deck's top face, so its underside is above the plate -- the Z
+    check states the gap rather than assuming it.
     """
     clamp = config.slide.bearing_clamp
     margin = clamp.seat_fit + clamp.seat_wall
     half_width = budget.clamp_width / 2.0 + margin
-    half_length = clamp.foot_length / 2.0 + margin
+    half_length = clamp.length / 2.0 + margin
     seat_height = clamp.foot_thickness + clamp.seat_floor
     z0 = budget.chassis_top - seat_height
     return tuple(

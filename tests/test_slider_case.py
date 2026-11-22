@@ -13,18 +13,26 @@ from case.chassis import Chassis
 from case.screen_lid import ScreenLid
 from case.slider_frame import SliderFrame
 from components.slide import (
+    bearing_clamp_screw_span,
+    bearing_clamp_width,
     build_bearing_clamp,
+    build_bearing_clamp_halves,
     build_guide_rod,
     build_linear_bearing,
     build_rod_clamp,
     compute_slide_budget,
 )
-from geometry.printability import PrintOrientation, check_bed_face
+from geometry.printability import (
+    PrintOrientation,
+    bed_face_area,
+    check_bed_face,
+    overhang_faces,
+)
 from geometry.well_mounts import well_mounts
 from layouts import make_layout
 from main import BuildPipeline
 from utilities import cad_helpers as ch
-from utilities.fasteners import screw as screw_spec
+from utilities.fasteners import head as screw_head, heat_insert, screw as screw_spec
 from utilities.slider_validation import BUILD_VOLUME
 from utilities.validation import ValidationReport
 
@@ -69,19 +77,36 @@ def solids(pieces):
 @pytest.fixture(scope="module")
 def bearing_clamp(data):
     config, _, _, frame = data
-    return build_bearing_clamp(
+    return build_bearing_clamp(*_bearing_clamp_args(config, frame))
+
+
+def _bearing_clamp_args(config, frame):
+    """The builder's argument list, from the config and the derived frame."""
+    cc = config.slide.bearing_clamp
+    return (
         frame.bearing_outer,
-        config.slide.clamp_wall,
+        frame.clamp_width,
         frame.rod_raise,
         frame.clamp_len,
-        frame.foot_length,
         frame.foot_thickness,
         frame.foot_top,
-        config.slide.bearing_clamp.screw,
-        config.slide.bearing_clamp.screw_span_y,
-        config.slide.bearing_clamp.corner_chamfer,
-        config.slide.bearing_clamp.top_chamfer,
+        cc.crown_wall,
+        cc.screw,
+        cc.insert,
+        frame.clamp_span,
+        cc.screw_length,
+        cc.seat_floor,
+        config.material.minimum_feature,
+        cc.edge_chamfer,
+        config.edges.bed_chamfer,
+        cc.corner_chamfer,
     )
+
+
+@pytest.fixture(scope="module")
+def bearing_clamp_halves(data):
+    config, _, _, frame = data
+    return build_bearing_clamp_halves(*_bearing_clamp_args(config, frame))
 
 
 def test_chassis_bbox_matches_the_budget(data, solids):
@@ -615,13 +640,17 @@ def test_rod_clamps_hold_both_rod_ends(data):
 
 
 def test_bearing_clamp_straddles_the_back_panel(data, bearing_clamp):
-    """The clamp's head is a cylinder at the neck width; its foot sits below."""
+    """The clamp is one square prism across the panel, bored for the bearing."""
     config, _, budget, frame = data
     clamp = bearing_clamp
     x, y, z = ch.bounding_box_mm(clamp)
     assert x == pytest.approx(frame.clamp_body_width, abs=0.01)
     assert frame.clamp_body_width == pytest.approx(frame.clamp_width)
+    # ADR-0033: the clamp is as long as the bearing, and the two halves share
+    # that length.
     assert y == pytest.approx(frame.foot_length, abs=0.01)
+    assert frame.foot_length == pytest.approx(frame.clamp_len)
+    assert frame.clamp_len == pytest.approx(frame.bearing_length)
     assert budget.slot_fits
     # The head no longer overhangs the slot: the rod through the bearing is
     # what retains the lid.
@@ -633,6 +662,49 @@ def test_bearing_clamp_straddles_the_back_panel(data, bearing_clamp):
     assert frame.foot_top_z == pytest.approx(frame.chassis_top)
 
 
+def test_bearing_clamp_halves_print_flat(data, bearing_clamp_halves):
+    """ADR-0033: each half prints with its layers parallel to the split face.
+
+    The lower half prints foot-down and the upper half crown-down; the bore is
+    a groove open upward in both, so neither half needs a bridge.  The upper
+    half's insert seat is the one allowed overhang (a counterbore ledge).
+    """
+    config, _, _, frame = data
+    lower, upper = bearing_clamp_halves
+    insert, _, _, seat_z, _ = _clamp_geometry(config, frame)
+    x = frame.clamp_span / 2.0
+    report = ValidationReport()
+    for name, half, normal in (
+        ("bearing_clamp_lower", lower, (0.0, 0.0, -1.0)),
+        ("bearing_clamp_upper", upper, (0.0, 0.0, 1.0)),
+    ):
+        orientation = PrintOrientation(normal)
+        area = bed_face_area(half, orientation)
+        report.add(
+            f"bed-face:{name}",
+            area >= config.material.min_bed_face_area,
+            f"bed face {area:.0f} mm^2 on the {name}",
+        )
+        overhangs = overhang_faces(half, orientation)
+        # The insert's seat is a 0.6 mm counterbore ledge: a load seat, printed
+        # as a self-supporting inward flange.  It is the upper half's only
+        # allowed overhang; everything else must be clean.
+        if half is upper:
+            seat_faces = [
+                o
+                for o in overhangs
+                if abs(o.center[2] - seat_z) < 1e-6
+                and abs(abs(o.center[0]) - x) < 1e-6
+            ]
+            assert len(seat_faces) == 2
+            overhangs = [o for o in overhangs if o not in seat_faces]
+        assert overhangs == [], (
+            f"{name} has overhangs: "
+            f"{[(round(o.area, 1), round(o.angle_from_vertical, 1)) for o in overhangs]}"
+        )
+    assert report.passed, report.summary()
+
+
 def test_bearing_clamp_base_is_flush_with_the_deck(data, bearing_clamp):
     """The base's top face lands level with the chassis top surface."""
     _, _, _, frame = data
@@ -640,81 +712,207 @@ def test_bearing_clamp_base_is_flush_with_the_deck(data, bearing_clamp):
     # exactly there, so the base does not stand proud of the chassis.
     assert frame.foot_top == pytest.approx(-(frame.panel_inner_z - frame.chassis_top))
     assert frame.foot_top_z == pytest.approx(frame.chassis_top)
+
+
+def _clamp_geometry(config, frame):
+    """The clamp's derived heights, shared by the screw and seat tests."""
+    cc = config.slide.bearing_clamp
+    insert = heat_insert(cc.insert)
+    split = frame.rod_raise
+    crown_z = split + frame.bearing_outer / 2.0 + cc.crown_wall
+    seat_z = crown_z - insert.depth
+    head_z = frame.foot_top - frame.foot_thickness - cc.seat_floor
+    return insert, split, crown_z, seat_z, head_z
+
+
+def test_bearing_clamp_screws_go_through_the_deck_into_the_insert(data):
+    """ADR-0033: one M3 per side, head under the Deck, insert in the upper half.
+
+    The screws do both jobs: they clamp the two halves and they fasten them to
+    the Deck.  The span and the body width are derived, so this test re-derives
+    them and then checks the fits the derivation promises.
+    """
+    config, _, _, frame = data
+    cc = config.slide.bearing_clamp
+    insert, _, crown_z, seat_z, head_z = _clamp_geometry(config, frame)
+    spec = screw_spec(cc.screw)
+    bolt = screw_head(cc.screw)
+    minimum = config.material.minimum_feature
+
+    # Derived, not configured.
+    assert frame.clamp_span == pytest.approx(
+        bearing_clamp_screw_span(
+            frame.bearing_outer, cc.insert, cc.edge_chamfer, minimum
+        )
+    )
+    assert frame.clamp_width == pytest.approx(
+        bearing_clamp_width(frame.clamp_span, cc.insert, minimum)
+    )
+
+    half_span = frame.clamp_span / 2.0
+    bore_radius = (frame.bearing_outer + 0.2) / 2.0
+    # The clearance hole passes the bearing, and stays inside the body.
+    assert half_span - spec.clearance / 2.0 > bore_radius
+    assert (
+        half_span + spec.clearance / 2.0
+        <= frame.clamp_width / 2.0 - minimum + 1e-9
+    )
+    # The insert keeps a printable wall to the bore's chamfered edge and to the
+    # clamp's outer face (its ring is two minimum features wide).
+    assert (
+        half_span
+        - insert.printed_hole_diameter / 2.0
+        - (bore_radius + cc.edge_chamfer)
+        >= minimum - 1e-9
+    )
+    assert (
+        frame.clamp_width / 2.0
+        - (half_span + insert.outside_diameter / 2.0)
+        >= 2.0 * minimum - 1e-9
+    )
+    # The insert is flush with the crown and bottoms on its seat; the purchased
+    # screw engages it and stops under the crown.
+    assert seat_z == pytest.approx(crown_z - insert.depth)
+    tip_z = head_z + cc.screw_length
+    assert tip_z - seat_z >= insert.depth / 2.0 - 1e-9
+    assert tip_z <= crown_z - minimum + 1e-9
+    # Below its seat only the screw's passage runs -- that is the shoulder the
+    # insert's skirt bears on, so the wall left there is the insert's ring.
+    skirt = (insert.printed_hole_diameter - spec.clearance) / 2.0
+    assert skirt >= minimum - 1e-9
+    # The pan head bears on the seat floor, inside the seat's outline.
+    assert head_z == pytest.approx(
+        frame.seat_bottom - frame.panel_inner_z
+    )
+    assert (
+        half_span + bolt.diameter / 2.0
+        <= frame.seat_width / 2.0 - minimum + 1e-9
+    )
+
+
+def test_bearing_clamp_insert_has_a_seat_and_prints_flush(
+    data, bearing_clamp_halves
+):
+    """The insert's hole stops at a step; the step is the only overhang.
+
+    The insert goes into the upper half from the crown, flush with it, and its
+    skirt bears on the step: the joint's preload then travels in compression
+    into the upper half.  The step is a 0.6 mm counterbore ledge -- a load seat,
+    printed as a self-supporting inward flange, so it is the clamp's one
+    documented overhang.
+    """
+    config, _, _, frame = data
+    cc = config.slide.bearing_clamp
+    insert, _, crown_z, seat_z, _ = _clamp_geometry(config, frame)
+    _, upper = bearing_clamp_halves
     probe = ch.box_centered(0.1, 0.1, 0.1)
-    # Just above the foot's top face (still inside the pocket mouth) is air.
-    at = ch.translate(
-        probe,
+    x = frame.clamp_span / 2.0
+
+    def material(px, py, pz):
+        return ch.volume_mm3(ch.intersect(upper, ch.translate(probe, px, py, pz)))
+
+    # The insert's bore is open from the crown down to the seat...
+    assert material(x, 0.0, seat_z + 1.0) == pytest.approx(0, abs=1e-6)
+    # ... the step is solid just outside the insert's hole...
+    assert material(x + insert.printed_hole_diameter / 2.0 + 0.4, 0.0, seat_z + 1.0) > 1e-4
+    # ... and under the seat only the screw's passage remains.
+    assert material(x, 0.0, seat_z - 0.5) == pytest.approx(0, abs=1e-6)
+    assert material(
+        x + (insert.printed_hole_diameter + screw_spec(cc.screw).clearance) / 4.0
+        + 0.1,
         0.0,
-        frame.foot_length / 2.0 - 2.0,
-        frame.foot_top_z - frame.panel_inner_z + 0.2,
-    )
-    assert ch.volume_mm3(ch.intersect(bearing_clamp, at)) == pytest.approx(
-        0.0, abs=1e-6
-    )
+        seat_z - 0.2,
+    ) > 1e-4
+    # The ledge the insert sits on is at least one printable minimum wide.
+    ledge = (
+        insert.printed_hole_diameter - screw_spec(cc.screw).clearance
+    ) / 2.0
+    assert ledge >= config.material.minimum_feature - 1e-9
 
 
-def test_bearing_clamp_screws_clear_the_bearing(data, bearing_clamp):
-    """The foot's screw holes sit outside the bearing, so tips miss the bore."""
-    config, _, budget, frame = data
-    spec = screw_spec(config.slide.bearing_clamp.screw)
-    inner_edge = (
-        config.slide.bearing_clamp.screw_span_y / 2.0 - spec.pilot_hole / 2.0
-    )
-    assert inner_edge > budget.bearing_length / 2.0
-    assert config.slide.bearing_clamp.screw_span_y / 2.0 < frame.foot_length / 2.0
+def test_bearing_clamp_chamfers_the_split_line_and_the_bore_rims(
+    data, bearing_clamp_halves
+):
+    """ADR-0033: the split line and the bore's end rims are broken.
+
+    The layers' edges are where print artifacts show, so the split plane gets a
+    45 degree V-groove and the bore's end rims a lead-in for the bearing.
+    """
+    config, _, _, frame = data
+    cc = config.slide.bearing_clamp
+    lower, upper = bearing_clamp_halves
+    split = frame.rod_raise
+    bore_radius = (frame.bearing_outer + 0.2) / 2.0
+    probe = ch.box_centered(0.1, 0.1, 0.1)
+    amount = cc.edge_chamfer
+
+    def material(shape, x, y, z):
+        return ch.volume_mm3(ch.intersect(shape, ch.translate(probe, x, y, z)))
+
+    half_width = frame.clamp_width / 2.0
+    # Probe 0.2 inside each half (the split plane itself is a face, and a probe
+    # straddling it can come back empty for the upper half).
+    for half, sign in ((lower, -1.0), (upper, 1.0)):
+        z = split + sign * 0.2
+        # The split line: air just inboard of the outer face, material deeper.
+        # Probed off the screw axis, clear of the insert's bore.
+        assert material(half, half_width - 0.05, 4.0, z) == pytest.approx(0, abs=1e-6)
+        assert material(half, half_width - amount - 0.4, 4.0, z) > 1e-4
+        # The bore's split edge: air inside the broken wedge, material past it.
+        assert material(
+            half, bore_radius + 0.05, 0.0, split + sign * 0.3
+        ) == pytest.approx(0, abs=1e-6)
+        assert material(half, bore_radius + amount + 0.4, 0.0, z) > 1e-4
+    # The bed perimeter (the foot's bottom / the crown's top).
+    for half, bed_z, sign in (
+        (lower, frame.foot_top - frame.foot_thickness, 1.0),
+        (upper, split + frame.bearing_outer / 2.0 + cc.crown_wall, -1.0),
+    ):
+        assert material(
+            half, half_width - 0.05, 0.0, bed_z + sign * 0.1
+        ) == pytest.approx(0, abs=1e-6)
+        assert material(
+            half, half_width - amount - 0.4, 0.0, bed_z + sign * 0.1
+        ) > 1e-4
+    # The bore's end rim: the material just outside the bore's edge is pulled
+    # back from the end face by the break.
+    end_y = frame.foot_length / 2.0
+    for half, sign in ((lower, -1.0), (upper, 1.0)):
+        rim_z = split + sign * bore_radius
+        assert material(
+            half, 0.0, end_y - 0.2, rim_z + sign * 0.1
+        ) == pytest.approx(0, abs=1e-6)
+        assert material(
+            half, 0.0, end_y - amount - 0.4, rim_z + sign * 0.1
+        ) > 1e-4
 
 
 def test_bearing_clamp_chamfers(data, bearing_clamp):
-    """The foot's vertical corners are broken and the head is cylindrical."""
+    """The clamp's vertical corners are broken; the bore is a hole in a block."""
     config, _, _, frame = data
     cc = config.slide.bearing_clamp
-    probe = ch.box_centered(0.5, 0.5, 0.5)
-    foot_mid_z = frame.foot_top_z - frame.panel_inner_z - cc.foot_thickness / 2.0
-    # Nominal foot corner: removed by the 5 mm corner chamfer.
-    at = ch.translate(
-        probe,
-        frame.clamp_width / 2.0 - 0.5,
-        frame.foot_length / 2.0 - 0.5,
-        foot_mid_z,
-    )
-    assert ch.volume_mm3(ch.intersect(bearing_clamp, at)) == pytest.approx(
-        0.0, abs=1e-6
-    )
-    # The straight part of the same end is still solid.
-    at = ch.translate(probe, 0.0, frame.foot_length / 2.0 - 0.5, foot_mid_z)
-    assert ch.volume_mm3(ch.intersect(bearing_clamp, at)) > 0.0
-    # The head is a cylinder around the bearing: the corner of its bounding
-    # box is air, while the wall between the bore and the outer surface is
-    # solid.
-    body_z = frame.rod_raise + frame.clamp_width / 2.0
-    at = ch.translate(
-        probe,
-        frame.clamp_body_width / 2.0 - 0.1,
-        0.0,
-        body_z / 2.0,
-    )
-    assert ch.volume_mm3(ch.intersect(bearing_clamp, at)) == pytest.approx(
-        0.0, abs=1e-6
-    )
-    at = ch.translate(probe, 6.0, 0.0, body_z / 2.0)
-    assert ch.volume_mm3(ch.intersect(bearing_clamp, at)) > 0.0
-
-
-def test_bearing_clamp_top_edges_are_chamfered(data, bearing_clamp):
-    """The foot's exposed top perimeter gets the small mouth relief."""
-    config, _, _, frame = data
-    foot_top = frame.foot_top_z - frame.panel_inner_z
     probe = ch.box_centered(0.1, 0.1, 0.1)
+    foot_mid_z = frame.foot_top_z - frame.panel_inner_z - cc.foot_thickness / 2.0
+    # The foot's own corner is gone (the 45 degree relief), its middle is not.
     at = ch.translate(
-        probe, 0.0, frame.foot_length / 2.0 - 0.1, foot_top - 0.1
+        probe, frame.clamp_width / 2.0, frame.foot_length / 2.0, foot_mid_z
     )
+    assert ch.volume_mm3(ch.intersect(bearing_clamp, at)) < 5e-5
+    at = ch.translate(probe, 0.0, frame.foot_length / 2.0, foot_mid_z)
+    assert ch.volume_mm3(ch.intersect(bearing_clamp, at)) > 5e-4
+    # The body is split on the axis (ADR-0033): its corner is solid up to the
+    # square envelope, while the bore beside it is air.
+    body_mid_z = (
+        frame.foot_top_z - frame.panel_inner_z + cc.foot_thickness / 2.0
+    )
+    at = ch.translate(
+        probe, frame.clamp_body_width / 2.0 - 0.5, 0.0, body_mid_z
+    )
+    assert ch.volume_mm3(ch.intersect(bearing_clamp, at)) > 5e-4
+    at = ch.translate(probe, 0.0, 0.0, body_mid_z)
     assert ch.volume_mm3(ch.intersect(bearing_clamp, at)) == pytest.approx(
         0.0, abs=1e-6
     )
-    at = ch.translate(
-        probe, 0.0, frame.foot_length / 2.0 - 1.0, foot_top - 0.1
-    )
-    assert ch.volume_mm3(ch.intersect(bearing_clamp, at)) > 0.0
 
 
 def test_bearing_clamp_pocket_mouth_is_chamfered(data, solids):
@@ -754,7 +952,16 @@ def test_bearing_clamp_fits_its_chassis_pocket(data, solids, bearing_clamp):
     placed = ch.translate(
         bearing_clamp, frame.rod_x, frame.clamp_center_y, frame.panel_inner_z
     )
-    assert ch.volume_mm3(ch.intersect(chassis, placed)) == pytest.approx(
+    # The body passes through the pocket's mouth above the Deck top, so the
+    # clash is measured below it: only the foot is inside the Deck.
+    clash = ch.intersect(chassis, placed)
+    below_top = ch.translate(
+        ch.box_centered(2 * frame.seat_width, 2 * frame.seat_length, 20.0),
+        frame.rod_x,
+        frame.clamp_center_y,
+        frame.chassis_top - 10.0,
+    )
+    assert ch.volume_mm3(ch.intersect(clash, below_top)) == pytest.approx(
         0.0, abs=1e-3
     )
 
@@ -810,6 +1017,28 @@ def test_chassis_has_a_bearing_clamp_seat(data, solids):
     wall_x = frame.rod_x + frame.seat_width / 2.0 - 1.0
     in_wall = ch.translate(probe, wall_x, frame.clamp_center_y, z_mid)
     assert ch.volume_mm3(ch.intersect(chassis, in_wall)) > 1.0
+
+
+def test_chassis_keeps_a_floor_under_the_bearing_clamp_seat(data, solids):
+    """ADR-0033: the pocket has a `seat_floor` of material under it.
+
+    The clamp screws come up from inside the chassis, so their heads bear on
+    the seat's underside and compress that floor against the lower half's foot.
+    A pocket cut as deep as the seat leaves nothing to bear on.
+    """
+    config, _, _, frame = data
+    chassis, _ = solids
+    config_cc = config.slide.bearing_clamp
+    assert frame.seat_height == pytest.approx(
+        frame.pocket_depth + config_cc.seat_floor
+    )
+    probe = ch.box_centered(1.0, 1.0, 1.0)
+    # Between the seat's underside and the pocket floor: solid across the seat,
+    # clear of the two seat screws only at their own axes.
+    z = frame.seat_bottom + config_cc.seat_floor / 2.0
+    at = ch.translate(probe, frame.rod_x, frame.clamp_center_y, z)
+    assert ch.volume_mm3(ch.intersect(chassis, at)) == pytest.approx(1.0, rel=0.01)
+    assert z < frame.foot_bottom_z
 
 
 # -- the FPC guard -------------------------------------------------------

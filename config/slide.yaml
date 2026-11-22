@@ -92,19 +92,44 @@ slide:
     # Screw holes (mounting + set screw) get no chamfer
 
   bearing_clamp:             # printed clamp: holds the bearing, straddles the panel
-    length: 14.0             # grip length along the bearing (the bearing is 19)
-    foot_length: 30.0        # longer than the bearing, so both screws sit
-                             # outboard of it: the tips cannot reach the bore
-    foot_thickness: 4.0
-    seat_wall: 2.6           # material around the chassis seat pocket
-    seat_floor: 2.0
+    # ADR-0033: the clamp is split on the bearing's axis into a lower half
+    # (foot + bore's belly, prints foot-down) and an upper half (crown + bore's
+    # roof, prints crown-down).  Each half's layers run parallel to the split
+    # face, so the bore is never a bridge.  One M3 screw per side does both
+    # jobs: driven up from inside the chassis it passes the Deck's seat floor
+    # and the lower half's foot and belly, and threads into a heat-set insert in
+    # the upper half.  The head stays in the chassis cavity, so no recess is
+    # cut and the seat floor is not weakened.
+    length: 19.0             # body AND foot length = slide.bearing.length; the
+                             # screen's edge loads reach the bearing as a lever,
+                             # so the clamp spreads them over the whole bearing
+    foot_thickness: 4.0      # the lower half's foot, seated in the Deck pocket
+    crown_wall: 2.0          # upper-half material above the bearing's outer face
+                             # (the budget's own crown wall: 9.00, guard at 11.00)
+    seat_wall: 2.6           # material around the chassis seat pocket (it is
+                             # also what a pan head has to stay inside)
+    seat_floor: 2.0          # the Deck's material under the pocket floor: the
+                             # foot rests on it and the screw head compresses it
     seat_fit: 0.4            # clearance each side of the foot in the pocket
-    screw: M2.5
-    screw_span_y: 24.0       # wider than the bearing (19); tips clear the bore
-    corner_chamfer: 5.0      # 45 deg vertical corner relief on the foot and
-                             # the matching chassis pocket
-    top_chamfer: 0.5         # foot's exposed top perimeter and the matching
-                             # pocket mouth
+    corner_chamfer: 2.0      # 45 deg vertical corner relief on the foot AND the
+                             # body, and the matching chassis pocket
+    top_chamfer: 0.5         # matching pocket mouth (the clamp's top is flat)
+    edge_chamfer: 0.5        # 45 deg break on the split line (the V-groove at
+                             # the joint) and on the bore's end rims, so the
+                             # bearing enters cleanly and the layer seam is not a
+                             # sharp edge
+    # The screw pair: M3 pan head, from inside the chassis up into the upper
+    # half.  The span is derived from the bore, the split chamfer, the printable
+    # minimum and the insert (components.slide.bearing_clamp_screw_span), so it
+    # is not configured.  The length is the purchased one and is checked
+    # against the stack (seat floor + foot + belly + insert).
+    screw: M3
+    screw_length: 18.0       # 2 seat floor + 4 foot + 6 belly + 5 insert + 1
+    # Heat-set insert.  The long M3 body is pressed in from the crown, flush
+    # with it: the hole is Ø4.4 down to the seat, then only the screw's Ø3.2
+    # passage, so the insert's skirt lands on that step and the joint's preload
+    # is carried in compression into the upper half -- not by the knurling.
+    insert: M3-long
 
   chain:                     # drag chain behind the screen, along the slide
     pitch: 10.0

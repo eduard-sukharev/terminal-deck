@@ -834,7 +834,7 @@ vents
 
 # Fastener Library
 
-One module.
+One module (`utilities/fasteners.py`).
 
 ```
 Screw
@@ -847,6 +847,21 @@ Washer recess
 ```
 
 Reusable.
+
+## Fastener policy
+
+- **Default: an ordinary pan-head machine screw** (ISO 7045 / DIN 7985) with a
+  Phillips cross recess, seated in a plain cylindrical counterbore. It is what
+  `fasteners.head(size)` returns when no kind is given, and what every new
+  joint is designed around: available everywhere, easy to drive, and its flat
+  underside seats on a printed floor without a cone.
+- **No countersunk (flat) heads** unless a decision record says so. A
+  90-degree cone is a fragile printed ceiling and buys nothing a counterbore
+  does not. Documented exceptions: the band joints' keyhole recess (ADR-0018)
+  and the Tray's driver-access cone (ADR-0021) — both are driver recesses, not
+  fastener seats.
+- Lengths come from `STANDARD_LENGTHS`: size a joint so a stock length fits
+  exactly (ADR-0033's M3 × 18), never a cut-down or a non-standard length.
 
 ---
 

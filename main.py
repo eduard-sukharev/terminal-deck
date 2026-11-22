@@ -266,7 +266,7 @@ class BuildPipeline:
             place_rail_washer,
         )
         from components.slide import (
-            build_bearing_clamp,
+            build_bearing_clamp_halves,
             build_guide_rod,
             build_linear_bearing,
             build_rod_clamp,
@@ -422,22 +422,36 @@ class BuildPipeline:
                 ),
             )
 
-        def bearing_clamp_part():
+        def bearing_clamp_halves_part():
+            cc = config.slide.bearing_clamp
             return once(
-                "bearing_clamp",
-                lambda: build_bearing_clamp(
+                "bearing_clamp_halves",
+                lambda: build_bearing_clamp_halves(
                     frame.bearing_outer,
-                    config.slide.clamp_wall,
+                    frame.clamp_width,
                     frame.rod_raise,
                     frame.clamp_len,
-                    frame.foot_length,
                     frame.foot_thickness,
                     frame.foot_top,
-                    config.slide.bearing_clamp.screw,
-                    config.slide.bearing_clamp.screw_span_y,
-                    config.slide.bearing_clamp.corner_chamfer,
-                    config.slide.bearing_clamp.top_chamfer,
+                    cc.crown_wall,
+                    cc.screw,
+                    cc.insert,
+                    frame.clamp_span,
+                    cc.screw_length,
+                    cc.seat_floor,
+                    config.material.minimum_feature,
+                    cc.edge_chamfer,
+                    config.edges.bed_chamfer,
+                    cc.corner_chamfer,
                 ),
+            )
+
+        def bearing_clamp_part():
+            # Assembled reference (the two halves as one compound); the
+            # printable parts are the separate `bearing_clamp_lower/upper`.
+            return once(
+                "bearing_clamp",
+                lambda: ch.make_compound(list(bearing_clamp_halves_part())),
             )
 
         def rods():
@@ -691,6 +705,8 @@ class BuildPipeline:
             "fpc_guard": guard,
             "rod_clamp": rod_clamp_part,
             "bearing_clamp": bearing_clamp_part,
+            "bearing_clamp_lower": lambda: bearing_clamp_halves_part()[0],
+            "bearing_clamp_upper": lambda: bearing_clamp_halves_part()[1],
             "rail": rail_part,
             "rail_washer": rail_washer_part,
             "keyboard_plate": plate,
@@ -738,6 +754,8 @@ class BuildPipeline:
         # reference but is not printable across X.
         printable = (
             "fpc_guard",
+            "bearing_clamp_lower",
+            "bearing_clamp_upper",
             "rail",
             "rail_washer",
             "chassis_tray_left",

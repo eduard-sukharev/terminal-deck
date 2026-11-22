@@ -496,8 +496,13 @@ def test_display_cavity_follows_the_head_the_guard_and_the_sag():
     display = components["display"].size()
     guard = config.slide.fpc_guard
 
+    # ADR-0033: the budget keeps the old 2.0 mm crown wall so the wider clamp
+    # does not narrow the case; the printed crown is a little lower (1.5 mm)
+    # and keeps spare clearance.
     assert budget.head_crown == pytest.approx(
-        budget.rod_raise + budget.clamp_width / 2.0
+        budget.rod_raise
+        + config.slide.bearing.outer_diameter / 2.0
+        + config.slide.clamp_wall
     )
     assert budget.display_cavity == pytest.approx(
         budget.head_crown

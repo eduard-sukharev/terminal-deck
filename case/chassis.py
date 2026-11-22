@@ -32,9 +32,11 @@ smooth ridge. The Deck's Well ring is continuous over the plate's notches
 (ADR-0024): the sheet below gives way at a front-wall station, the ring above
 does not.
 
-The bearing clamps are separate printed parts. Each has a foot that drops
-through a pocket in the Deck; the Deck carries a small raised/merged seat with
-a pocket floor, so the clamp is located and bolted from inside the chassis.
+The bearing clamps are separate printed parts. Each is split on the bearing's
+axis (ADR-0033); its lower half's foot drops through a pocket in the Deck, and
+the Deck carries a small raised/merged seat with a pocket floor, so the clamp
+is located and bolted from inside the chassis. The foot is the clamp's own
+length, so the seat is a short block.
 """
 
 from __future__ import annotations
@@ -865,10 +867,26 @@ class Chassis:
 
     # -- Deck features ---------------------------------------------------
     def _seat(self, side: int):
-        """A bearing-clamp seat block merged into the Deck and side wall."""
+        """A bearing-clamp seat block merged into the Deck and side wall.
+
+        The block's top is the Deck's top face; the pocket is cut down into that
+        top face to exactly the foot's thickness. The lower half's foot fills
+        the seat's height (ADR-0033), so the pocket's floor is one `seat_floor`
+        above the seat's own floor: the foot rests on a solid 2 mm floor. The
+        clamp screws come up from inside the chassis and compress that floor
+        against the foot; the seat stays solid under them and the foot's top
+        face is flush with the Deck top and the back-panel slot meets it
+        exactly.
+        """
         from utilities import cad_helpers as ch
 
         f = self.frame
+        if f.seat_height - f.pocket_depth < self.config.material.minimum_feature - 1e-9:
+            raise ValueError(
+                "the Bearing-clamp seat has no floor under its pocket "
+                f"(seat {f.seat_height:.2f} - pocket {f.pocket_depth:.2f} < "
+                f"min feature): the screw head would have nothing to bear on"
+            )
         block = ch.box_centered(f.seat_width, f.seat_length, f.seat_height)
         block = ch.translate(
             block,
@@ -879,7 +897,14 @@ class Chassis:
         return block
 
     def _seat_pocket(self, side: int):
-        """The pocket that receives the Bearing clamp foot."""
+        """The pocket that receives the Bearing clamp foot.
+
+        It is cut down from the Deck's top face exactly as deep as the foot is
+        thick, so the foot's underside rests on the seat's own floor (the
+        Deck's inner ceiling). The one extra millimetre sits *above* the Deck
+        top, outside the solid, so the cut breaks through cleanly without
+        leaving a skin.
+        """
         from utilities import cad_helpers as ch
 
         f = self.frame
@@ -888,9 +913,9 @@ class Chassis:
         )
         corner = self.config.slide.bearing_clamp.corner_chamfer
         if corner > 0.0:
-            # Match the clamp foot's vertical corner relief (the foot is
-            # longer than the pocket's straight sides are wide, so a plain
-            # box would clash at the corners).
+            # Match the clamp foot's vertical corner relief (the foot and the
+            # body share one silhouette, so a plain box would clash at the
+            # corners).
             pocket = ch.chamfer_vertical_edges(pocket, corner)
         pocket = ch.translate(
             pocket,
@@ -913,36 +938,56 @@ class Chassis:
         amount = self.config.slide.bearing_clamp.top_chamfer
         if amount <= 0.0:
             return body
-        rim = [
-            edge
-            for edge in ch.convex_edges(body)
-            if abs(edge.midpoint[2] - f.chassis_top) < 1e-6
-            and abs(edge.midpoint[1] - f.clamp_center_y)
-            <= f.pocket_length / 2.0 + 1e-6
-            and min(
+        rim = []
+        for edge in ch.convex_edges(body):
+            if abs(edge.midpoint[2] - f.chassis_top) >= 1e-6:
+                continue
+            dx = min(
                 abs(edge.midpoint[0] - side * f.rod_x) for side in (-1, 1)
             )
-            <= f.pocket_width / 2.0 + 1e-6
-        ]
+            dy = abs(edge.midpoint[1] - f.clamp_center_y)
+            # Only the rim's four straight sides: the corner-chamfer edges
+            # sit about 1 mm inboard of both nominal boundaries and OCC crashes
+            # when they are chamfered in the same pass as the straight sides.
+            # The short side lands ~3e-4 mm off its nominal half-width after
+            # the pocket's corner cut, so the match uses a small tolerance but
+            # stays far from the corner edges.
+            if (
+                abs(dx - f.pocket_width / 2.0) <= 1e-3
+                or abs(dy - f.pocket_length / 2.0) <= 1e-3
+            ):
+                rim.append(edge)
         return ch.chamfer_edges(body, rim, amount)
 
     def _seat_hole(self, side: int):
-        """Two through-holes in the seat floor for the Bearing clamp screws."""
+        """Two clearance bores through the seat floor for the clamp screws.
+
+        The clamp screws are driven **up from inside the chassis** (ADR-0033):
+        each head sits in the Deck's cavity under the seat and compresses the
+        seat floor against the lower half's foot, then passes the foot and the
+        belly and threads into the upper half's heat-set insert.  So the Deck
+        cuts a plain clearance bore -- the seat floor keeps its full thickness
+        (it is the screw head's bearing face) and nothing self-taps here.  The
+        bore is a separate cut from the pocket: the pocket's corner chamfer and
+        the seat's rim are already treated, and one pass over both would break
+        the deck's own edge network.
+        """
         from utilities import cad_helpers as ch
         from utilities.fasteners import screw as screw_spec
 
         f = self.frame
         spec = screw_spec(self.config.slide.bearing_clamp.screw)
-        floor = self.config.slide.bearing_clamp.seat_floor
-        span = self.config.slide.bearing_clamp.screw_span_y
+        # The screws sit beside the bore, one each side of the rod; the span is
+        # the budget's derived pair distance (ADR-0033).
+        span = f.clamp_span
         holes = []
         for screw_side in (-1, 1):
-            hole = ch.cylinder_centered(spec.clearance, floor + 2.0)
+            hole = ch.cylinder_centered(spec.clearance, f.seat_height + 2.0)
             hole = ch.translate(
                 hole,
-                side * f.rod_x,
-                f.clamp_center_y + screw_side * span / 2.0,
-                f.chassis_top - f.pocket_depth - floor / 2.0,
+                side * f.rod_x + screw_side * span / 2.0,
+                f.clamp_center_y,
+                f.chassis_top - f.seat_height / 2.0,
             )
             holes.append(hole)
         return ch.make_compound(holes)

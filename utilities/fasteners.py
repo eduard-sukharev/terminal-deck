@@ -8,11 +8,20 @@ the docstring. No magic numbers. Screw sizes are keyed by name in the
 :data:`SCREWS` library (M2 / M2.5 / M3 / M4); each size's heads are keyed by
 kind in :data:`HEADS`:
 
+* ``pan`` -- **the default**: ISO 7045 / DIN 7985 pan head with a Phillips
+  cross recess, seated in a cylindrical counterbore (``docs/design_spec.md``).
+  This is the head every new joint is designed around: an ordinary screw that
+  is easy to buy and to drive;
 * ``cap`` -- ISO 4762 socket cap / ISO 1207 slotted cheese head silhouette
-  (the head the countersunk Well mounts and the Rod clamp bores are sized
-  against, ADR-0014);
+  (the Rod clamp bores and the Well mounts are sized against it, ADR-0014);
 * ``button`` -- ISO 7380-1 button head, a hex-socket head with a domed top:
   the ordinary head the two band joints seat in a recess (ADR-0018).
+
+**No countersunk (flat) heads.** The project does not use them unless a
+decision record says so: a 90-degree cone is a fragile printed ceiling, and a
+flush pan head in a counterbore does the same job. The band joints' keyhole
+recess (ADR-0018) and the Tray's driver-access cones (ADR-0021) are the
+documented exceptions, and neither is a countersink in this sense.
 """
 
 from __future__ import annotations
@@ -146,22 +155,6 @@ class WasherRecess:
 
 
 @dataclass(frozen=True)
-class Countersink:
-    """A 90-degree countersink for a flush flat-head machine screw.
-
-    Attributes
-    ----------
-    diameter : float
-        Cone diameter at the surface (mm); slightly larger than the head.
-    depth : float
-        Axial depth of the cone (mm), i.e. how much material the head occupies.
-    """
-
-    diameter: float
-    depth: float
-
-
-@dataclass(frozen=True)
 class HeadRecess:
     """A counterbored pocket for an ordinary (non-flush) screw head.
 
@@ -221,22 +214,26 @@ SCREWS: dict[str, Screw] = {
 
 
 #: Head silhouettes per screw size (diameter, height) in mm.
-#: ``cap`` is ISO 4762 / ISO 1207 (the head the flush mounts are measured
-#: against); ``button`` is the ISO 7380-1 domed hex-socket head.
+#: ``pan`` is ISO 7045 / DIN 7985 (the default, Phillips drive); ``cap`` is
+#: ISO 4762 / ISO 1207; ``button`` is the ISO 7380-1 domed hex-socket head.
 HEADS: dict[str, dict[str, Head]] = {
     "M2": {
+        "pan": Head("pan", 4.0, 1.6),
         "cap": Head("cap", 3.8, 2.0),
         "button": Head("button", 3.5, 1.3),
     },
     "M2.5": {
+        "pan": Head("pan", 5.0, 2.1),
         "cap": Head("cap", 4.6, 2.5),
         "button": Head("button", 4.5, 1.5),
     },
     "M3": {
+        "pan": Head("pan", 5.6, 2.4),
         "cap": Head("cap", 5.6, 3.0),
         "button": Head("button", 5.7, 1.65),
     },
     "M4": {
+        "pan": Head("pan", 7.0, 3.1),
         "cap": Head("cap", 7.0, 4.0),
         "button": Head("button", 7.6, 2.2),
     },
@@ -270,16 +267,6 @@ WASHERS: dict[str, WasherRecess] = {
 }
 
 
-#: Flat-head (ISO 10642) countersinks: surface diameter and cone depth, with a
-#: 0.2 mm fit allowance on the diameter.
-COUNTERSINKS: dict[str, Countersink] = {
-    "M2": Countersink(diameter=4.0, depth=0.9),
-    "M2.5": Countersink(diameter=5.2, depth=1.3),
-    "M3": Countersink(diameter=6.2, depth=1.5),
-    "M4": Countersink(diameter=8.4, depth=1.9),
-}
-
-
 def nut_trap(size: str) -> NutTrap:
     """The nyloc nut pocket for ``size``, e.g. ``"M3"``."""
     return NUT_TRAPS[size]
@@ -295,13 +282,10 @@ def washer(size: str) -> WasherRecess:
     return WASHERS[size]
 
 
-def countersink(size: str) -> Countersink:
-    """The flush-head countersink for ``size`` (``diameter``, ``depth``)."""
-    return COUNTERSINKS[size]
-
-
-def head(size: str, kind: str = "cap") -> Head:
+def head(size: str, kind: str = "pan") -> Head:
     """Return the ``kind`` head of ``size``, e.g. ``head("M3", "button")``.
+
+    The default is the ordinary Phillips ``pan`` head (``docs/design_spec.md``).
 
     Raises
     ------
@@ -370,6 +354,12 @@ HEAT_INSERTS: dict[str, HeatInsert] = {
         size="M2.5", outside_diameter=4.0, depth=4.0, hole_clearance=0.2
     ),
     "M3": HeatInsert(size="M3", outside_diameter=4.6, depth=4.0, hole_clearance=0.2),
+    # The long M3 insert (Ruthex-style "M3 long", 5 mm class): the same 4.6 mm
+    # body, 5 mm deep, so a joint that bolts through a thick part can bury it
+    # and still keep a full thread engagement (ADR-0033).
+    "M3-long": HeatInsert(
+        size="M3-long", outside_diameter=4.6, depth=5.0, hole_clearance=0.2
+    ),
     "M4": HeatInsert(size="M4", outside_diameter=5.6, depth=4.0, hole_clearance=0.2),  # short
 }
 

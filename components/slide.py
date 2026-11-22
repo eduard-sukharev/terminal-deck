@@ -27,6 +27,10 @@ from geometry.chassis_joint import chassis_joint as chassis_band_joint
 from geometry.joint import lid_joint
 from utilities import fasteners
 
+#: Radial clearance of the clamp's bore over the purchased bearing (mm): the
+#: bearing is a slip fit, so it can drop into the split bore by hand.
+_BEARING_BORE_CLEARANCE = 0.2
+
 
 @dataclass(frozen=True)
 class WelledPlate:
@@ -171,6 +175,8 @@ class SlideBudget:
     width: float
     clamp_width: float
     clamp_body_width: float
+    #: The Bearing clamp's screw-pair centre distance across the bore (ADR-0033).
+    clamp_span: float
     hardware_width: float
     side_pod: float
     draft_allowance: float
@@ -328,6 +334,37 @@ def _plate_seam(keyboard_component: Any) -> Any:
     if plate_model is None:
         return None
     return getattr(plate_model(), "seam", None)
+
+
+def bearing_clamp_screw_span(
+    bearing_outer: float,
+    insert: str,
+    edge_chamfer: float,
+    minimum_feature: float,
+) -> float:
+    """The clamp's screw-pair centre distance across the bore (mm, ADR-0033).
+
+    Each screw sits beside the bearing at ``x = +/-span/2``.  The heat-set
+    insert's printed hole must clear the bore's *chamfered* split edge by one
+    printable minimum, so the span is the closed-form sum below -- derived, so
+    a wider insert, a bigger break or a finicky material all move it together.
+    """
+    bore_radius = (bearing_outer + _BEARING_BORE_CLEARANCE) / 2.0
+    spec = fasteners.heat_insert(insert)
+    return 2.0 * (
+        bore_radius + edge_chamfer + minimum_feature + spec.printed_hole_diameter / 2.0
+    )
+
+
+def bearing_clamp_width(span: float, insert: str, minimum_feature: float) -> float:
+    """The clamp body's width across the bore for ``span`` (mm, ADR-0033).
+
+    The insert's ring is **two** printable minimums wide: it now carries the
+    joint's whole preload through its seat, so it gets twice the minimum wall
+    rather than the bare one.
+    """
+    spec = fasteners.heat_insert(insert)
+    return span + 2.0 * (spec.outside_diameter / 2.0 + 2.0 * minimum_feature)
 
 
 def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget:
@@ -511,15 +548,27 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
             f"rod (lid_back {slide.lid_back} > rod diameter {rod.diameter})"
         )
 
-    clamp_width = bearing.outer_diameter + 2 * slide.clamp_wall
-    # The head is the same width as the neck (a cylinder around the bearing);
-    # there is no flange. The display only has to clear the moving head, which
-    # is the width of the back-panel cutout it travels in.
+    # The clamp carries one screw each side of the bearing (ADR-0033).  The span
+    # and the body width are a closed-form derivation from the bore, the split
+    # chamfer, the printable minimum and the heat-set insert -- never tuned: the
+    # insert must keep a wall to the bore's chamfered edge and to the clamp's
+    # outer face.
+    clamp_span = bearing_clamp_screw_span(
+        bearing.outer_diameter,
+        slide.bearing_clamp.insert,
+        slide.bearing_clamp.edge_chamfer,
+        config.material.minimum_feature,
+    )
+    clamp_width = bearing_clamp_width(
+        clamp_span, slide.bearing_clamp.insert, config.material.minimum_feature
+    )
     clamp_body_width = clamp_width
     hardware_width = clamp_width + 2.0 * slide.slot_clearance
-    # The head's crown: the highest point the moving clamp reaches above the
-    # back panel's inner face.
-    head_crown = rod_raise + clamp_width / 2.0
+    # The moving clamp's budgeted crown keeps the old 2.0 mm wall: the printed
+    # clamp is lower (its `crown_wall` is 1.5), but shrinking the display
+    # cavity would narrow the case through the lid draft and perturb the Well
+    # mounts.  The extra clearance is spare, not a collision.
+    head_crown = rod_raise + bearing.outer_diameter / 2.0 + slide.clamp_wall
     guard = slide.fpc_guard
     # The display's back must clear the head's crown by the component gap and
     # the documented sag allowance, plus the guard plate bonded to it.
@@ -677,6 +726,7 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
         width=width,
         clamp_width=clamp_width,
         clamp_body_width=clamp_body_width,
+        clamp_span=clamp_span,
         hardware_width=hardware_width,
         side_pod=side_pod,
         draft_allowance=draft_allowance,
@@ -857,97 +907,265 @@ def build_rod_clamp(
     return ch.clean(part)
 
 
-def build_bearing_clamp(
-    bearing_outer: float,
-    clamp_wall: float,
-    rod_raise: float,
+def _bearing_clamp_edge_pairs(
+    half,
+    split_z: float,
+    bed_z: float,
+    bed_normal: tuple[float, float, float],
     length: float,
-    foot_length: float,
-    foot_thickness: float,
-    foot_top: float,
-    screw: str,
-    screw_span_y: float,
-    corner_chamfer: float = 0.0,
-    top_chamfer: float = 0.0,
-):
-    """A printed clamp holding the Linear bearing, straddling the back panel.
+    edge_chamfer: float,
+    bed_chamfer: float,
+) -> list[tuple[Any, float]]:
+    """The chamfer pairs for one clamp half: the print-layer edges (mm).
 
-    Local origin: the back panel's inner face, centred on the rod. The head is
-    a **cylinder** coaxial with the bearing, its diameter equal to the neck
-    width, so it no longer overhangs the back-panel slot: the rod passing
-    through the bearing is what retains the lid. The neck passes through the
-    panel slot and the joint gap; the foot sits in the chassis seat pocket.
-    ``foot_top`` is the foot's top face in local Z (below the panel, at the
-    Deck top): the foot is flush with the chassis top, wholly in the pocket.
+    Three families, all applied in one variable pass so OCC can build the
+    corner blends where they meet:
 
-    The foot is longer than the bearing, and its two screws sit outboard of the
-    bearing's ends, so a screw tip can never reach the bearing or the housing
-    above it. ``corner_chamfer`` breaks the foot's four vertical corners
-    (matched by the pocket); ``top_chamfer`` breaks the exposed top perimeter
-    of the foot (matched by the pocket mouth). The head's circular rims stay
-    as formed: an arc chamfer is a different, fragile operation and a round
-    rim is already print-friendly.
+    * the **split line** -- every straight edge on the split plane (the outer
+      perimeter and the bore's two long edges).  Breaking it turns the joint
+      into a deliberate V-groove instead of a hairline;
+    * the **bore's end rims** -- the half-circle arcs on the two end faces, so
+      the bearing drops into the bore instead of catching the print's top
+      edge;
+    * the **bed perimeter** -- the first-layer edge of the foot's bottom (lower
+      half) or the crown's top (upper half).
     """
     from utilities import cad_helpers as ch
-    from utilities.fasteners import screw as screw_spec
+
+    pairs: list[tuple[Any, float]] = []
+    if edge_chamfer > 0.0:
+        for edge in ch.convex_edges(half):
+            if abs(edge.midpoint[2] - split_z) < 1e-4 and edge.curve_type == "line":
+                pairs.append((edge, edge_chamfer))
+            elif (
+                edge.curve_type == "circle"
+                and abs(abs(edge.midpoint[1]) - length / 2.0) < 1e-4
+            ):
+                pairs.append((edge, edge_chamfer))
+    if bed_chamfer > 0.0:
+        for edge in ch.bed_boundary_edges(half, bed_normal):
+            pairs.append((edge, bed_chamfer))
+    return pairs
+
+
+def build_bearing_clamp_halves(
+    bearing_outer: float,
+    clamp_width: float,
+    rod_raise: float,
+    length: float,
+    foot_thickness: float,
+    foot_top: float,
+    crown_wall: float,
+    screw: str,
+    insert_name: str,
+    screw_span: float,
+    screw_length: float,
+    seat_floor: float,
+    minimum_feature: float,
+    edge_chamfer: float = 0.0,
+    bed_chamfer: float = 0.0,
+    corner_chamfer: float = 0.0,
+):
+    """The bearing clamp's lower and upper halves, in the assembled frame.
+
+    The clamp is split on the bearing's axis (ADR-0033).  The **lower half**
+    runs from the foot's bottom to the axis: it carries the foot and the bore's
+    belly, and it prints **foot-down**.  The **upper half** runs from the axis
+    to the crown (the bearing's outer top plus ``crown_wall``): it carries the
+    bore's roof, and it prints **crown-down**.  Both split faces are flat, so
+    the halves meet in one plane and each one prints with its layers parallel to
+    that face -- the bore is never a bridge.
+
+    ``screw`` (M3 pan head) does both jobs.  Each screw sits **beside** the
+    bearing at ``x = +/-screw_span/2`` and is driven **up from inside the
+    chassis**: its head bears on the Deck seat's underside (one ``seat_floor``
+    below the foot), its shank passes the seat floor and the lower half with
+    clearance, and it threads into a heat-set insert in the upper half.  The
+    head stays in the chassis cavity, so no recess is cut and the seat floor
+    keeps its whole thickness.  ``screw_length`` is the purchased length and is
+    checked against the stack: head -> the insert's seat, and never through the
+    crown.
+
+    ``insert_name`` is the heat-set insert (the library's ``M3-long``): it is
+    pressed into the upper half from the crown, **flush** with it, and lands on
+    a **seat** -- the hole is the insert's diameter down to that plane and only
+    the screw's clearance below, so the insert's skirt bears on the step and
+    the joint's preload travels in compression into the upper half instead of
+    hanging on the knurling.
+    """
+    from utilities import cad_helpers as ch
 
     ch.require_cad()
-    spec = screw_spec(screw)
-    head_diameter = bearing_outer + 2.0 * clamp_wall
     foot_bottom = foot_top - foot_thickness
+    split_z = rod_raise
+    lower_h = split_z - foot_bottom
+    upper_h = bearing_outer / 2.0 + crown_wall
+    crown_z = split_z + upper_h
+    # The head's bearing face: the Deck seat's underside, one `seat_floor`
+    # below the pocket floor the foot rests on.
+    head_z = foot_bottom - seat_floor
 
-    foot = ch.box_centered(head_diameter, foot_length, foot_thickness)
-    if corner_chamfer > 0.0:
-        foot = ch.chamfer_vertical_edges(foot, corner_chamfer)
-    foot = ch.translate(foot, 0.0, 0.0, foot_bottom + foot_thickness / 2.0)
-
-    # The head is a cylinder around the bearing: same width as the neck, its
-    # axis along Y, centred on the rod. Its lower half passes through the
-    # back-panel slot and into the foot, so it is unioned after the bore.
-    head = ch.rotate_x(ch.cylinder_centered(head_diameter, length), 90.0)
-    head = ch.translate(head, 0.0, 0.0, rod_raise)
-    # Bore the head *before* the foot is joined: the bore is 0.2 mm larger
-    # than the bearing, so cutting the foot too would shave a 0.1 mm groove
-    # into its top face. The foot top then becomes the bore's floor, exactly
-    # tangent to the bearing.
-    bore = ch.rotate_x(
-        ch.cylinder_centered(bearing_outer + 0.2, length + 2.0), 90.0
-    )
-    bore = ch.translate(bore, 0.0, 0.0, rod_raise)
-    head = ch.cut(head, bore)
-
-    part = ch.union(head, foot)
-
-    if top_chamfer > 0.0:
-        # The exposed top perimeter of the foot (the wings beside the head);
-        # the head junction is an inside corner and stays sharp.
-        top_edges = [
-            edge
-            for edge in ch.convex_edges(part)
-            if abs(edge.midpoint[2] - foot_top) < 1e-6
-            and edge.curve_type == "line"
-        ]
-        part = ch.chamfer_edges(part, top_edges, top_chamfer)
-
-    # Two screws from inside the chassis, through the seat floor into the foot.
-    # The span is wider than the bearing, so the tips land outside it.
-    pilot_depth = foot_thickness - 1.0
-    for side in (-1, 1):
-        y = side * screw_span_y / 2.0
-        pilot = ch.translate(
-            ch.cylinder_centered(spec.pilot_hole, pilot_depth),
-            0.0,
-            y,
-            foot_bottom + pilot_depth / 2.0,
+    spec = fasteners.screw(screw)
+    insert = fasteners.heat_insert(insert_name)
+    # The insert is pressed in from the crown, flush with it, and bottoms on
+    # the seat: the hole is `insert` wide from the crown down to the seat and
+    # only the screw's passage below it.  That step is what carries the joint's
+    # preload into the upper half.
+    seat_z = crown_z - insert.depth
+    tip_z = head_z + screw_length
+    engagement = tip_z - seat_z
+    if engagement < 0.5 * insert.depth - 1e-9:
+        raise ValueError(
+            "slide.bearing_clamp.screw_length is too short to engage the "
+            f"insert ({screw_length:.2f} mm tip at {tip_z:.2f}, only "
+            f"{engagement:.2f} mm above its seat at {seat_z:.2f})"
         )
-        part = ch.cut(part, pilot)
-    return ch.clean(part)
+    if tip_z > crown_z - minimum_feature + 1e-9:
+        raise ValueError(
+            "slide.bearing_clamp.screw_length breaks through the clamp's "
+            f"crown ({screw_length:.2f} mm tip at {tip_z:.2f} > "
+            f"{crown_z - minimum_feature:.2f} mm)"
+        )
+
+    bore = ch.translate(
+        ch.rotate_x(
+            ch.cylinder_centered(bearing_outer + _BEARING_BORE_CLEARANCE, length),
+            90.0,
+        ),
+        0.0,
+        0.0,
+        split_z,
+    )
+
+    lower = ch.box_centered(clamp_width, length, lower_h)
+    lower = ch.translate(lower, 0.0, 0.0, foot_bottom + lower_h / 2.0)
+    if corner_chamfer > 0.0:
+        lower = ch.chamfer_vertical_edges(lower, corner_chamfer)
+    lower = ch.cut(lower, bore)
+
+    upper = ch.box_centered(clamp_width, length, upper_h)
+    upper = ch.translate(upper, 0.0, 0.0, split_z + upper_h / 2.0)
+    if corner_chamfer > 0.0:
+        upper = ch.chamfer_vertical_edges(upper, corner_chamfer)
+    upper = ch.cut(upper, bore)
+
+    for side in (-1.0, 1.0):
+        x = side * screw_span / 2.0
+        # Clearance through the seat floor is cut by the Deck; through the
+        # lower half it is this hole, 2 mm over the full height so the cut
+        # breaks through cleanly at both ends.
+        through = ch.translate(
+            ch.cylinder_centered(spec.clearance, lower_h + 2.0),
+            x,
+            0.0,
+            foot_bottom + lower_h / 2.0,
+        )
+        lower = ch.cut(lower, through)
+        # The insert's hole: `insert` wide from the crown down to the seat (open
+        # at the crown, so the insert goes in flush and bottoms on the step).
+        insert_hole = ch.translate(
+            ch.cylinder_centered(
+                insert.printed_hole_diameter, crown_z - seat_z + 2.0
+            ),
+            x,
+            0.0,
+            (seat_z + crown_z) / 2.0 + 1.0,
+        )
+        upper = ch.cut(upper, insert_hole)
+        # Below the seat, only the screw's passage -- this is what leaves the
+        # insert's skirt a shoulder to bear on.
+        passage = ch.translate(
+            ch.cylinder_centered(spec.clearance, seat_z - split_z + 1.0),
+            x,
+            0.0,
+            (split_z - 1.0 + seat_z) / 2.0,
+        )
+        upper = ch.cut(upper, passage)
+
+    # ADR-0033: break the print-layer edges of each half (the split line, the
+    # bore's end rims and the bed perimeter) in one pass per half, so the layer
+    # seam is a deliberate groove and the bore has a lead-in.
+    lower = ch.chamfer_edges_variable(
+        lower,
+        _bearing_clamp_edge_pairs(
+            lower,
+            split_z,
+            foot_bottom,
+            (0.0, 0.0, -1.0),
+            length,
+            edge_chamfer,
+            bed_chamfer,
+        ),
+    )
+    upper = ch.chamfer_edges_variable(
+        upper,
+        _bearing_clamp_edge_pairs(
+            upper,
+            split_z,
+            crown_z,
+            (0.0, 0.0, 1.0),
+            length,
+            edge_chamfer,
+            bed_chamfer,
+        ),
+    )
+    return ch.clean(lower), ch.clean(upper)
+
+
+def build_bearing_clamp(
+    bearing_outer: float,
+    clamp_width: float,
+    rod_raise: float,
+    length: float,
+    foot_thickness: float,
+    foot_top: float,
+    crown_wall: float,
+    screw: str,
+    insert_name: str,
+    screw_span: float,
+    screw_length: float,
+    seat_floor: float,
+    minimum_feature: float,
+    edge_chamfer: float = 0.0,
+    bed_chamfer: float = 0.0,
+    corner_chamfer: float = 0.0,
+):
+    """The assembled bearing clamp: the two halves as one compound (ADR-0033).
+
+    The halves are built separately by :func:`build_bearing_clamp_halves`; this
+    wrapper places them in the assembled frame so the assembly and the exports
+    show the clamp as it sits in the case.  Print the halves separately.
+    """
+    from utilities import cad_helpers as ch
+
+    lower, upper = build_bearing_clamp_halves(
+        bearing_outer,
+        clamp_width,
+        rod_raise,
+        length,
+        foot_thickness,
+        foot_top,
+        crown_wall,
+        screw,
+        insert_name,
+        screw_span,
+        screw_length,
+        seat_floor,
+        minimum_feature,
+        edge_chamfer,
+        bed_chamfer,
+        corner_chamfer,
+    )
+    return ch.make_compound([lower, upper])
 
 
 __all__ = [
     "SlideBudget",
     "WelledPlate",
+    "bearing_clamp_screw_span",
+    "bearing_clamp_width",
     "build_bearing_clamp",
+    "build_bearing_clamp_halves",
     "build_guide_rod",
     "build_linear_bearing",
     "build_rod_clamp",

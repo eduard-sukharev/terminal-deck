@@ -94,6 +94,7 @@ class SliderFrame:
     plate_top_z: float
     clamp_width: float
     clamp_body_width: float
+    clamp_span: float
     rod_x: float
     rod_y: float
     rod_z: float
@@ -221,13 +222,26 @@ class SliderFrame:
         slot_y1 = rod_y + rod_length / 2.0 - rod_clamp_len
 
         foot_thickness = slide.bearing_clamp.foot_thickness
-        # The foot's top is flush with the Deck top: the neck spans the back
-        # panel and the joint gap, and the foot sits wholly in the pocket.
+        # The foot is the clamp's own length (ADR-0033): the lower half drops
+        # into the seat, so the clamp spreads the screen's edge loads over the
+        # whole bearing and no further.
+        foot_length = slide.bearing_clamp.length
+        # Enforce the equality rather than trusting the two config values to
+        # agree.
+        if abs(foot_length - slide.bearing.length) > 1e-9:
+            raise ValueError(
+                "slide.bearing_clamp.length must equal slide.bearing.length "
+                f"({foot_length} != {slide.bearing.length}, ADR-0033)"
+            )
+        # The foot's top is flush with the Deck top, so it comes to rest on the
+        # seat's floor (`seat_floor` below the pocket, ADR-0033): the pocket
+        # takes the foot and the seat keeps a floor under it for the screw
+        # heads to compress.
         foot_top_z = chassis_top
         foot_bottom_z = foot_top_z - foot_thickness
         pocket_depth = max(0.0, chassis_top - foot_bottom_z)
         pocket_width = budget.clamp_width + 2.0 * slide.bearing_clamp.seat_fit
-        pocket_length = slide.bearing_clamp.foot_length + 2.0 * slide.bearing_clamp.seat_fit
+        pocket_length = foot_length + 2.0 * slide.bearing_clamp.seat_fit
         seat_height = pocket_depth + slide.bearing_clamp.seat_floor
 
         clamp_width = budget.clamp_width
@@ -308,6 +322,7 @@ class SliderFrame:
             plate_top_z=budget.well.plate_top,
             clamp_width=clamp_width,
             clamp_body_width=clamp_body_width,
+            clamp_span=budget.clamp_span,
             rod_x=rod_x,
             rod_y=rod_y,
             rod_z=rod_z,
@@ -329,7 +344,7 @@ class SliderFrame:
             slot_y0=slot_y0,
             slot_y1=slot_y1,
             slot_len=slot_y1 - slot_y0,
-            foot_length=slide.bearing_clamp.foot_length,
+            foot_length=foot_length,
             foot_thickness=foot_thickness,
             foot_top=foot_top_z - panel_inner_z,
             foot_top_z=foot_top_z,

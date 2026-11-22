@@ -725,41 +725,57 @@ class RodClamp:
 
 @dataclass(frozen=True)
 class BearingClamp:
-    """A printed clamp holding a Linear bearing, straddling the lid back panel.
+    """A printed clamp holding a Linear bearing against the lid back panel.
 
-    The body sits inside the lid, above the back panel; the neck passes through
-    the back-panel slot and the 1 mm joint gap into a pocket in the chassis
-    deck. The head is a cylinder coaxial with the bearing, as wide as the neck
-    (no flange): the rod passing through the bearing retains the lid. The clamp
-    slides along the slot as the lid moves; its foot is seated in the deck
-    pocket with its top face flush with the Deck top, so the neck spans the
-    back panel and the joint gap. The foot is longer than the bearing, so the
-    two screws land outboard of it. ``corner_chamfer`` breaks the foot's
-    vertical corners (the pocket matches); ``top_chamfer`` breaks the exposed
-    top perimeter of the foot (matched by the pocket mouth). The cylindrical
-    head's rims stay as formed: an arc chamfer is a different, fragile
-    operation and a round rim is already print-friendly.
+    The clamp is **split on the bearing's axis** into a lower half (the foot
+    plus the bore's belly) and an upper half (the crown plus the bore's roof),
+    ADR-0033.  Each half prints with its layers parallel to the split face, so
+    the bore is never a bridge: the lower half prints foot-down and the upper
+    half prints crown-down.  The split face is the bearing's axis, so the two
+    halves meet in a flat plane.
+
+    The clamp is **as long as the bearing**: the screen's edge loads reach the
+    bearing as a lever, so the clamp spreads them over the whole bearing and no
+    further.  ``length`` is both the body's and the foot's length.
+
+    ``screw`` (M3 pan head) does both jobs: driven up from inside the chassis it
+    passes the Deck's seat floor and the lower half's foot and belly, and
+    threads into a heat-set insert in the upper half.  The insert is pressed in
+    from the crown, flush with it, and lands on a **seat**: its hole is
+    ``insert`` wide down to that plane and only ``screw`` clearance below it, so
+    the insert's skirt bears on the step and the joint's preload is carried in
+    compression into the upper half instead of by the knurling.  Its span is
+    derived from the bore (``components.slide.bearing_clamp_screw_span``), so it
+    is not configured; ``screw_length`` is the purchased length, checked against
+    the stack.  ``crown_wall`` is the upper half's material above the bearing's
+    outer face.
+
+    ``corner_chamfer`` breaks the part's vertical corners (the pocket matches
+    them); ``top_chamfer`` is the matching pocket mouth only; ``edge_chamfer``
+    breaks the split line and the bore's end rims (the print-layer edges).
     """
 
-    length: float = 14.0  # grip length along the bearing (the bearing is 35)
-    foot_length: float = 30.0  # longer than the bearing: screws land outboard
+    length: float = 19.0  # body AND foot length = slide.bearing.length
     foot_thickness: float = 4.0
+    crown_wall: float = 2.0  # upper-half material above the bearing's outer face
     seat_wall: float = 2.6  # material around the chassis seat pocket
     seat_floor: float = 2.0
     seat_fit: float = 0.4  # clearance each side of the foot in the pocket
-    screw: str = "M2.5"
-    screw_span_y: float = 24.0  # wider than the bearing: tips miss the bore
-    corner_chamfer: float = 5.0  # vertical corner relief on the foot and pocket
-    top_chamfer: float = 0.5  # foot's top perimeter and the pocket mouth
+    screw: str = "M3"
+    screw_length: float = 18.0  # seat floor + foot + belly + insert + 1
+    insert: str = "M3-long"  # pressed into the upper half, flush with the crown
+    corner_chamfer: float = 2.0  # 45 deg vertical corner relief and pocket match
+    top_chamfer: float = 0.5  # matching pocket mouth (the clamp's top is flat)
+    edge_chamfer: float = 0.5  # split line and bore rims
 
     def __post_init__(self) -> None:
         if min(
             self.length,
-            self.foot_length,
             self.foot_thickness,
+            self.crown_wall,
             self.seat_wall,
             self.seat_floor,
-            self.screw_span_y,
+            self.screw_length,
         ) <= 0:
             raise ValueError("slide.bearing_clamp dimensions must be positive")
         if self.seat_fit < 0:
@@ -768,10 +784,12 @@ class BearingClamp:
             raise ValueError("slide.bearing_clamp chamfers must be >= 0")
         if self.top_chamfer < 0:
             raise ValueError("slide.bearing_clamp.top_chamfer must be >= 0")
-        if self.corner_chamfer >= self.foot_length / 2.0:
+        if self.edge_chamfer < 0:
+            raise ValueError("slide.bearing_clamp.edge_chamfer must be >= 0")
+        if self.corner_chamfer >= self.length / 2.0:
             raise ValueError(
                 "slide.bearing_clamp.corner_chamfer must be under half the "
-                "foot length"
+                "clamp length (the foot is the clamp's length, ADR-0033)"
             )
 
 
@@ -944,7 +962,7 @@ class Slide:
             + (self.bearing.per_rod - 1) * self.clamp_wall
         )
         seat_length = (
-            self.bearing_clamp.foot_length
+            self.bearing_clamp.length
             + 2.0 * self.bearing_clamp.seat_fit
             + 2.0 * self.bearing_clamp.seat_wall
         )
@@ -1086,16 +1104,18 @@ def build_config(raw: dict[str, Any], topics: tuple[str, ...] = ()) -> Config:
             top_edge_chamfer=float(slide_rod_clamp.get("top_edge_chamfer", 1.0)),
         ),
         bearing_clamp=BearingClamp(
-            length=float(slide_bearing_clamp.get("length", 14.0)),
-            foot_length=float(slide_bearing_clamp.get("foot_length", 30.0)),
+            length=float(slide_bearing_clamp.get("length", 19.0)),
             foot_thickness=float(slide_bearing_clamp.get("foot_thickness", 4.0)),
+            crown_wall=float(slide_bearing_clamp.get("crown_wall", 2.0)),
             seat_wall=float(slide_bearing_clamp.get("seat_wall", 2.6)),
             seat_floor=float(slide_bearing_clamp.get("seat_floor", 2.0)),
             seat_fit=float(slide_bearing_clamp.get("seat_fit", 0.4)),
-            screw=str(slide_bearing_clamp.get("screw", "M2.5")),
-            screw_span_y=float(slide_bearing_clamp.get("screw_span_y", 24.0)),
-            corner_chamfer=float(slide_bearing_clamp.get("corner_chamfer", 5.0)),
+            screw=str(slide_bearing_clamp.get("screw", "M3")),
+            screw_length=float(slide_bearing_clamp.get("screw_length", 18.0)),
+            insert=str(slide_bearing_clamp.get("insert", "M3-long")),
+            corner_chamfer=float(slide_bearing_clamp.get("corner_chamfer", 2.0)),
             top_chamfer=float(slide_bearing_clamp.get("top_chamfer", 0.5)),
+            edge_chamfer=float(slide_bearing_clamp.get("edge_chamfer", 0.5)),
         ),
         joint=SlideJoint(
             band=float(slide_joint.get("band", 6.0)),

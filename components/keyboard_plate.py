@@ -91,7 +91,12 @@ class KeyboardPlate(Component):
 
     name = "Keyboard Plate"
 
-    def __init__(self, keyboard: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        keyboard: dict[str, Any] | None = None,
+        seam_pin_sites: tuple[float, ...] = (),
+        seam_pin: Any = None,
+    ) -> None:
         data = keyboard or {}
         self._layout_source = str(data.get("layout_source", ""))
         self._switch_family = str(data.get("switch_family", "mx_alps"))
@@ -117,6 +122,9 @@ class KeyboardPlate(Component):
         self._screw_size = str(mounting.get("screw", "M2"))
         self._screw_diameter = fasteners.screw(self._screw_size).clearance
         self._pitch = float(data.get("pitch", 19.05))
+
+        self._seam_pin_sites = tuple(seam_pin_sites or ())
+        self._seam_pin = seam_pin
 
         self._model = None
         self._layout = None
@@ -404,6 +412,7 @@ class KeyboardPlate(Component):
     def build(self):
         """Build the plate solid from the geometry model."""
         from utilities import cad_helpers
+        from geometry.seam_joint import add_pins
 
         cad_helpers.require_cad()
         self._ensure_model()
@@ -427,6 +436,16 @@ class KeyboardPlate(Component):
                 z=self._plate_thickness / 2.0,
             )
             plate = cad_helpers.cut(plate, solid)
+
+        # ADR-0006: add glued filament pins to the seam between keyboard halves.
+        # Fins grow from the plate's lower face (local z = 0, the face that
+        # faces the switch well / downward) downward into the lower side,
+        # straddling the row-jogging Seam before the split halves them.
+        if self._seam_pin_sites:
+            plate = add_pins(
+                plate, self.seam, self._seam_pin, self._seam_pin_sites,
+                substrate=0.0, upward=False, chamfer=False, follow_step=True,
+            )
 
         for x, y, d in self._get_mounting_holes():
             bore = cad_helpers.cylinder_centered(d, self._plate_thickness + 1.0)

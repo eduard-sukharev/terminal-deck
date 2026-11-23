@@ -51,7 +51,11 @@ class Rp2040Keyboard(Component):
 
     def __init__(self, keyboard: dict[str, Any] | None = None) -> None:
         data = keyboard or {}
-        self._plate = KeyboardPlate(data)
+        self._plate = KeyboardPlate(
+            data,
+            seam_pin_sites=tuple(data.get("seam_pin_sites", ())),
+            seam_pin=data.get("seam_pin"),
+        )
         self._switch_family = str(data.get("switch_family", "mx_alps"))
         self._stab_family = str(data.get("stabilizer_family", "cherry"))
         plate_cfg = data.get("plate", {}) or {}

@@ -46,6 +46,26 @@ class RowSeam:
                 points.append((nxt[2], y1))
         return points
 
+    def x_at(self, y: float) -> float:
+        """The seam's X at plate-local ``y`` (mm).
+
+        Returns the ``x`` of the band containing ``y``. Bands are used as-is
+        (not depth-stretched), matching the :class:`~utilities.config_loader.Seam`
+        interface used by :func:`geometry.seam_joint.add_pins`. A ``y`` that falls
+        between bands (on a jog) interpolates; a ``y`` outside every band clamps to
+        the nearest edge band.
+        """
+        bands = self.bands
+        if y <= bands[0][1]:
+            return bands[0][2]
+        for y0, y1, x in bands:
+            if y0 <= y <= y1:
+                return x
+        for (_, ya, xa), (yb, _, xb) in zip(bands, bands[1:]):
+            if ya <= y <= yb:
+                return xa + (xb - xa) * (y - ya) / (yb - ya)
+        return bands[-1][2]
+
     @property
     def x_range(self) -> tuple[float, float]:
         xs = [x for _, _, x in self.bands]

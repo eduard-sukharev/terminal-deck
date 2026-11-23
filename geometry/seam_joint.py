@@ -113,30 +113,110 @@ def pocket_z(pin, substrate: float, upward: bool) -> tuple[float, float]:
     return (substrate - pin.height, substrate + SINK)
 
 
-def fins(pin, x: float, y: float, substrate: float, upward: bool):
-    """The two fin solids of one pocket, in the device frame."""
+def fins(
+    pin,
+    x: float,
+    y: float,
+    substrate: float,
+    upward: bool,
+    chamfer: bool = True,
+    length: float | None = None,
+):
+    """The two fin solids of one pocket, in the device frame.
+
+    ``chamfer=False`` drops the 45° base flare (the outer wall runs straight
+    down into the substrate), which a part with little room around the pocket
+    needs -- the keyboard plate is only one wall thick beside its key rows.
+    ``length`` overrides ``pin.length``: the fins' extent across the Seam, so
+    their engagement. A part whose Seam jogs uses it to bridge a step of that
+    length, half of it into each Section.
+    """
+    length = pin.length if length is None else length
     sign = 1.0 if upward else -1.0
     solids = []
     for side in (-1, 1):
         profile = [
             (py, substrate + sign * pz) for py, pz in fin_profile(pin, side)
         ]
-        fin = cad_helpers.extrude_profile_x(profile, pin.length)
+        if not chamfer:
+            profile = _square_fin(profile, side, pin)
+        fin = cad_helpers.extrude_profile_x(profile, length)
         solids.append(cad_helpers.translate(fin, x, y, 0.0))
     return solids
 
 
-def add_pins(body, seam, pin, sites, substrate: float, upward: bool):
+def _square_fin(
+    profile: list[tuple[float, float]], side: int, pin
+) -> list[tuple[float, float]]:
+    """Drop the base flare: the fin becomes a plain rectangle (no 45° base)."""
+    inner = side * pin.gap / 2.0
+    outer = side * (pin.gap / 2.0 + pin.fin)
+    base_z = min(z for _, z in profile)
+    top_z = max(z for _, z in profile)
+    return [(inner, base_z), (outer, base_z), (outer, top_z), (inner, top_z)]
+
+
+def step_at(seam, depth: float, y: float):
+    """The Seam's jog at ``y`` as ``(x_centre, x_travel)``, or ``None``.
+
+    A row-jogging Seam steps sideways between rows. The jog's centre is the
+    midpoint of the two band X values; its travel is their distance. A pin pair
+    placed on the step is centred on that midpoint and spans the travel.
+    """
+    bands = seam.segments(depth)
+    for (y0, y1, x), nxt in zip(bands, bands[1:]):
+        if y0 - 1e-9 <= y <= y1 + 1e-9:
+            return ((x + nxt[2]) / 2.0, abs(nxt[2] - x))
+    return None
+
+
+def step_length(seam, depth: float, y: float) -> float | None:
+    """The X travel of the Seam's jog at ``y`` (mm), or ``None`` on a straight run."""
+    step = step_at(seam, depth, y)
+    return None if step is None else step[1]
+
+
+def add_pins(
+    body,
+    seam,
+    pin,
+    sites,
+    substrate: float,
+    upward: bool,
+    chamfer: bool = True,
+    follow_step: bool = False,
+):
     """Union the Seam's pin fins into ``body``.
 
     Called on the whole part before it is split, so each Section keeps its
     half of every fin. A part with no configured sites comes back unchanged.
+    ``chamfer=False`` keeps every fin rectangular (no base flare).
+
+    ``follow_step=True`` makes a fin pair bridge the Seam's jog at its site:
+    the pair is centred on the jog's midpoint, and its length is the step's
+    X travel plus ``2 * pin.engagement`` (5 mm each side), so both halves
+    always reach at least 5 mm into their Section. A site on a straight run
+    keeps ``pin.length`` and the Seam's own X.
     """
     for y in sites:
+        x = seam.x_at(y)
+        length = pin.length
+        if follow_step:
+            step = step_at(seam, _seam_depth(seam, sites), y)
+            if step is not None:
+                x = step[0]
+                length = step[1] + 2.0 * pin.engagement
         body = cad_helpers.union(
-            body, *fins(pin, seam.x_at(y), y, substrate, upward)
+            body,
+            *fins(pin, x, y, substrate, upward, chamfer, length),
         )
     return body
+
+
+def _seam_depth(seam, sites) -> float:
+    """The Seam's Y extent, taken from its bands (their outer ends)."""
+    bands = seam.bands
+    return max(bands[-1][1] - bands[0][0], 1.0)
 
 
 def site_on_straight_run(seam, depth: float, y: float, pin) -> bool:

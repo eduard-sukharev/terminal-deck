@@ -100,6 +100,13 @@ class BuildPipeline:
                 "wobble": cfg.keyboard.plate_wobble,
             },
             "mounting": cfg.keyboard.mounting or {},
+            # ADR-0006: seam-pin sites and spec for the plate's row-jogging Seam.
+            # The sites are the pocket-centre Y values (plate-local), validated
+            # by slide-seam-pin-fit/clear; the pin spec comes from config.seam_pin.
+            "seam_pin_sites": tuple(
+                cfg.slide.seam_pin_sites.get("keyboard_plate", ())
+            ),
+            "seam_pin": cfg.seam_pin,
         }
         sbc = OrangePiZero2W(cfg.hardware)
         # Raise the SBC onto its mounting bosses, clear of the base floor's

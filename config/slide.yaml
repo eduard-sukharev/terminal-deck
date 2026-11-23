@@ -189,6 +189,16 @@ slide:
     chassis_deck: [30.0, 52.0]
     screen_lid_bezel: [-50.0, 50.0]
     screen_lid_back: [-49.0, 49.0]
+    # keyboard_plate  -19.05 / 0.0 / 19.05 -- Y midpoints of the three gaps
+    #                    between the four key rows (JD40 layout), derived from
+    #                    the switch cutout extents: row1 -35.58..-21.58,
+    #                    row2 -16.52..-2.53, row3 2.53..16.52, row4 21.58..35.58.
+    #                    Each site sits in the clear band between two rows, so
+    #                    the glued filament bridges the two plate halves where
+    #                    there are no switch cutouts (ADR-0006). The plate's own
+    #                    split is layout-derived (keyboard.geometry.seam.plate_seam);
+    #                    engagement is seam_pin.length / 2 = 5 mm per side.
+    keyboard_plate: [-19.05, 0.0, 19.05]
 
   # Vent slots: deferred (ADR-0011). The rear wall's joint band has to stay
   # solid and the old row would pierce it; the pattern is redesigned together

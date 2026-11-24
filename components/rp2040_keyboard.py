@@ -317,6 +317,22 @@ class Rp2040Keyboard(Component):
         """The plate's notched, eared plan polygon (plate-local mm, for #16)."""
         return self._plate.footprint_outline()
 
+    def cutout_outline(self) -> list[tuple[float, float]]:
+        """The Well Cutout's stepped outline (plate-local mm)."""
+        return self._plate.cutout_outline
+
+    def plate_base_outline(self) -> list[tuple[float, float]]:
+        """The plate's plain stepped outline, without ears/notches (mm)."""
+        return self._plate.plate_base_outline
+
+    def plate_bands(self) -> list[tuple[float, float, float, float]]:
+        """The plate's row bands ``(y0, y1, x0, x1)`` (plate-local mm)."""
+        return self._plate.plate_bands
+
+    def row_bands(self) -> list[tuple[float, float, float, float]]:
+        """The keycap row bands the plate is stepped from (plate-local mm)."""
+        return self._plate.row_bands
+
     def mounting_screw(self) -> str:
         """The plate's standoff screw size (from keyboard.mounting.screw)."""
         return self._plate.mounting_screw()

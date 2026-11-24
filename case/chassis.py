@@ -305,12 +305,32 @@ class Chassis:
         # The keyboard Well: a ring of Deck walls around the Cutout, from the
         # Deck's top face down to the plate. Its lower faces are the plate's
         # continuous bearing -- no ledge and no floor. It stands inside the
-        # cavity, so it is unioned back onto the shell.
-        ring = ch.box_centered(plate.width, plate.depth, ring_height)
-        ring = ch.translate(ring, plate.cx, plate.cy, plate_top + ring_height / 2.0)
-        opening = ch.box_centered(cut.width, cut.depth, ring_height + 2.0)
-        opening = ch.translate(opening, cut.cx, cut.cy, plate_top + ring_height / 2.0)
-        ring = ch.cut(ring, opening)
+        # cavity, so it is unioned back onto the shell. Both the plate border
+        # and the Cutout follow the keyboard's per-row outline, so a stepped
+        # layout (a narrow spacebar row) keeps the ring one wall wide band by
+        # band; a rectangular layout's polygons are plain rectangles.
+        if mounts.plate_polygon and mounts.cutout_polygon:
+            ring = ch.extrude_polygon(
+                list(mounts.plate_polygon),
+                ring_height,
+                z=plate_top + ring_height / 2.0,
+            )
+            opening = ch.extrude_polygon(
+                list(mounts.cutout_polygon),
+                ring_height + 2.0,
+                z=plate_top + ring_height / 2.0,
+            )
+            ring = ch.cut(ring, opening)
+        else:  # legacy caller with no stepped outline: the old rectangle
+            ring = ch.box_centered(plate.width, plate.depth, ring_height)
+            ring = ch.translate(
+                ring, plate.cx, plate.cy, plate_top + ring_height / 2.0
+            )
+            opening = ch.box_centered(cut.width, cut.depth, ring_height + 2.0)
+            opening = ch.translate(
+                opening, cut.cx, cut.cy, plate_top + ring_height / 2.0
+            )
+            ring = ch.cut(ring, opening)
         # ADR-0024: the ring is continuous. Where a chassis band column reaches
         # into the plate's border the plate below is still notched (the sheet
         # gives way, the column is Deck material), but the ring above fills the
@@ -321,8 +341,13 @@ class Chassis:
         # The Cutout is open through the top slab: the keycaps pass through it
         # and the ring surrounds it. It is sized by the keycaps plus wobble,
         # never by `clearance.shell`.
-        well = ch.box_centered(cut.width, cut.depth, 3.0 * wall)
-        well = ch.translate(well, cut.cx, cut.cy, top)
+        if mounts.cutout_polygon:
+            well = ch.extrude_polygon(
+                list(mounts.cutout_polygon), 3.0 * wall, z=top
+            )
+        else:
+            well = ch.box_centered(cut.width, cut.depth, 3.0 * wall)
+            well = ch.translate(well, cut.cx, cut.cy, top)
         body = ch.cut(body, well)
 
         # One M2 insert boss per plate station, merged to the ring's outer face

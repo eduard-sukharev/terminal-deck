@@ -107,6 +107,7 @@ class BuildPipeline:
             # the keyboard model needs the resolved wall thickness and the
             # config-derived wobble/thickness, not just the raw YAML section.
             "wall_thickness": cfg.wall_thickness,
+            "minimum_feature": cfg.material.minimum_feature,
             "plate": {
                 **(cfg.keyboard.plate or {}),
                 "thickness": cfg.keyboard.plate_thickness,

@@ -324,6 +324,18 @@ class PlateFrame:
         ]
         return PlanRect.from_points(corners)
 
+    def local_polygon_to_world(
+        self, vertices: "list[tuple[float, float]]"
+    ) -> list[tuple[float, float]]:
+        """A plate-local polygon in the chassis plan (order preserved)."""
+        return [self.local_to_world(x, y) for x, y in vertices]
+
+    def world_polygon_to_local(
+        self, vertices: "list[tuple[float, float]]"
+    ) -> list[tuple[float, float]]:
+        """A chassis-plan polygon in the plate's own centred frame."""
+        return [self.world_to_local(x, y) for x, y in vertices]
+
     # -- the historical names, now the correct maps ----------------------
     def to_local(self, x: float, y: float) -> tuple[float, float]:
         return self.world_to_local(x, y)
@@ -627,6 +639,12 @@ class WellMounts:
     ring: float
     front_lip: float
     rear_lip: float
+    #: The Well Cutout's stepped outline in the chassis plan (mm), the opening
+    #: the Deck cuts through its top slab. Empty only for a legacy caller.
+    cutout_polygon: tuple[tuple[float, float], ...] = ()
+    #: The plate's plain stepped outline in the chassis plan (mm), the shape
+    #: the Well ring is built from.
+    plate_polygon: tuple[tuple[float, float], ...] = ()
 
     @property
     def ok(self) -> bool:
@@ -1264,44 +1282,87 @@ def well_mounts(
     # lip band. The clearance walk uses the wider of the boss and the ear: the
     # boss may be the one that reaches a band column first.
     station_half = max(boss_diameter / 2.0, ear_half)
+    plate_bands = tuple(getattr(well, "plate_bands", ()))
 
-    def outer_limit(station_y: float) -> tuple[float, tuple[str, ...]]:
-        return _walk_x(
-            plate_half - station_half,
-            -1.0,
-            station_y,
-            sheet_obstacles,
-            station_half,
-            clearance,
-        )
+    def band_at(local_y: float) -> tuple[float, float]:
+        """The plate band whose Y range contains or is nearest to ``local_y``.
+
+        A stepped layout's front/rear lip sits just outboard of its outermost
+        row band, so the nearest band is the one whose X extent the station
+        must stay inside -- the bbox half-width is not an edge where the plate
+        steps back (a narrow spacebar row leaves no material at the corner).
+        """
+        if not plate_bands:
+            return (-plate_half, plate_half)
+        best: tuple[float, float] | None = None
+        best_dist: float | None = None
+        for y0, y1, x0, x1 in plate_bands:
+            if y0 - _EPS <= local_y <= y1 + _EPS:
+                return (x0, x1)
+            dist = y0 - local_y if local_y < y0 else local_y - y1
+            if best_dist is None or dist < best_dist:
+                best_dist = dist
+                best = (x0, x1)
+        return best or (-plate_half, plate_half)
+
+    def outer_limit(local_y: float, world_side: int) -> tuple[float, tuple[str, ...]]:
+        """The clearest outer station X for one side at one lip, world coords.
+
+        Starts at the band edge on this side and walks inboard until a tab is
+        clear of chassis obstacles at this lip's world Y. The result is a signed
+        world X.
+        """
+        x0, x1 = band_at(local_y)
+        # plate is rotated 180 deg: world_x = cx - plate_x, world_y = cy - plate_y
+        world_y = frame.cy - local_y
+        if world_side > 0:
+            start = frame.cx - x0 - station_half
+            direction = -1.0
+        else:
+            start = frame.cx - x1 + station_half
+            direction = 1.0
+        return _walk_x(start, direction, world_y, sheet_obstacles, station_half, clearance)
 
     front_y = ring_front - station_out
     rear_y = ring_rear + station_out
-    (front_outer, _), (rear_outer, _) = (
-        outer_limit(front_y),
-        outer_limit(rear_y),
-    )
-    outer_x = min(front_outer, rear_outer)
+    front_local_y = frame.world_to_local(0.0, front_y)[1]
+    rear_local_y = frame.world_to_local(0.0, rear_y)[1]
+
+    # Each side takes the tighter (more central) of front/rear so both lips
+    # share one X per side, matching the old pattern's symmetry: a stepped
+    # plate's rear lip may land on a band whose edge is further out than the
+    # front's, and taking the tighter keeps the pair inside the corner
+    # columns' chords (the corner column's fillet does not fit a chord that
+    # sits on the band's own edge).
+    outer_by_side: dict[int, tuple[float, tuple[str, ...]]] = {}
+    for world_side in (-1, 1):
+        front_sx, front_dodged = outer_limit(front_local_y, world_side)
+        rear_sx, rear_dodged = outer_limit(rear_local_y, world_side)
+        if world_side > 0:
+            sx, dodged = min(front_sx, rear_sx), front_dodged + rear_dodged
+        else:
+            sx, dodged = max(front_sx, rear_sx), front_dodged + rear_dodged
+        outer_by_side[world_side] = (sx, dodged)
 
     # Each at-Seam station straddles the segment where its end of the Seam meets
     # the plate's edge, `seam_clearance` from it on its own Section's side (the
     # world Seam ends -- the plate is placed rotated). The outer stations are
     # `None`: they mirror about the centreplane, inboard of the band columns.
     placements = (
-        ("front-outer", None, front_y),
-        ("front-seam", seam_world.x_low_y, front_y),
-        ("rear-seam", seam_world.x_high_y, rear_y),
-        ("rear-outer", None, rear_y),
+        ("front-outer", None, front_y, front_local_y),
+        ("front-seam", seam_world.x_low_y, front_y, front_local_y),
+        ("rear-seam", seam_world.x_high_y, rear_y, rear_local_y),
+        ("rear-outer", None, rear_y, rear_local_y),
     )
 
     # -- the mounts ------------------------------------------------------
     mounts: list[WellMount] = []
     for world_side in (-1, 1):
-        for station, seam_x, y in placements:
+        for station, seam_x, y, local_y in placements:
             reasons: list[str] = []
             adjustments: list[str] = []
             if seam_x is None:
-                sx = world_side * outer_x
+                sx, dodged = outer_by_side[world_side]
             else:
                 nominal = seam_x + world_side * seam_clearance
                 # A station the chassis forces inboard is walked *toward* its
@@ -1552,6 +1613,25 @@ def well_mounts(
                 + ", ".join(m.name for m in members)
             )
 
+    # The Well's stepped outlines, converted into the chassis plan. The
+    # keyboard's plate model is the single source when it supplied one; a
+    # legacy caller falls back to the rectangular Well this module used to
+    # build, so nothing silently changes shape.
+    def _rect_local(w: float, h: float) -> tuple[tuple[float, float], ...]:
+        return ((-w / 2.0, -h / 2.0), (w / 2.0, -h / 2.0),
+                (w / 2.0, h / 2.0), (-w / 2.0, h / 2.0))
+
+    cutout_local = tuple(well.cutout_outline) or _rect_local(
+        width - 2.0 * wall, depth - 2.0 * wall
+    )
+    plate_local = (
+        tuple(getattr(well, "plate_base_outline", ()))
+        or tuple(well.plate_outline)
+        or _rect_local(width, depth)
+    )
+    cutout_polygon = tuple(frame.local_polygon_to_world(list(cutout_local)))
+    plate_polygon = tuple(frame.local_polygon_to_world(list(plate_local)))
+
     return WellMounts(
         frame=frame,
         mounts=tuple(mounts),
@@ -1587,6 +1667,8 @@ def well_mounts(
         ring=wall,
         front_lip=well.front_lip,
         rear_lip=well.rear_lip,
+        cutout_polygon=cutout_polygon,
+        plate_polygon=plate_polygon,
     )
 
 

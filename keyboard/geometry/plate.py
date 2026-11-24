@@ -17,9 +17,15 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import replace
 
+from keyboard.geometry.bands import grow_bands, keycap_bands, quantize_bands
 from keyboard.geometry.cutouts import stabilizer_cutouts, switch_cutouts
 from keyboard.geometry.keycaps import keycap_footprint, keycap_specs
-from keyboard.geometry.outline import PlateTab, attach_features, generate_outline
+from keyboard.geometry.outline import (
+    PlateTab,
+    attach_features,
+    bands_to_polygon,
+    treat_corners,
+)
 from keyboard.geometry.seam import (
     plate_seam,
     seam_conflicts,
@@ -83,6 +89,7 @@ def generate(
     keycap_profile: str = "xda",
     wobble: float = 0.0,
     corner_radius: float = 2.0,
+    minimum_feature: float = 0.6,
     mounting_holes: Iterable[MountingHole] = (),
     ears: Iterable = (),
     notches: Iterable[Rect] = (),
@@ -113,6 +120,10 @@ def generate(
         Keycap wobble allowance each side of the Cutout (mm, ADR-0014).
     corner_radius : float
         Plate corner radius (mm).
+    minimum_feature : float
+        Printable minimum (``config.material.minimum_feature``, mm). Row X
+        differences below it are not a real step and are merged, so the plate
+        adapts to any layout without emitting a sub-printable staircase.
     mounting_holes : Iterable[MountingHole]
         Holes the plate carries, in plate-local ``(x, y, diameter)`` mm. Empty
         by default: the enclosure injects its Well-mount holes (ADR-0014).
@@ -135,14 +146,47 @@ def generate(
     if not centers:
         raise ValueError("layout has no switches: no plate to generate")
 
+    pinned = cutout is not None
     if cutout is None:
         cutout = cutout_bounds(layout, keycap_profile, wobble)
+
+    # The plate follows the rows: each band is one row's real keycap extent, so
+    # a layout with a narrow spacebar row yields a staircase (ADR-0014's
+    # ``plate = cutout + wall`` holds band by band). When the caller pins the
+    # Cutout, there is no per-row information to step along, so it stays a
+    # single rectangular band.
+    specs = keycap_specs(
+        list(layout.keys),
+        get_keycap(keycap_profile)(),
+        pitch=layout.pitch,
+        layout_centroid=layout._centroid(),
+    )
+    row_bands: tuple[tuple[float, float, float, float], ...] = ()
+    if pinned:
+        cutout_bands = [(cutout[1], cutout[3], cutout[0], cutout[2])]
+    else:
+        bands = quantize_bands(keycap_bands(specs), minimum_feature)
+        row_bands = tuple(bands)
+        cutout_bands = grow_bands(bands, wobble, wobble)
+    plate_bands = grow_bands(cutout_bands, wall, wall)
+
+    cutout = (
+        min(b[2] for b in cutout_bands),
+        cutout_bands[0][0],
+        max(b[3] for b in cutout_bands),
+        cutout_bands[-1][1],
+    )
     cx0, cy0, cx1, cy1 = cutout
     if not (cx0 < cx1 and cy0 < cy1):
         raise ValueError(f"degenerate Well Cutout: {cutout}")
 
     # Plate = Cutout + one wall per side (ADR-0014).
-    plate = (cx0 - wall, cy0 - wall, cx1 + wall, cy1 + wall)
+    plate = (
+        min(b[2] for b in plate_bands),
+        plate_bands[0][0],
+        max(b[3] for b in plate_bands),
+        plate_bands[-1][1],
+    )
     plate_x0, plate_y0, plate_x1, plate_y1 = plate
 
     # The margin of the plate past the switch centers is what the outline
@@ -160,10 +204,24 @@ def generate(
             f"the Well Cutout {cutout} does not contain the switch grid: "
             "the outline would fold over itself"
         )
-    outline = generate_outline(
-        centers, margin=margins, corner_radius=corner_radius,
+    # The Cutout is sharp where the plate is rounded (``radius - wall``); the
+    # plate keeps the Well's bearing border one wall wide on the straight runs
+    # (ADR-0014) and its outer corners rounded at ``corner_radius`` exactly as
+    # the rectangular plate was. The concave step corners are chamfered.
+    cutout_outline = treat_corners(
+        bands_to_polygon(cutout_bands),
+        max(0.0, corner_radius - wall),
+        minimum_feature,
     )
-    outline = attach_features(outline, ears, notches)
+    # The plate's plain stepped outline: the band polygon with its corners left
+    # square. It is what the Well ring is built from -- the ring's structural
+    # body must keep its corner columns' walls square, so the corner rounding
+    # belongs to the plate's own outline only (``plate_outline`` below).
+    plate_base_outline = bands_to_polygon(plate_bands)
+    plate_outline = treat_corners(
+        plate_base_outline, corner_radius, minimum_feature
+    )
+    outline = attach_features(plate_outline, ears, notches)
 
     sw_cuts = switch_cutouts(layout.keys, switch_family, layout.pitch, layout._centroid())
     stab_cuts = stabilizer_cutouts(
@@ -183,6 +241,11 @@ def generate(
         bounding_box=(width, height, plate_thickness),
         cutout=cutout,
         edge_margins=_border(sw_cuts + stab_cuts, plate),
+        row_bands=row_bands,
+        cutout_outline=tuple(cutout_outline),
+        plate_outline=tuple(plate_outline),
+        plate_base_outline=tuple(plate_base_outline),
+        plate_bands=tuple(plate_bands),
     )
 
     model = KeyboardGeometryModel(

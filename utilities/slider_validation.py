@@ -294,6 +294,7 @@ def _add_plate_checks(
     names = (
         "keyboard-plate-overhang",
         "keyboard-plate-border",
+        "keyboard-plate-steps",
         "keyboard-plate-seam",
         "keyboard-plate-sections",
         "keyboard-plate-seam-pins",
@@ -303,6 +304,7 @@ def _add_plate_checks(
             report.add(name, False, "the keyboard plate model is unavailable")
         return
     wall = float(config.wall.thickness)
+    minimum = float(config.material.minimum_feature)
     meta = model.metadata
     cutout = meta.cutout
     half_w, half_d = meta.width / 2.0, meta.height / 2.0
@@ -330,6 +332,27 @@ def _add_plate_checks(
         f"switch-free border left/right/front(spacebar)/rear {margins[0]:.2f}/"
         f"{margins[1]:.2f}/{margins[3]:.2f}/{margins[2]:.2f} >= wall "
         f"{wall:.2f} (no switch or stabilizer cutout in the bearing border)",
+    )
+
+    # ADR-0014: the plate follows the key rows. A row whose X extent differs
+    # from its neighbour by less than the printable minimum is not a real step
+    # (the keyboard quantizes it away), so any emitted step must be printable
+    # and every band must still keep the one-wall bearing border.
+    bands = tuple(getattr(meta, "plate_bands", ()))
+    step_problems: list[str] = []
+    for (_, _, x0a, x1a), (_, _, x0b, x1b) in zip(bands, bands[1:]):
+        for side, a, b in (("left", x0a, x0b), ("right", x1a, x1b)):
+            step = abs(b - a)
+            if _EPS < step < minimum - _EPS:
+                step_problems.append(
+                    f"{side} step {step:.3f} < minimum feature {minimum:.2f}"
+                )
+    report.add(
+        "keyboard-plate-steps",
+        not step_problems,
+        f"plate steps {len(bands)} row band(s), every X step >= minimum "
+        f"feature {minimum:.2f}"
+        + (": " + "; ".join(step_problems) if step_problems else ""),
     )
 
     seam = getattr(model, "seam", None)

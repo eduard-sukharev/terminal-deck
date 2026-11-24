@@ -577,6 +577,26 @@ Gotchas:
   keyboard's 180° placement (`well_mounts(..., placement=...)`), from one
   `well_mounts` call for the Deck and the plate. Plate thickness or keycap
   height moves `plate_z`, the Well depth and the derived front margin.
+- **Both the Cutout and the plate follow the key rows, band by band.** The
+  keyboard's plate model derives one band per key row from the real keycap
+  extents (`keyboard/geometry/bands.py`) and quantizes row X differences below
+  `config.material.minimum_feature` (0.60) away, so jd40/planck (differences
+  ≤ 0.21) stay one rectangular band while a narrow-spacebar layout (saber)
+  steps. The Well's Cutout and the plate's outline are **polygons** from those
+  bands (`keyboard/geometry/outline.py`), so the Deck's ring and the plate's
+  edge are stepped in the same plan. The plate's *plain* outline (no ears or
+  notches, square corners) is what the Well ring is extruded from; the plate's
+  own outline rounds **every convex corner** at `corner_radius` — the outer
+  ones on the front/rear extremes and the step corners where a row's edge juts
+  out — and chamfers **every concave step corner** at 45° (adding material
+  inside the notch, never removing bearing). The Cutout stays square (its
+  radius is `corner_radius − wall` = 0), so ADR-0014's "plate = cutout + wall"
+  holds band by band. The four outer M2 stations derive
+  their X from the band at their own lip (`band_at`), not the bounding box, so
+  a lip that steps back is not reached through thin air — and the two lips
+  still share one X per side so the corner columns' fillets keep their surface.
+  `keyboard-plate-steps` (HARD) rejects any emitted step below the printable
+  minimum.
 - The keyboard is the tallest content along the face (32.30, keycaps flush with
   the Deck top): the plate's depth and the derived front margin set the travel.
   The RP2040 controller sits under the plate — the cavity there is clear
@@ -586,7 +606,7 @@ Gotchas:
   The USB hub is external (an accessory-rail module), not a chassis placement.
 - **The Well/plate invariants are HARD checks** (`--steps data`): the ten
   `keyboard-*` checks — `keyboard-well-parting`, `-ring`, `-cutout`,
-  `keyboard-plate-overhang`, `-border`, `-seam`, `-sections`,
+  `keyboard-plate-overhang`, `-border`, `-steps`, `-seam`, `-sections`,
   `keyboard-mounts-stations`, `-fit`, `-parting` (0 floor standoffs) — plus
   `slide-chassis-joint-clear`, which measures the joint stations against the
   plate's **notched** footprint rather than its bounding box, and the seven

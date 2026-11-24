@@ -111,6 +111,9 @@ class KeyboardPlate(Component):
             )
         self._wobble = float(plate["wobble"])
         self._corner_radius = float(plate.get("corner_radius", 2.0))
+        self._minimum_feature = float(
+            data.get("minimum_feature", plate.get("minimum_feature", 0.6))
+        )
         if "wall_thickness" not in data:
             raise ValueError(
                 "KeyboardPlate needs 'wall_thickness' (the Well ring / plate "
@@ -154,6 +157,7 @@ class KeyboardPlate(Component):
             keycap_profile=self._keycap_profile,
             wobble=self._wobble,
             corner_radius=self._corner_radius,
+            minimum_feature=self._minimum_feature,
             mounting_holes=self._mounting_holes,
             ears=self._ears,
             notches=self._notches,
@@ -214,6 +218,36 @@ class KeyboardPlate(Component):
         """The plate outline polygon (mm, plate-local)."""
         self._ensure_model()
         return list(self._model.plate_outline)
+
+    @property
+    def plate_base_outline(self) -> list[tuple[float, float]]:
+        """The plate's plain stepped outline, without ears/notches (mm).
+
+        This is the shape the Well ring is grown from: the plate exactly one
+        wall past the Cutout on every band, with its corners left **square** so
+        the ring's structural body keeps the corner columns' walls square. The
+        plate's own outline carries the corner rounding; the ring does not.
+        """
+        self._ensure_model()
+        return [tuple(p) for p in self._model.metadata.plate_base_outline]
+
+    @property
+    def cutout_outline(self) -> list[tuple[float, float]]:
+        """The Well Cutout's stepped outline (mm, plate-local)."""
+        self._ensure_model()
+        return [tuple(p) for p in self._model.metadata.cutout_outline]
+
+    @property
+    def plate_bands(self) -> list[tuple[float, float, float, float]]:
+        """The plate's row bands ``(y0, y1, x0, x1)`` (mm, plate-local)."""
+        self._ensure_model()
+        return [tuple(b) for b in self._model.metadata.plate_bands]
+
+    @property
+    def row_bands(self) -> list[tuple[float, float, float, float]]:
+        """The keycap row bands the plate is stepped from (mm, plate-local)."""
+        self._ensure_model()
+        return [tuple(b) for b in self._model.metadata.row_bands]
 
     @property
     def edge_margins(self) -> tuple[float, float, float, float]:

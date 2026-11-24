@@ -249,6 +249,11 @@ def _subtract_rect(
     chain_out = chain_b if inside_a else chain_a
 
     arc = _rect_arc(with_rect, chain_out[-1], chain_out[0], inside_poly=True, poly=poly)
+    # The notch's arc runs from the crossing the surviving chain ends on back to
+    # the crossing it starts on (the closing point, which the chain already
+    # carries).
+    if arc and _same(arc[-1], chain_out[0]):
+        arc = arc[:-1]
     return _ccw(chain_out + arc)
 
 
@@ -328,7 +333,9 @@ def _rect_arc(
 
     The rectangle has two arcs between the two crossings; exactly one lies
     inside ``poly`` and one outside. ``inside_poly`` picks which -- the notch
-    keeps the inside arc, a tab would keep the outside one.
+    keeps the inside arc, a tab would keep the outside one. Both crossings are
+    included: they are the rectangle's corners where the notch/tab leaves the
+    plate edge, and the merged ring needs them.
     """
     i = _index_of(start, ring)
     j = _index_of(end, ring)
@@ -342,117 +349,153 @@ def _rect_arc(
         a, b = candidate[0], candidate[1]
         mid = ((a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0)
         if _inside(mid[0], mid[1], poly) == inside_poly:
-            return candidate[1:-1]
+            return candidate
     # A zero-length arc (crossings on adjacent rectangle corners).
     return []
-
-
-def _tab_run(
-    p: tuple[float, float],
-    q: tuple[float, float],
-    rect: Rect,
-    fillet: float,
-    segments: int = 8,
-) -> list[tuple[float, float]]:
-    """Thin-plate tab's boundary between the crossings on a straight edge.
-
-    ``p -> q`` is the edge's travel direction, so the run is emitted in the
-    same direction and the ring stays closed. The tab's two outboard corners
-    are rounded with ``fillet``.
-    """
-    x0, y0, x1, y1 = rect
-    edge_y = p[1]
-    # The tab reaches outboard past the plate edge; the rectangle also carries
-    # the inboard overlap, so the longer side is the outboard one.
-    outward = -1.0 if (edge_y - y0) > (y1 - edge_y) else 1.0
-    y_out = y0 if outward < 0 else y1
-    inward = -outward
-    d = 1.0 if q[0] > p[0] else -1.0
-    near, far = (x0, x1) if d > 0 else (x1, x0)
-    radius = max(
-        0.0,
-        min(fillet, abs(far - near) / 2.0, abs(edge_y - y_out)),
-    )
-
-    run: list[tuple[float, float]] = []
-
-    def push(point: tuple[float, float]) -> None:
-        if run and _same(point, run[-1]):
-            return
-        run.append(point)
-
-    push((near, edge_y))
-    if radius > _EPS:
-        side_y = y_out + inward * radius
-        push((near, side_y))
-        _arc_between(
-            near + d * radius, side_y, (near, side_y), (near + d * radius, y_out),
-            segments, push,
-        )
-        _arc_between(
-            far - d * radius, side_y, (far - d * radius, y_out), (far, side_y),
-            segments, push,
-        )
-        push((far, edge_y))
-    else:
-        push((near, y_out))
-        push((far, y_out))
-        push((far, edge_y))
-    if run and _same(run[-1], q):
-        run.pop()
-    return run
-
-
-def _arc_between(
-    cx: float,
-    cy: float,
-    start: tuple[float, float],
-    end: tuple[float, float],
-    segments: int,
-    push,
-) -> None:
-    """Emit a fillet arc of radius ``|start - centre|`` from ``start`` to ``end``.
-
-    ``start`` is already on the ring, so it is not emitted again. The short
-    sweep is the fillet: anything more would wrap the arc around the tab.
-    """
-    a0 = math.atan2(start[1] - cy, start[0] - cx)
-    a1 = math.atan2(end[1] - cy, end[0] - cx)
-    delta = (a1 - a0 + math.pi) % (2.0 * math.pi) - math.pi
-    radius = math.hypot(start[0] - cx, start[1] - cy)
-    for i in range(1, segments + 1):
-        angle = a0 + delta * i / segments
-        push((cx + radius * math.cos(angle), cy + radius * math.sin(angle)))
 
 
 def _apply_tab(
     poly: list[tuple[float, float]], tab: PlateTab, segments: int = 8
 ) -> list[tuple[float, float]]:
-    """Grow ``poly`` by one filleted tab straddling a straight edge."""
+    """Grow ``poly`` by one filleted tab straddling the plate's boundary.
+
+    The tab's rectangle must cross the ring's boundary exactly twice, so the
+    remainder stays one connected ring: the part of the ring outside the
+    rectangle plus the rectangle's outboard boundary. That works on a straight
+    edge and on a stepped one alike (a tab on a row band's X edge, where the
+    plate's outline jogs, is what a stepped layout's outer station needs).
+    """
     poly = _ccw(poly)
     x0, y0, x1, y1 = tab.rect
     if not (x0 < x1 and y0 < y1):
         raise ValueError(f"tab rectangle is inside out: {tab.rect}")
+    ring = _rect_ring(tab.rect)
+
+    points: list[tuple[float, float]] = []
     for i in range(len(poly)):
         p, q = poly[i], poly[(i + 1) % len(poly)]
-        if abs(p[1] - q[1]) > _EPS:
-            continue
-        if not (y0 + _EPS < p[1] < y1 - _EPS):
-            continue
-        lo, hi = min(p[0], q[0]), max(p[0], q[0])
-        if lo > x0 + _EPS or hi < x1 - _EPS:
-            continue
-        run = _tab_run(p, q, tab.rect, tab.fillet, segments)
-        out: list[tuple[float, float]] = []
-        for index in range(len(poly)):
-            out.append(poly[index])
-            if index == i:
-                out.extend(run)
-        return _ccw(out)
-    raise ValueError(
-        f"the tab {tab.rect} does not straddle a straight plate edge: the "
-        "outline cannot attach it"
+        for j in range(4):
+            a, b = ring[j], ring[(j + 1) % 4]
+            t = _segment_hit(p, q, a, b)
+            if t is not None:
+                points.append((p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1])))
+    points = _dedupe(points)
+    if len(points) != 2:
+        raise ValueError(
+            f"the tab {tab.rect} must cross the plate outline exactly twice, "
+            f"it crosses it {len(points)} times: the outline cannot attach it"
+        )
+
+    with_hits = _insert_points(poly, points)
+    with_rect = _insert_points(ring, points)
+    i1 = _index_of(points[0], with_hits)
+    i2 = _index_of(points[1], with_hits)
+    chain_a = _chain(with_hits, i1, i2)
+    chain_b = _chain(with_hits, i2, i1)
+    # The chain with a vertex (or edge midpoint) strictly inside the tab is the
+    # piece the tab replaces; the other one is the surviving boundary.
+    inside_a = _chain_inside_rect(chain_a, tab.rect)
+    inside_b = _chain_inside_rect(chain_b, tab.rect)
+    if inside_a == inside_b:
+        raise ValueError(f"cannot tell the tab's inside from its outside: {tab.rect}")
+    chain_out = chain_b if inside_a else chain_a
+    # The tab's own boundary: the rectangle's arc between the two crossings that
+    # lies outside the ring, filleted at its two outboard corners. It runs
+    # ``chain_out[-1] -> chain_out[0]``, so the ring stays closed.
+    chain_rect = _rect_arc(
+        with_rect, chain_out[-1], chain_out[0], inside_poly=False, poly=poly
     )
+    # ``chain_out`` runs ``points[0] -> points[1]``; the rectangle's arc runs
+    # ``points[1] -> points[0]`` (it continues the same travel direction). If
+    # the surviving chain starts at the second crossing, the direction flips.
+    merged = _fillet_tab_run(chain_out, chain_rect, tab, segments)
+    if not _same(chain_out[0], points[0]):
+        merged = list(reversed(merged))
+    return _ccw(merged)
+
+
+def _fillet_tab_run(
+    chain_out: list[tuple[float, float]],
+    chain_rect: list[tuple[float, float]],
+    tab: PlateTab,
+    segments: int = 8,
+) -> list[tuple[float, float]]:
+    """Splice a filleted tab boundary into the surviving ring chain.
+
+    ``chain_out`` runs from the first crossing to the second along the plate's
+    surviving boundary; ``chain_rect`` runs the same way back along the
+    rectangle's outboard arc. The rectangle's corners are rounded at
+    ``tab.fillet`` on its two outboard sides, so the merged ring has no square
+    corner against the plate edge.
+    """
+    x0, y0, x1, y1 = tab.rect
+    if not chain_rect:
+        return chain_out
+    radius = max(0.0, min(tab.fillet, (x1 - x0) / 2.0, (y1 - y0) / 2.0))
+    if radius <= _EPS:
+        return chain_out[:-1] + chain_rect
+    # The corner(s) the arc actually rounds: a corner adjacent to a plate edge
+    # is already on the ring and must stay square; only the outboard corners
+    # are rounded. The rectangle's corners are its four vertices.
+    corners = _rect_ring(tab.rect)
+    rounded: set[tuple[float, float]] = set()
+    on_ring = set(chain_out)
+    for corner in corners:
+        if corner not in on_ring:
+            rounded.add(corner)
+    out: list[tuple[float, float]] = list(chain_out[:-1])
+    n = len(chain_rect)
+    for i in range(n):
+        cur = chain_rect[i]
+        # The closing point repeats the chain's first crossing; it is the
+        # splice's end, not a corner to round.
+        if i == n - 1 and _same(cur, chain_out[0]):
+            break
+        nxt = chain_rect[(i + 1) % n]
+        if cur in rounded:
+            prev = chain_rect[i - 1]
+            out.extend(_round_corner(prev, cur, nxt, radius, segments))
+        else:
+            out.append(cur)
+    return out
+
+
+def _round_corner(
+    prev: tuple[float, float],
+    cur: tuple[float, float],
+    nxt: tuple[float, float],
+    radius: float,
+    segments: int,
+) -> list[tuple[float, float]]:
+    """The fillet arc replacing corner ``cur`` between ``prev`` and ``nxt``."""
+    len_prev = math.hypot(cur[0] - prev[0], cur[1] - prev[1])
+    len_next = math.hypot(nxt[0] - cur[0], nxt[1] - cur[1])
+    size = min(radius, len_prev / 2.0, len_next / 2.0)
+    if size <= _EPS:
+        return [cur]
+    u_prev = ((cur[0] - prev[0]) / len_prev, (cur[1] - prev[1]) / len_prev)
+    u_next = ((nxt[0] - cur[0]) / len_next, (nxt[1] - cur[1]) / len_next)
+    a = (cur[0] - size * u_prev[0], cur[1] - size * u_prev[1])
+    b = (cur[0] + size * u_next[0], cur[1] + size * u_next[1])
+    n_prev = (-u_prev[1], u_prev[0])
+    n_next = (-u_next[1], u_next[0])
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    denom = -n_prev[0] * n_next[1] + n_next[0] * n_prev[1]
+    if abs(denom) <= 1e-12:
+        return [cur]
+    t = (-dx * n_next[1] + n_next[0] * dy) / denom
+    cx, cy = a[0] + t * n_prev[0], a[1] + t * n_prev[1]
+    arc_radius = math.hypot(a[0] - cx, a[1] - cy)
+    if arc_radius <= _EPS:
+        return [cur]
+    a0 = math.atan2(a[1] - cy, a[0] - cx)
+    a1 = math.atan2(b[1] - cy, b[0] - cx)
+    delta = (a1 - a0 + math.pi) % (2.0 * math.pi) - math.pi
+    out: list[tuple[float, float]] = []
+    for k in range(segments + 1):
+        angle = a0 + delta * k / segments
+        out.append((cx + arc_radius * math.cos(angle), cy + arc_radius * math.sin(angle)))
+    return out
 
 
 def attach_features(
@@ -478,3 +521,137 @@ def attach_features(
 
 
 __all__ = ["Margins", "PlateTab", "Rect", "attach_features", "generate_outline"]
+
+
+def bands_to_polygon(bands: list[tuple[float, float, float, float]]) -> list[tuple[float, float]]:
+    """One counter-clockwise ring from contiguous row ``(y0, y1, x0, x1)`` bands.
+
+    Bands must be ordered front (low Y) to back and share their inner Y edges.
+    A step between two bands becomes a horizontal jog at that shared edge; the
+    left and right edges are read band by band. The outer edges are the first
+    band's ``y0`` and the last band's ``y1``. Collinear vertices are dropped, so
+    a single band yields a plain rectangle.
+    """
+    if not bands:
+        return []
+    points: list[tuple[float, float]] = []
+
+    def push(point: tuple[float, float]) -> None:
+        if not points or not _same(point, points[-1]):
+            points.append(point)
+
+    push((bands[0][2], bands[0][0]))
+    push((bands[0][3], bands[0][0]))
+    last = len(bands) - 1
+    for i, (_, y1, _, x1) in enumerate(bands):
+        push((x1, y1))
+        if i < last:
+            push((bands[i + 1][3], y1))
+    push((bands[last][2], bands[last][1]))
+    for i in range(last, -1, -1):
+        y0, y1, x0, _ = bands[i]
+        push((x0, y1))
+        push((x0, y0))
+        if i > 0:
+            push((bands[i - 1][2], y0))
+    if len(points) > 1 and _same(points[0], points[-1]):
+        points.pop()
+    return _ccw(points)
+
+
+def _is_convex(
+    prev: tuple[float, float],
+    cur: tuple[float, float],
+    nxt: tuple[float, float],
+) -> bool:
+    """True for a convex vertex of a counter-clockwise ring."""
+    ax, ay = cur[0] - prev[0], cur[1] - prev[1]
+    bx, by = nxt[0] - cur[0], nxt[1] - cur[1]
+    return ax * by - ay * bx > 0.0
+
+
+def treat_corners(
+    poly: list[tuple[float, float]],
+    radius: float,
+    min_feature: float,
+    segments: int = 8,
+) -> list[tuple[float, float]]:
+    """Round every convex corner, chamfer every concave one.
+
+    The plate follows the rows' staircase: its convex corners — the outer ones
+    on the plate's front/rear extremes and the step corners where a row's edge
+    juts out — are rounded at *radius*, so the plate reads as one smooth
+    outline; every concave step corner is chamfered at *radius* (a 45° face
+    inside the reentrant notch, which adds material and never removes bearing
+    from the Well). The Well ring above is extruded from the plate's *plain*
+    outline (square corners), so rounding the plate's own edge never cuts the
+    ring below one wall.
+
+    Both treatments are clamped to half the shorter adjacent edge and skipped
+    when that falls below *min_feature* -- a 0.2 mm fillet is not a feature.
+    Pure data; the caller chooses the radii (ADR-0014's ``plate = cutout + wall``
+    is why the Cutout gets ``radius - wall``).
+    """
+    if radius <= 0.0 or len(poly) < 3:
+        return list(poly)
+    out: list[tuple[float, float]] = []
+
+    def push(point: tuple[float, float]) -> None:
+        if not out or not _same(point, out[-1]):
+            out.append(point)
+
+    n = len(poly)
+    for i in range(n):
+        prev, cur, nxt = poly[i - 1], poly[i], poly[(i + 1) % n]
+        len_prev = math.hypot(cur[0] - prev[0], cur[1] - prev[1])
+        len_next = math.hypot(nxt[0] - cur[0], nxt[1] - cur[1])
+        if len_prev <= _EPS or len_next <= _EPS:
+            push(cur)
+            continue
+        size = min(radius, len_prev / 2.0, len_next / 2.0)
+        convex = _is_convex(prev, cur, nxt)
+        if size < min_feature:
+            push(cur)
+            continue
+        u_prev = ((cur[0] - prev[0]) / len_prev, (cur[1] - prev[1]) / len_prev)
+        u_next = ((nxt[0] - cur[0]) / len_next, (nxt[1] - cur[1]) / len_next)
+        a = (cur[0] - size * u_prev[0], cur[1] - size * u_prev[1])
+        b = (cur[0] + size * u_next[0], cur[1] + size * u_next[1])
+        if not convex:
+            push(a)
+            push(b)
+            continue
+        # Round: centre is the intersection of the two inward (left-hand)
+        # normals through the tangent points.
+        n_prev = (-u_prev[1], u_prev[0])
+        n_next = (-u_next[1], u_next[0])
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        denom = -n_prev[0] * n_next[1] + n_next[0] * n_prev[1]
+        if abs(denom) <= 1e-12:
+            push(cur)
+            continue
+        t = (-dx * n_next[1] + n_next[0] * dy) / denom
+        cx, cy = a[0] + t * n_prev[0], a[1] + t * n_prev[1]
+        arc_radius = math.hypot(a[0] - cx, a[1] - cy)
+        if arc_radius <= _EPS:
+            push(cur)
+            continue
+        a0 = math.atan2(a[1] - cy, a[0] - cx)
+        a1 = math.atan2(b[1] - cy, b[0] - cx)
+        delta = (a1 - a0 + math.pi) % (2.0 * math.pi) - math.pi
+        push(a)
+        for k in range(1, segments + 1):
+            angle = a0 + delta * k / segments
+            push((cx + arc_radius * math.cos(angle), cy + arc_radius * math.sin(angle)))
+    return _ccw(out)
+
+
+__all__ = [
+    "Margins",
+    "PlateTab",
+    "Rect",
+    "attach_features",
+    "bands_to_polygon",
+    "generate_outline",
+    "treat_corners",
+]

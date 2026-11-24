@@ -73,6 +73,15 @@ class WelledPlate:
     #: component supplied one. The Well is the single source the Deck's bosses
     #: and the plate's ears both derive their stations from.
     seam: Any = None
+    #: The Well Cutout's stepped outline (plate-local mm) when the keyboard
+    #: could supply one; the Deck opens the Well to this instead of a rectangle.
+    cutout_outline: tuple[tuple[float, float], ...] = ()
+    #: The plate's plain stepped outline (plate-local mm, no ears/notches), the
+    #: shape the Well ring is grown from.
+    plate_outline: tuple[tuple[float, float], ...] = ()
+    #: The plate's row bands ``(y0, y1, x0, x1)`` (plate-local mm), one per key
+    #: row, so each band's lip can be derived from its own extents.
+    plate_bands: tuple[tuple[float, float, float, float], ...] = ()
 
     @property
     def cutout(self) -> tuple[float, float]:
@@ -336,6 +345,28 @@ def _plate_seam(keyboard_component: Any) -> Any:
     return getattr(plate_model(), "seam", None)
 
 
+def _plate_outlines(
+    keyboard_component: Any,
+) -> tuple[tuple, tuple, tuple]:
+    """The plate's stepped outlines and row bands, if it can supply them.
+
+    Returns ``(cutout_outline, plate_outline, plate_bands)``: the keyboard
+    adapter's :meth:`~components.keyboard_plate.KeyboardPlate.cutout_outline`
+    and :meth:`~components.keyboard_plate.KeyboardPlate.plate_base_outline`
+    polygons plus its per-row bands. A component that predates the stepped
+    outline returns three empty tuples, and the Well falls back to its
+    rectangle.
+    """
+    cutout = getattr(keyboard_component, "cutout_outline", None)
+    plate = getattr(keyboard_component, "plate_base_outline", None)
+    bands = getattr(keyboard_component, "plate_bands", None)
+    return (
+        tuple(cutout()) if callable(cutout) else (),
+        tuple(plate()) if callable(plate) else (),
+        tuple(bands()) if callable(bands) else (),
+    )
+
+
 def bearing_clamp_screw_span(
     bearing_outer: float,
     insert: str,
@@ -514,6 +545,9 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
     lid_overlap = min(lid_height, chassis_height) - travel
 
     # -- The Well and the plate, sized from the numbers above --------------
+    cutout_outline, plate_outline, plate_bands = _plate_outlines(
+        keyboard_component
+    )
     well = WelledPlate(
         keycap_width=keycap_width,
         keycap_depth=keycap_depth,
@@ -535,6 +569,9 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
         # plate's ears are one pattern (the face-height budget above already
         # read the keyboard component, so the path costs nothing extra here).
         seam=_plate_seam(keyboard_component),
+        cutout_outline=cutout_outline,
+        plate_outline=plate_outline,
+        plate_bands=plate_bands,
     )
 
     # -- The moving head has to pass under the display --------------------

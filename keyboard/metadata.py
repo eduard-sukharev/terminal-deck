@@ -33,6 +33,22 @@ class KeyboardMetadata:
     #: Switch-free border per side ``(left, right, bottom, top)`` (mm): plate
     #: edge to the outermost switch/stabilizer cutout edge.
     edge_margins: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    #: The keycap row bands ``(y0, y1, x0, x1)`` the plate was stepped from
+    #: (plate-local mm), front to back. One band for a rectangular layout.
+    row_bands: tuple[tuple[float, float, float, float], ...] = ()
+    #: The Well Cutout's stepped outline (plate-local mm), corner-treated.
+    cutout_outline: tuple[tuple[float, float], ...] = ()
+    #: The plate's plain stepped outline *without* the ears/notches, corner-
+    #: treated (its outer corners rounded at ``corner_radius``), plate-local mm.
+    plate_outline: tuple[tuple[float, float], ...] = ()
+    #: The plate's stepped outline with its corners left **square**, the shape
+    #: the Well ring is built from: the ring's structural body must keep the
+    #: corner columns' walls square, so the corner rounding stays on the plate's
+    #: own outline only (plate-local mm).
+    plate_base_outline: tuple[tuple[float, float], ...] = ()
+    #: The plate's row bands ``(y0, y1, x0, x1)`` = its Cutout bands + one wall
+    #: per side (plate-local mm), the per-band source for the Well's lips.
+    plate_bands: tuple[tuple[float, float, float, float], ...] = ()
 
     @property
     def edge_margin(self) -> float:

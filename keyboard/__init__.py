@@ -71,6 +71,7 @@ def generate(
     keycap_profile: str = "xda",
     wobble: float = 0.0,
     corner_radius: float = 2.0,
+    minimum_feature: float = 0.6,
     mounting_holes: Iterable[MountingHole] = (),
     ears: Iterable = (),
     notches: Iterable[tuple[float, float, float, float]] = (),
@@ -103,6 +104,8 @@ def generate(
         Keycap wobble allowance each side of the Cutout (mm).
     corner_radius : float
         Plate corner radius (mm).
+    minimum_feature : float
+        Printable minimum (mm); sub-printable row steps are merged.
     mounting_holes : Iterable[MountingHole]
         Holes the plate carries (injected by the enclosure; empty by default).
     ears : Iterable[PlateTab]
@@ -124,6 +127,7 @@ def generate(
         keycap_profile=keycap_profile,
         wobble=wobble,
         corner_radius=corner_radius,
+        minimum_feature=minimum_feature,
         mounting_holes=mounting_holes,
         ears=ears,
         notches=notches,
@@ -141,6 +145,7 @@ def generate_from_file(
     keycap_profile: str = "xda",
     wobble: float = 0.0,
     corner_radius: float = 2.0,
+    minimum_feature: float = 0.6,
     mounting_holes: Iterable[MountingHole] = (),
     ears: Iterable[PlateTab] = (),
     notches: Iterable[tuple[float, float, float, float]] = (),
@@ -163,6 +168,7 @@ def generate_from_file(
         keycap_profile=keycap_profile,
         wobble=wobble,
         corner_radius=corner_radius,
+        minimum_feature=minimum_feature,
         mounting_holes=mounting_holes,
         ears=ears,
         notches=notches,

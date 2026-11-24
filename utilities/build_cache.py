@@ -137,9 +137,14 @@ class BuildCache:
         *,
         root: Path = ROOT,
         reuse: bool = True,
+        extra_salt: str = "",
     ) -> None:
         self.path = Path(path)
         self.root = Path(root)
+        #: Folded into every fingerprint: a value that can move the geometry but
+        #: lives outside the hashed files (e.g. the effective keyboard layout
+        #: chosen with ``--keyboard-layout``).
+        self.extra_salt = extra_salt
         #: Trust the recorded fingerprints. ``False`` (``--no-cache``) forces a
         #: rebuild but still refreshes the cache afterwards, so a forced build
         #: leaves the next incremental run in sync.
@@ -200,6 +205,7 @@ class BuildCache:
         """Return the content fingerprint of everything *target* is built from."""
         hasher = hashlib.sha256()
         hasher.update(f"cyberdeck-cache-v{CACHE_VERSION}\0{unit_for(target)}\0".encode())
+        hasher.update(f"salt\0{self.extra_salt}\0".encode())
         files = PIPELINE_SOURCES + sources_for(target)
         for path in sorted(set(self._sources(files))):
             hasher.update(str(path.relative_to(self.root)).encode())

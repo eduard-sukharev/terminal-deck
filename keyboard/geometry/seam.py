@@ -128,6 +128,17 @@ def plate_seam(model: KeyboardGeometryModel) -> RowSeam:
     ))
 
 
+def pin_sites(seam: RowSeam) -> tuple[float, ...]:
+    """The Seam's row-gap boundaries: one filament-pin site per gap (ADR-0006).
+
+    Each internal band boundary is the Y between two key rows -- the clear band
+    where the plate carries a fin pair. Deriving them from the Seam (never a
+    config list) is what lets the plate adapt to any layout: two rows give one
+    site, three give two, five give four.
+    """
+    return tuple(seam.bands[i][1] for i in range(len(seam.bands) - 1))
+
+
 def seam_conflicts(model: KeyboardGeometryModel, seam: RowSeam) -> list[str]:
     """Describe every cutout the Seam (segments or jogs) would cut through."""
     problems = []

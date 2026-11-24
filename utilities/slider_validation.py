@@ -296,6 +296,7 @@ def _add_plate_checks(
         "keyboard-plate-border",
         "keyboard-plate-seam",
         "keyboard-plate-sections",
+        "keyboard-plate-seam-pins",
     )
     if model is None:
         for name in names:
@@ -386,6 +387,60 @@ def _add_plate_checks(
             )
             + f" <= {BUILD_VOLUME[0]:.0f} x {BUILD_VOLUME[1]:.0f} x "
             f"{BUILD_VOLUME[2]:.0f}",
+        )
+
+    # ADR-0006: the plate's filament pins sit in the row gaps, so each fin must
+    # clear every switch/stabilizer cutout and stay on the sheet. The sites and
+    # the footprint come from the same source the solid uses (the config
+    # override, else the Seam's row-gap boundaries), so the check and the build
+    # can never disagree.
+    from geometry.seam_joint import pin_footprint
+    from keyboard.geometry.seam import pin_sites
+
+    pin = config.seam_pin
+    configured = tuple(
+        (getattr(config.slide, "seam_pin_sites", {}) or {}).get(
+            "keyboard_plate", ()
+        )
+    )
+    if seam is None:
+        report.add(
+            "keyboard-plate-seam-pins",
+            False,
+            "the plate has no Seam to carry its filament pins",
+        )
+    else:
+        depth = meta.height
+        sites = configured or pin_sites(seam)
+        cut_boxes = []
+        for cut in list(model.switch_cutouts) + list(model.stabilizer_cutouts):
+            xs = [cut.x + vx for vx, _ in cut.vertices]
+            ys = [cut.y + vy for _, vy in cut.vertices]
+            cut_boxes.append((min(xs), max(xs), min(ys), max(ys)))
+        half_w, half_d = meta.width / 2.0, meta.height / 2.0
+        problems: list[str] = []
+        for y in sites:
+            x0, x1, y0, y1 = pin_footprint(seam, depth, y, pin, follow_step=True)
+            if (
+                x0 < -half_w - _EPS
+                or x1 > half_w + _EPS
+                or y0 < -half_d - _EPS
+                or y1 > half_d + _EPS
+            ):
+                problems.append(
+                    f"site y={y:.2f}: fin x {x0:.2f}..{x1:.2f} leaves the plate"
+                )
+            for cx0, cx1, cy0, cy1 in cut_boxes:
+                if not (x1 <= cx0 or cx1 <= x0 or y1 <= cy0 or cy1 <= y0):
+                    problems.append(
+                        f"site y={y:.2f}: fin hits a cutout at "
+                        f"x {cx0:.2f}..{cx1:.2f}, y {cy0:.2f}..{cy1:.2f}"
+                    )
+        report.add(
+            "keyboard-plate-seam-pins",
+            not problems,
+            f"{len(sites)} pin(s) on the plate Seam clear of every cutout and "
+            "on the sheet" + (": " + "; ".join(problems) if problems else ""),
         )
 
 

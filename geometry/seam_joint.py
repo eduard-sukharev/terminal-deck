@@ -156,17 +156,22 @@ def _square_fin(
     return [(inner, base_z), (outer, base_z), (outer, top_z), (inner, top_z)]
 
 
-def step_at(seam, depth: float, y: float):
-    """The Seam's jog at ``y`` as ``(x_centre, x_travel)``, or ``None``.
+def step_at(seam, depth: float, y: float, tol: float = 1e-6):
+    """The Seam's jog *at* ``y`` as ``(x_centre, x_travel)``, or ``None``.
 
-    A row-jogging Seam steps sideways between rows. The jog's centre is the
-    midpoint of the two band X values; its travel is their distance. A pin pair
-    placed on the step is centred on that midpoint and spans the travel.
+    A row-jogging Seam steps sideways between rows; the jog is a horizontal
+    run at one Y, so this only answers for a ``y`` on a band boundary. The jog's
+    centre is the midpoint of the two band X values, its travel their distance.
+    A boundary whose two bands share one X (a straight run, no actual step) and
+    any ``y`` inside a band both return ``None``.
     """
     bands = seam.segments(depth)
-    for (y0, y1, x), nxt in zip(bands, bands[1:]):
-        if y0 - 1e-9 <= y <= y1 + 1e-9:
-            return ((x + nxt[2]) / 2.0, abs(nxt[2] - x))
+    for (_, y1, x), nxt in zip(bands, bands[1:]):
+        if abs(y - y1) <= tol:
+            travel = abs(nxt[2] - x)
+            if travel <= tol:
+                return None
+            return ((x + nxt[2]) / 2.0, travel)
     return None
 
 
@@ -174,6 +179,39 @@ def step_length(seam, depth: float, y: float) -> float | None:
     """The X travel of the Seam's jog at ``y`` (mm), or ``None`` on a straight run."""
     step = step_at(seam, depth, y)
     return None if step is None else step[1]
+
+
+def pin_placement(
+    seam, depth: float, y: float, pin, follow_step: bool
+) -> tuple[float, float]:
+    """The ``(x_centre, x_length)`` a fin pair at site ``y`` occupies.
+
+    On a straight run this is the Seam's own X and ``pin.length``. With
+    ``follow_step`` and a site on a jog, the pair is centred on the jog's
+    midpoint and spans its travel plus ``2 * pin.engagement`` (so each half
+    reaches at least 5 mm into its Section).
+    """
+    x = seam.x_at(y)
+    length = pin.length
+    if follow_step:
+        step = step_at(seam, depth, y)
+        if step is not None:
+            x = step[0]
+            length = step[1] + 2.0 * pin.engagement
+    return x, length
+
+
+def pin_footprint(
+    seam, depth: float, y: float, pin, follow_step: bool
+) -> tuple[float, float, float, float]:
+    """The fin pair's plan rectangle ``(x0, x1, y0, y1)`` at site ``y``.
+
+    The single source the build and the validation read, so a check and the
+    solid can never disagree about where a pin is.
+    """
+    x, length = pin_placement(seam, depth, y, pin, follow_step)
+    half = pin.pocket_width / 2.0
+    return (x - length / 2.0, x + length / 2.0, y - half, y + half)
 
 
 def add_pins(
@@ -192,20 +230,13 @@ def add_pins(
     half of every fin. A part with no configured sites comes back unchanged.
     ``chamfer=False`` keeps every fin rectangular (no base flare).
 
-    ``follow_step=True`` makes a fin pair bridge the Seam's jog at its site:
-    the pair is centred on the jog's midpoint, and its length is the step's
-    X travel plus ``2 * pin.engagement`` (5 mm each side), so both halves
-    always reach at least 5 mm into their Section. A site on a straight run
-    keeps ``pin.length`` and the Seam's own X.
+    ``follow_step=True`` makes a fin pair bridge the Seam's jog at its site
+    (see :func:`pin_placement`); a site on a straight run keeps ``pin.length``
+    and the Seam's own X.
     """
+    depth = _seam_depth(seam, sites)
     for y in sites:
-        x = seam.x_at(y)
-        length = pin.length
-        if follow_step:
-            step = step_at(seam, _seam_depth(seam, sites), y)
-            if step is not None:
-                x = step[0]
-                length = step[1] + 2.0 * pin.engagement
+        x, length = pin_placement(seam, depth, y, pin, follow_step)
         body = cad_helpers.union(
             body,
             *fins(pin, x, y, substrate, upward, chamfer, length),

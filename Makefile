@@ -18,6 +18,11 @@
 #   make assembly_opened  # open pose (lid slid by the travel)
 #   make components # per-component debug STLs only
 #   make build TARGETS=assembly,chassis  # selected targets
+#   make check-layout KEYBOARD_LAYOUT=keyboard/layouts/planck.json
+#                   # validate a different keyboard layout (data checks + the
+#                   #   plate and its Sections); `make all KEYBOARD_LAYOUT=...`
+#                   #   does the full build with it. The layout drives the plate
+#                   #   seam, its filament pins and the chassis size.
 #
 # Builds are incremental: every target is fingerprinted from its inputs (the
 # pipeline sources, the config tree, the layout recipe and the modules that
@@ -56,6 +61,7 @@ PYTHON   ?= $(CONDA) run --no-capture-output -n $(ENV_NAME) python
 MAIN     ?= main.py
 CONFIG   ?= config/default.yaml
 LAYOUT   ?= slider
+KEYBOARD_LAYOUT ?=
 GENERATED ?= generated
 PLATE_LAYOUT ?= keyboard/layouts/jd40.json
 RENDER_ELEV ?= 45
@@ -85,7 +91,7 @@ CHASSIS_TARGETS  := chassis,chassis_left,chassis_right,$(TRAY_TARGETS),$(DECK_TA
 LID_TARGETS      := screen_lid,screen_lid_left,screen_lid_right,$(BEZEL_TARGETS),$(BACK_TARGETS)
 PLATE_TARGETS    := keyboard_plate,keyboard_plate_left,keyboard_plate_right
 
-.PHONY: env env-remove render render_svg render_stl verify data all build rebuild test check clean display chassis chassis_tray chassis_deck screen_lid screen_lid_bezel screen_lid_back slide keyboard_plate assembly assembly_opened components
+.PHONY: env env-remove render render_svg render_stl verify data all build rebuild test check clean display chassis chassis_tray chassis_deck screen_lid screen_lid_bezel screen_lid_back slide keyboard_plate check-layout assembly assembly_opened components
 
 ifneq ($(strip $(IGNORE_VALIDATION)),)
 IGNORE_VALIDATION_FLAG := --ignore-validation
@@ -96,6 +102,10 @@ endif
 # Recursive on purpose: `rebuild` sets NO_CACHE as a target-specific variable,
 # which only an expanded-at-recipe-time reference picks up.
 NO_CACHE_FLAG = $(if $(strip $(NO_CACHE)),--no-cache,)
+
+# `make ... KEYBOARD_LAYOUT=keyboard/layouts/planck.json` swaps the keyboard
+# layout for this run (the plate seam, its pins and the chassis size follow).
+KEYBOARD_LAYOUT_FLAG = $(if $(strip $(KEYBOARD_LAYOUT)),--keyboard-layout $(KEYBOARD_LAYOUT),)
 
 # Create the conda env only if it does not exist; stamp re-runs pip when requirements change.
 env: .env-stamp
@@ -114,13 +124,13 @@ env-remove:
 data build test check render_svg render_stl: env
 
 data:
-	$(PYTHON) $(MAIN) --config $(CONFIG) --layout $(LAYOUT) --steps data $(IGNORE_VALIDATION_FLAG) $(VERBOSE_FLAG)
+	$(PYTHON) $(MAIN) --config $(CONFIG) --layout $(LAYOUT) --steps data $(KEYBOARD_LAYOUT_FLAG) $(IGNORE_VALIDATION_FLAG) $(VERBOSE_FLAG)
 
 # One shared recipe: the convenience targets below assign TARGETS per goal and
 # run it themselves. A common `build` prerequisite would be made only once, so
 # `make chassis screen_lid` would silently skip the second target.
 define BUILD_CMD
-$(PYTHON) $(MAIN) --config $(CONFIG) --layout $(LAYOUT) --steps all --targets $(TARGETS) $(IGNORE_VALIDATION_FLAG) $(NO_CACHE_FLAG) $(VERBOSE_FLAG)
+$(PYTHON) $(MAIN) --config $(CONFIG) --layout $(LAYOUT) --steps all --targets $(TARGETS) $(KEYBOARD_LAYOUT_FLAG) $(IGNORE_VALIDATION_FLAG) $(NO_CACHE_FLAG) $(VERBOSE_FLAG)
 endef
 
 build:
@@ -170,6 +180,14 @@ keyboard_plate: TARGETS = $(PLATE_TARGETS)
 keyboard_plate: env
 	$(BUILD_CMD)
 
+# Validate a keyboard layout end to end (data checks + the plate and its
+# Sections), e.g. `make check-layout KEYBOARD_LAYOUT=keyboard/layouts/planck.json`.
+check-layout: TARGETS = $(PLATE_TARGETS)
+check-layout: env
+	$(PYTHON) $(MAIN) --config $(CONFIG) --layout $(LAYOUT) --steps all \
+		--targets $(PLATE_TARGETS) $(KEYBOARD_LAYOUT_FLAG) \
+		$(IGNORE_VALIDATION_FLAG) $(NO_CACHE_FLAG) $(VERBOSE_FLAG)
+
 assembly: TARGETS = assembly
 assembly: env
 	$(BUILD_CMD)
@@ -194,7 +212,7 @@ render: render_svg render_stl
 
 render_svg:
 	@mkdir -p $(GENERATED)/svg
-	$(PYTHON) utilities/render_plate_svg.py --layout $(PLATE_LAYOUT) -o $(GENERATED)/svg/plate_top.svg $(VERBOSE_FLAG)
+	$(PYTHON) utilities/render_plate_svg.py --layout $(if $(strip $(KEYBOARD_LAYOUT)),$(KEYBOARD_LAYOUT),$(PLATE_LAYOUT)) -o $(GENERATED)/svg/plate_top.svg $(VERBOSE_FLAG)
 
 # Shaded PNG preview of every generated STL (run `make all` first).
 render_stl:

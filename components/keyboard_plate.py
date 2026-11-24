@@ -440,12 +440,18 @@ class KeyboardPlate(Component):
         # ADR-0006: add glued filament pins to the seam between keyboard halves.
         # Fins grow from the plate's lower face (local z = 0, the face that
         # faces the switch well / downward) downward into the lower side,
-        # straddling the row-jogging Seam before the split halves them.
-        if self._seam_pin_sites:
-            plate = add_pins(
-                plate, self.seam, self._seam_pin, self._seam_pin_sites,
-                substrate=0.0, upward=False, chamfer=False, follow_step=True,
-            )
+        # straddling the row-jogging Seam before the split halves them. Sites
+        # are derived from the Seam's row-gap boundaries unless the config pins
+        # them explicitly, so any layout gets pins without hand-tuning.
+        if self._seam_pin is not None:
+            from keyboard.geometry.seam import pin_sites
+
+            sites = self._seam_pin_sites or pin_sites(self.seam)
+            if sites:
+                plate = add_pins(
+                    plate, self.seam, self._seam_pin, sites,
+                    substrate=0.0, upward=False, chamfer=False, follow_step=True,
+                )
 
         for x, y, d in self._get_mounting_holes():
             bore = cad_helpers.cylinder_centered(d, self._plate_thickness + 1.0)

@@ -20,7 +20,7 @@ import json
 import subprocess
 import sys
 from collections.abc import Callable
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 
 from components.battery import Battery
@@ -60,16 +60,29 @@ class BuildPipeline:
         layout_name: str = "slider",
         topics: tuple[str, ...] = ("display", "keyboard", "hardware", "slide"),
         recipe_path: str | Path | None = None,
+        keyboard_layout: str | Path | None = None,
     ) -> None:
         self.config_path = Path(config_path)
         self.layout_name = layout_name
         self.topics = topics
         self.recipe_path = Path(recipe_path) if recipe_path else None
+        #: Overrides ``keyboard.layout_source`` when set (``--keyboard-layout``).
+        self.keyboard_layout = str(keyboard_layout) if keyboard_layout else None
         self.config: Config | None = None
 
     # --- pipeline stages -------------------------------------------------
     def load_config(self) -> Config:
         self.config = load_config(self.config_path, topics=self.topics)
+        if self.keyboard_layout is not None:
+            source = Path(self.keyboard_layout)
+            if not source.is_file():
+                raise FileNotFoundError(
+                    f"--keyboard-layout: no such KLE layout file: {source}"
+                )
+            self.config = replace(
+                self.config,
+                keyboard=replace(self.config.keyboard, layout_source=str(source)),
+            )
         return self.config
 
     def load_components(self) -> dict:
@@ -859,6 +872,10 @@ class BuildPipeline:
         cache = BuildCache(
             GENERATED_DIR / CACHE_FILE_NAME,
             reuse=use_cache and metrics_path is None,
+            # The effective keyboard layout can be swapped with
+            # --keyboard-layout without touching any hashed file, so fold it
+            # into the fingerprint or a jd40 run would reuse its exports.
+            extra_salt=self.config.keyboard.layout_source,
         )
         if use_cache and metrics_path is not None:
             _info(
@@ -1130,6 +1147,15 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         help="path to a YAML recipe file, used instead of the built-in recipe",
     )
     parser.add_argument(
+        "--keyboard-layout",
+        default=None,
+        metavar="PATH",
+        help="KLE JSON layout to override keyboard.layout_source (e.g. "
+             "keyboard/layouts/planck.json). The plate seam, its pin sites and "
+             "the chassis size are re-derived from it; the build cache keys on "
+             "it, so swapping layouts never reuses another layout's exports.",
+    )
+    parser.add_argument(
         "--steps",
         default="all",
         choices=["all", "data"],
@@ -1186,6 +1212,7 @@ def main(argv: list[str] | None = None) -> int:
         config_path=args.config,
         layout_name=args.layout,
         recipe_path=args.layout_recipe,
+        keyboard_layout=args.keyboard_layout,
     )
     try:
         pipeline.run(

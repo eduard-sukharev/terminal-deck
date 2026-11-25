@@ -38,6 +38,9 @@ from keyboard.registry import get_keycap, get_switch
 #: A rectangle ``(x0, y0, x1, y1)`` in plate-local mm.
 Rect = tuple[float, float, float, float]
 
+#: Differences below this are treated as the same edge (mm).
+_EPS: float = 1e-9
+
 
 def cutout_bounds(
     layout: KeyboardLayout,
@@ -169,6 +172,32 @@ def generate(
         row_bands = tuple(bands)
         cutout_bands = grow_bands(bands, wobble, wobble)
     plate_bands = grow_bands(cutout_bands, wall, wall)
+
+    # A component's origin is its centre (``Placement.box``/``z_bounds`` assume
+    # it), so a *derived* plate band is re-centred on the switch grid's own
+    # centre. The keycap footprint's centre is not the switch grid's when a
+    # row's wide key (a spacebar) sits off-centre -- chonky's plate band came
+    # out 1.16 mm right of the switches. Re-centring keeps the plate's bounding
+    # box centred on the origin, so ``metadata.width / 2`` is the plate's real
+    # half-width without moving the switches. A *pinned* Cutout is the caller's
+    # own rectangle: it stays exactly where it was given, so the plate follows
+    # it (an asymmetric Cutout gives asymmetric margins, as ADR-0014 allows).
+    if not pinned:
+        xs = [p[0] for p in centers]
+        grid_centre = (min(xs) + max(xs)) / 2.0
+        band_centre = (
+            min(b[2] for b in plate_bands) + max(b[3] for b in plate_bands)
+        ) / 2.0
+        shift = grid_centre - band_centre
+        if abs(shift) > _EPS:
+            cutout_bands = [
+                (y0, y1, x0 + shift, x1 + shift)
+                for y0, y1, x0, x1 in cutout_bands
+            ]
+            plate_bands = [
+                (y0, y1, x0 + shift, x1 + shift)
+                for y0, y1, x0, x1 in plate_bands
+            ]
 
     cutout = (
         min(b[2] for b in cutout_bands),

@@ -503,10 +503,19 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
         + boss_widen / 2.0
     )
     front_margin_floor = wall + boss_lip_required
-    well_front_margin = max(
-        slide.face_height_limit - lid_stack - plate_depth,
-        front_margin_floor,
+    # The face-height limit is derived from the content, not configured: a
+    # deeper plate needs a longer face, and the configured 140 mm is a FLOOR
+    # (the product target for a 40% board), not a ceiling. The margin is the
+    # floor the front lip needs; anything the configured limit left over and
+    # above that is dead space in front of the keyboard, so the limit is the
+    # floor plus the lid stack plus the plate -- which is exactly the closed
+    # face the content requires. A 40% board's content lands on 140.00, so the
+    # shipped face is unchanged; a 60% board's deeper plate grows it.
+    face_height_limit = max(
+        slide.face_height_limit,
+        front_margin_floor + lid_stack + plate_depth,
     )
+    well_front_margin = face_height_limit - lid_stack - plate_depth
     keyboard_top = well_front_margin + plate_depth
     travel = keyboard_top + slide.travel_clearance
 
@@ -721,8 +730,12 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
     # -- The FPC guard's planform, in the display's own frame -------------
     # Bonded to the display's back: it starts at the driver's FPC connector
     # (the ribbon enters there) and spans the head's sweeps with margin, over
-    # the ribbon's full width. The east end stays inside the display's shadow
-    # so it can never pierce the drafted lid wall.
+    # the ribbon's full width. It stays inside the lid's drafted wall (the
+    # case's inner face), NOT the display's shadow: a board wider than the
+    # display pushes the rod stance past the display's edge, and the guard is
+    # a separate printed part bonded to the display's back, so it may overhang
+    # the shadow as long as it never pierces the shell. The lid's inner face
+    # is the binding bound; the display's shadow is a soft preference.
     flex = config.display.flex
     ribbon_half = flex.width / 2.0 if flex is not None else 0.0
     driver_component = components["driver"]
@@ -732,7 +745,7 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
         + guard.fit
     )
     guard_x1 = min(
-        display.width / 2.0,
+        usable_half,
         rod_x + hardware_width / 2.0 + guard.margin,
     )
     guard_planform = (
@@ -795,7 +808,7 @@ def compute_slide_budget(config: Any, components: dict[str, Any]) -> SlideBudget
         slot_span=slot_span,
         slot_needed=slot_needed,
         clamp_center_y=clamp_center_y,
-        face_height_limit=slide.face_height_limit,
+        face_height_limit=face_height_limit,
         chain_bend_radius=slide.chain.bend_radius,
         cable_min_bend_radius=MIN_BEND_RADIUS_MM[CONNECTOR_HDMI],
     )

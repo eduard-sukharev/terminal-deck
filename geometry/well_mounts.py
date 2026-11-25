@@ -900,6 +900,7 @@ def _walk_x(
     obstacles,
     half: float,
     clearance: float,
+    limit: float | None = None,
 ) -> tuple[float, tuple[str, ...]]:
     """Walk ``x`` in ``direction`` until a ``2 * half`` tab at ``y`` is clear.
 
@@ -907,6 +908,11 @@ def _walk_x(
     interval in the walk's direction -- the nearest clear position on that
     side, never a jump over a feature. Returns the cleared X and the name of
     every obstacle it had to dodge, so a moved station can report why.
+
+    ``limit`` caps the walk: the station may not move past it. A station
+    straddling a Seam end hands in the Seam's own X, so a walk that would
+    cross the split stops short of it (the pair would land on one Section and
+    the Seam would no longer be clamped there).
     """
     dodged: list[str] = []
     for _ in range(len(obstacles) + 2):
@@ -922,7 +928,29 @@ def _walk_x(
         if hit is None:
             return x, tuple(dodged)
         obstacle, (lo, hi) = hit
-        x = hi if direction > 0.0 else lo
+        target = hi if direction > 0.0 else lo
+        if limit is not None:
+            # ``limit`` is the wall the walk may not cross: a dodge that would
+            # land at or past it stops short of it, so the station stays on its
+            # own side of the split. The wall is directional -- a rightward walk
+            # may not reach it from below, a leftward walk may not reach it
+            # from above -- so the test is the walk's own direction, not a
+            # single upper bound. A dodge that stays on the station's own side
+            # is kept as is.
+            crossed = target >= limit - _EPS if direction > 0.0 else target <= limit + _EPS
+            if crossed:
+                # An obstacle that straddles the wall leaves no clear position
+                # on the station's own side of it: step to the interval's far
+                # edge instead, which is still clear and still on the station's
+                # own side of the wall.
+                if lo - _EPS < limit < hi + _EPS:
+                    far = lo if direction > 0.0 else hi
+                    if direction > 0.0 and far < limit - _EPS:
+                        return far, tuple(dodged)
+                    if direction < 0.0 and far > limit + _EPS:
+                        return far, tuple(dodged)
+                return limit, tuple(dodged)
+        x = target
         if obstacle.name not in dodged:
             dodged.append(obstacle.name)
     return x, tuple(dodged)
@@ -1367,18 +1395,28 @@ def well_mounts(
                 nominal = seam_x + world_side * seam_clearance
                 # A station the chassis forces inboard is walked *toward* its
                 # Seam end (never silently moved, never rebalanced by hand):
-                # the nearest clear position is what clamps the Seam end.
+                # the nearest clear position on the station's own side is what
+                # clamps the Seam end. A station sits ``seam_clearance`` on its
+                # own side of the Seam, so "toward" is the opposite direction
+                # to the side it sits on. The walk is capped at the printable
+                # minimum off the Seam on its own side, so a dodge can never
+                # reach the split, let alone cross it.
                 sx, dodged = _walk_x(
                     nominal,
-                    1.0 if seam_x > nominal else -1.0,
+                    -float(world_side),
                     y,
                     sheet_obstacles,
                     ear_half,
                     clearance,
+                    limit=seam_x,
                 )
                 if dodged:
+                    direction = (
+                        "toward" if abs(sx - seam_x) < abs(nominal - seam_x)
+                        else "away from"
+                    )
                     adjustments.append(
-                        f"{abs(sx - nominal):.2f} mm toward the Seam "
+                        f"{abs(sx - nominal):.2f} mm {direction} the Seam "
                         f"(from the nominal {nominal:.2f} at "
                         f"{seam_clearance:.2f} mm off it) to clear "
                         + ", ".join(dodged)
@@ -1527,6 +1565,10 @@ def well_mounts(
 
     # -- the notches the sheet has to give up ----------------------------
     notches: list[PlateNotch] = []
+    # A feature under an ear is a station failure, not a notch -- but its plan
+    # area still removes plate material, so the connectivity raster must see it
+    # or a severing cut hidden under an ear would read as "connected".
+    under_ear_bites: list[PlanRect] = []
     for obstacle in sheet_obstacles:
         bite = _footprint_bite(obstacle, plate_rect, minimum)
         if bite is None:
@@ -1538,7 +1580,11 @@ def well_mounts(
         )
         if under_an_ear:
             # An ear is the whole point of the tab: losing it is a station
-            # failure (reported above), never something to notch away.
+            # failure (reported above), never something to notch away. The
+            # bite still counts as missing material for the connectivity test.
+            under_ear_bites.append(
+                frame.world_rect_to_local(bite.expanded(clearance))
+            )
             continue
         world = bite.expanded(clearance)
         local = frame.world_rect_to_local(world)
@@ -1557,7 +1603,7 @@ def well_mounts(
     # -- the sheet has to stay one piece ---------------------------------
     connected = _sheet_connected(
         [frame.local_rect] + [m.ear.rect for m in mounts if m.ear is not None],
-        [n.rect for n in notches] + list(cutouts),
+        [n.rect for n in notches] + list(cutouts) + under_ear_bites,
         minimum,
     )
     failures: list[str] = []

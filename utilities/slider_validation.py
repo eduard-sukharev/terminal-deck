@@ -1195,6 +1195,21 @@ def _add_seam_pin_checks(
     min_feature = config.material.minimum_feature
     split = dict(getattr(config.slide, "split", {}) or {})
     sites_cfg = dict(getattr(config.slide, "seam_pin_sites", {}) or {})
+    # The Deck's rear band sits behind the keyboard, so its Seam pins must clear
+    # the keyboard's rear edge -- a 60% board's plate reaches the configured
+    # sites. The chassis builder derives the same sites; keep the two in step.
+    frame = getattr(mounts, "frame", None)
+    if "chassis_deck" in sites_cfg and frame is not None:
+        keyboard_rear = frame.y1
+        clear = (
+            keyboard_rear
+            + pin.pocket_width / 2.0
+            + config.material.minimum_feature
+        )
+        sites_cfg["chassis_deck"] = tuple(
+            site if site >= clear else clear
+            for site in sites_cfg["chassis_deck"]
+        )
     planes = pin_planes(config, budget)
     depths = {
         "chassis_tray": budget.chassis_height,

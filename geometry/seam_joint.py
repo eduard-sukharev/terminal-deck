@@ -121,6 +121,7 @@ def fins(
     upward: bool,
     chamfer: bool = True,
     length: float | None = None,
+    width: float | None = None,
 ):
     """The two fin solids of one pocket, in the device frame.
 
@@ -129,7 +130,9 @@ def fins(
     needs -- the keyboard plate is only one wall thick beside its key rows.
     ``length`` overrides ``pin.length``: the fins' extent across the Seam, so
     their engagement. A part whose Seam jogs uses it to bridge a step of that
-    length, half of it into each Section.
+    length, half of it into each Section. ``width`` overrides the pocket's Y
+    span (``pin.pocket_width``): a fin trimmed to a narrow row gap, so the
+    solid matches the footprint the validation reads.
     """
     length = pin.length if length is None else length
     sign = 1.0 if upward else -1.0
@@ -140,6 +143,18 @@ def fins(
         ]
         if not chamfer:
             profile = _square_fin(profile, side, pin)
+        if width is not None and width < pin.pocket_width:
+            # Trim the fin's Y span to the row gap, centred on the pocket:
+            # the slot's inner face stays put, only the outer face moves in.
+            inner = side * pin.gap / 2.0
+            outer = side * (pin.gap / 2.0 + pin.fin)
+            limit = width / 2.0
+            if abs(outer) > limit:
+                outer = side * limit
+            profile = [
+                (inner, z) if abs(py) <= abs(inner) + 1e-9 else (outer, z)
+                for py, z in profile
+            ]
         fin = cad_helpers.extrude_profile_x(profile, length)
         solids.append(cad_helpers.translate(fin, x, y, 0.0))
     return solids
@@ -207,11 +222,47 @@ def pin_footprint(
     """The fin pair's plan rectangle ``(x0, x1, y0, y1)`` at site ``y``.
 
     The single source the build and the validation read, so a check and the
-    solid can never disagree about where a pin is.
+    solid can never disagree about where a pin is. The fin's Y span is the
+    configured ``pocket_width``, clamped to the row gap at ``y`` when the
+    Seam's bands bound it: a row gap narrower than the pocket would let the
+    fin overhang into the neighbouring row's cutouts (chonky's 4.08 mm gaps
+    against the 4.80 mm pocket), so the fin is trimmed to fit.
     """
     x, length = pin_placement(seam, depth, y, pin, follow_step)
-    half = pin.pocket_width / 2.0
+    half = _fin_half_width(seam, depth, y, pin)
     return (x - length / 2.0, x + length / 2.0, y - half, y + half)
+
+
+def _fin_half_width(seam, depth: float, y: float, pin) -> float:
+    """Half the fin's Y span at ``y``: the pocket, trimmed to the row gap.
+
+    The Seam's ``gaps`` are the clear Y distances between neighbouring key
+    rows, one per band boundary. A fin may not overhang that gap, so the
+    pocket's ``pocket_width`` is clamped to it when the gap is narrower. A
+    Seam built without gaps (or a site inside a band) keeps the pocket.
+    """
+    half = pin.pocket_width / 2.0
+    gap = _row_gap_at(seam, depth, y)
+    if gap is not None:
+        half = min(half, gap / 2.0)
+    return half
+
+
+def _row_gap_at(seam, depth: float, y: float) -> float | None:
+    """The clear Y gap between the two rows meeting at ``y``, or ``None``.
+
+    ``y`` is a band boundary; the Seam's ``gaps`` carry the clear distance
+    between the neighbouring rows' key footprints. A site inside a band (not
+    a boundary) has no gap and returns ``None``.
+    """
+    gaps = getattr(seam, "gaps", ())
+    if not gaps:
+        return None
+    bands = seam.segments(depth)
+    for index, ((_, y1, _), _nxt) in enumerate(zip(bands, bands[1:])):
+        if abs(y - y1) <= 1e-6 and index < len(gaps):
+            return gaps[index]
+    return None
 
 
 def add_pins(
@@ -237,9 +288,10 @@ def add_pins(
     depth = _seam_depth(seam, sites)
     for y in sites:
         x, length = pin_placement(seam, depth, y, pin, follow_step)
+        width = 2.0 * _fin_half_width(seam, depth, y, pin)
         body = cad_helpers.union(
             body,
-            *fins(pin, x, y, substrate, upward, chamfer, length),
+            *fins(pin, x, y, substrate, upward, chamfer, length, width),
         )
     return body
 

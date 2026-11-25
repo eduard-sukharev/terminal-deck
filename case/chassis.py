@@ -486,14 +486,38 @@ class Chassis:
         f = self.frame
         substrate, upward = f.seam_pin_planes[name]
         seam = self.config.slide.split[name].seams(depth, f.wall)[0]
+        sites = self._seam_pin_sites(name)
         return add_pins(
             body,
             seam,
             self.config.seam_pin,
-            self.config.slide.seam_pin_sites.get(name, ()),
+            sites,
             substrate,
             upward,
         )
+
+    def _seam_pin_sites(self, name: str) -> tuple[float, ...]:
+        """The Seam's pin sites, derived where the keyboard's depth decides.
+
+        The Deck's rear band sits behind the keyboard, so its Seam pins must
+        clear the keyboard's rear edge -- a 60% board's plate is deeper than a
+        40%'s and reaches the configured sites. ``config.slide.seam_pin_sites``
+        stays the source; a ``chassis_deck`` site that falls inside the
+        keyboard's footprint is walked back into the free rear band (the
+        keyboard's rear edge plus the pocket's half-width and the printable
+        minimum), so the pin never lands under the keycaps.
+        """
+        sites = tuple(self.config.slide.seam_pin_sites.get(name, ()))
+        if name != "chassis_deck" or not sites:
+            return sites
+        frame = getattr(self.frame, "plate_frame", None)
+        if frame is None:
+            return sites
+        pin = self.config.seam_pin
+        # The keyboard's rear edge in the chassis plan: the plate's rear face.
+        keyboard_rear = frame.y1
+        clear = keyboard_rear + pin.pocket_width / 2.0 + self.config.material.minimum_feature
+        return tuple(site if site >= clear else clear for site in sites)
 
     def _well_mounts(self):
         """The plate's mounting pattern, from the frame's derived dimensions.

@@ -23,6 +23,12 @@ class RowSeam:
     """A Seam made of ``(y0, y1, x)`` segments, front-to-back."""
 
     bands: tuple[tuple[float, float, float], ...]
+    #: The clear Y gap between each pair of neighbouring key rows, at the
+    #: band boundaries (``len(bands) - 1`` values). The plate's fin pairs are
+    #: clamped to it so a narrow row gap cannot let a fin overhang into the
+    #: neighbouring row's cutouts. Empty when the Seam was built without the
+    #: row extents (the fin then uses its configured ``pocket_width``).
+    gaps: tuple[float, ...] = ()
 
     def segments(self, depth: float) -> list[tuple[float, float, float]]:
         """The segments, with the outer ends stretched to span ``depth``."""
@@ -97,22 +103,32 @@ def _rows(model: KeyboardGeometryModel) -> list[list[Cutout]]:
     return rows
 
 
-def _row_gap_nearest_center(row: list[Cutout]) -> float:
-    """X of the middle of the gap between this row's cutouts nearest x=0."""
+def _row_gaps(row: list[Cutout]) -> list[float]:
+    """X of the middle of every gap between this row's key columns."""
     merged: list[list[float]] = []
     for lo, hi in sorted(_x_span(c) for c in row):
         if merged and lo <= merged[-1][1]:
             merged[-1][1] = max(merged[-1][1], hi)
         else:
             merged.append([lo, hi])
-    mids = [(a[1] + b[0]) / 2.0 for a, b in zip(merged, merged[1:])]
+    return [(a[1] + b[0]) / 2.0 for a, b in zip(merged, merged[1:])]
+
+
+def _row_gap_nearest_center(row: list[Cutout]) -> float:
+    """X of the middle of the gap between this row's cutouts nearest x=0."""
+    mids = _row_gaps(row)
     if not mids:
         raise ValueError("row has no gap between key columns to split at")
     return min(mids, key=abs)
 
 
 def plate_seam(model: KeyboardGeometryModel) -> RowSeam:
-    """Seam through the key-column gap nearest the center of every row."""
+    """Seam through the key-column gap nearest the centre of every row.
+
+    The row gaps are carried alongside the bands so the plate's fin pairs can
+    be clamped to the narrowest row gap (chonky's 4.08 mm gaps against the
+    4.80 mm pocket).
+    """
     rows = _rows(model)
     extents = [
         (min(_y_span(c)[0] for c in row), max(_y_span(c)[1] for c in row))
@@ -122,10 +138,18 @@ def plate_seam(model: KeyboardGeometryModel) -> RowSeam:
     edges = [-half] + [
         (a[1] + b[0]) / 2.0 for a, b in zip(extents, extents[1:])
     ] + [half]
-    return RowSeam(tuple(
-        (edges[i], edges[i + 1], _row_gap_nearest_center(row))
-        for i, row in enumerate(rows)
-    ))
+    xs = [_row_gap_nearest_center(row) for row in rows]
+    gaps = tuple(
+        max(0.0, extents[i + 1][0] - extents[i][1])
+        for i in range(len(extents) - 1)
+    )
+    return RowSeam(
+        tuple(
+            (edges[i], edges[i + 1], xs[i])
+            for i in range(len(rows))
+        ),
+        gaps=gaps,
+    )
 
 
 def pin_sites(seam: RowSeam) -> tuple[float, ...]:

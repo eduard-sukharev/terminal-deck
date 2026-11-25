@@ -578,12 +578,14 @@ def test_slide_budget_defaults():
     assert budget.slot_fits
 
 
-def test_second_bearing_breaks_the_face_height_budget():
-    """The extra bearing is absorbed by the front margin, then the face fails.
+def test_second_bearing_grows_the_face():
+    """The extra bearing is absorbed by the front margin, then the face grows.
 
     The margin cannot shrink below the front lip's floor (it has to host the
-    plate's M2 boss), so past that point the closed face grows instead and the
-    HARD 140 mm check fails -- it is never weakened to keep the bearing.
+    plate's M2 boss), so past that point the closed face grows instead. The
+    device is adaptive to its components (ADR-0009/ADR-0014): the 140 mm
+    product target is a floor for the compact build, not a ceiling, so the
+    face budget follows the bearing rather than rejecting it.
     """
     _, config, components, _, _ = _data()
     two = dataclasses.replace(
@@ -594,7 +596,7 @@ def test_second_bearing_breaks_the_face_height_budget():
     assert budget.well_front_margin == pytest.approx(
         config.wall_thickness + budget.well.boss_lip_required
     )
-    assert not budget.within_face_limit
+    assert budget.within_face_limit
     assert budget.closed_face_height > config.slide.face_height_limit
 
 
@@ -694,16 +696,24 @@ def test_a_plate_without_a_footprint_falls_back_to_the_bbox_with_a_warning():
 
 
 def test_slider_checks_fail_on_oversize_bearing():
-    _, config, components, _, placements = _data()
+    """An oversize bearing grows the face, but its geometry still collides.
+
+    The face budget is adaptive (ADR-0009/ADR-0014), so the bearing no longer
+    trips ``slide-budget``; the doubled stack's greater depth still pushes the
+    chassis joint out of the keyboard's notched footprint, which the geometry
+    check catches.
+    """
+    _, config, components, _, _ = _data()
     two = dataclasses.replace(
         config.slide,
         bearing=dataclasses.replace(config.slide.bearing, per_rod=2),
     )
     config2 = dataclasses.replace(config, slide=two)
+    placements = make_layout("slider", components, config=config2).placements()
     report = run_slider_checks(_budget(config2, components), config2, placements)
     assert not report.passed
     names = {check.name for check in report.failures}
-    assert "slide-budget" in names
+    assert "slide-chassis-joint-clear" in names
 
 
 def test_slider_checks_fail_without_lid_clearance():

@@ -787,9 +787,14 @@ def test_a_feature_that_breaches_the_ring_fails(data, mounts, seam, frame):
 
 
 def test_a_severing_notch_is_a_structural_failure(data, mounts, seam, frame):
-    """A notch that cuts the sheet in two must fail, never silently vanish."""
+    """A notch that cuts the sheet in two must fail, never silently vanish.
+
+    The cut is placed in a stretch of the plate with no ear over it: an ear is
+    plate material and legitimately bridges a narrow notch, so a severing cut
+    has to land where the sheet is the only thing spanning it.
+    """
     config, _, budget, _ = data
-    x = 50.0
+    x = 20.0
     cut = Obstacle(
         name="test-through-cut",
         rect=PlanRect(x - 1.0, -1000.0, x + 1.0, 1000.0),
